@@ -1,64 +1,216 @@
+# @veritix/contract-sdk
 
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+> A TypeScript/JavaScript client SDK for the **VeriTix Soroban smart contract** deployed on the [Stellar](https://stellar.org) network.
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+The SDK wraps every contract entry-point in a typed, promise-based API so you can integrate VeriTix escrow, payment splitting, dispute resolution, and recurring payments into your application without writing Soroban XDR by hand.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Table of Contents
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Module Reference](#module-reference)
+  - [token](#token)
+  - [escrow](#escrow)
+  - [dispute](#dispute)
+  - [splitter](#splitter)
+  - [recurring](#recurring)
+  - [admin](#admin)
+  - [batch](#batch)
+- [Error Handling](#error-handling)
+- [Contributing](#contributing)
+- [License](#license)
 
-## Project setup
+---
+
+## Installation
 
 ```bash
-$ npm install
+npm install @veritix/contract-sdk
 ```
 
-## Compile and run the project
+> **Peer dependency:** `@stellar/stellar-sdk ^12` is installed automatically as a dependency.
 
-```bash
-# development
-$ npm run start
+---
 
-# watch mode
-$ npm run start:dev
+## Quick Start
 
-# production mode
-$ npm run start:prod
+```ts
+import { Keypair } from '@stellar/stellar-sdk';
+import {
+  VeriTixClient,
+  getTestnetConfig,
+  VeriTixError,
+  VeriTixErrorCode,
+} from '@veritix/contract-sdk';
+
+// 1. Build network config
+const config = getTestnetConfig(process.env.CONTRACT_ID!);
+
+// 2. Load signing keypair (keep your secret key out of source control!)
+const keypair = Keypair.fromSecret(process.env.STELLAR_SECRET_KEY!);
+
+// 3. Create and connect the client
+const client = new VeriTixClient(config, keypair);
+await client.connect();
+
+// 4. Create an escrow
+try {
+  const result = await client.escrow.createEscrow({
+    beneficiary: 'GABC…',
+    amount: 10_000_000n,   // 1 XLM in stroops
+    expiryLedger: 1_500_000,
+    memos: ['Order #42'],
+  });
+  console.log('Escrow created, tx hash:', result.hash);
+} catch (err) {
+  if (err instanceof VeriTixError) {
+    console.error(`Contract error [${err.code}]:`, err.message);
+  }
+}
 ```
 
-## Run tests
+---
 
-```bash
-# unit tests
-$ npm run test
+## Configuration
 
+Use the built-in helpers to avoid copy-pasting passphrase strings:
 
-## Security Policy
+```ts
+import { getTestnetConfig, getMainnetConfig, getHorizonUrl } from '@veritix/contract-sdk';
 
-We welcome contributions! Please read our [Security_Policy.md](Security.md) for guidelines on how to report security vulnarability on this project.
+const testnet = getTestnetConfig('C…');   // Testnet RPC + passphrase
+const mainnet = getMainnetConfig('C…');   // Mainnet RPC + passphrase
+
+const horizonUrl = getHorizonUrl('testnet');  // https://horizon-testnet.stellar.org
+```
+
+Or supply a fully custom `NetworkConfig`:
+
+```ts
+import type { NetworkConfig } from '@veritix/contract-sdk';
+
+const custom: NetworkConfig = {
+  network: 'testnet',
+  contractId: 'C…',
+  rpcUrl: 'https://my-rpc-node.example.com',
+  networkPassphrase: 'Test SDF Network ; September 2015',
+};
+```
+
+---
+
+## Module Reference
+
+All modules are accessed as properties on a connected `VeriTixClient` instance.
+
+### token
+
+Implements the SEP-41 token interface.
+
+| Method | Description |
+|--------|-------------|
+| `balance(address)` | Returns the token balance for an address (stroops) |
+| `allowance(from, spender)` | Returns the approved allowance (stroops) |
+| `mint({ to, amount })` | Mints new tokens — admin only |
+| `burn({ from, amount })` | Burns tokens from an account |
+| `transfer({ from, to, amount })` | Transfers tokens between accounts |
+| `approve({ from, spender, amount, expirationLedger })` | Approves a spender allowance |
+
+### escrow
+
+| Method | Description |
+|--------|-------------|
+| `createEscrow({ beneficiary, amount, expiryLedger, memos? })` | Locks funds in a new escrow |
+| `releaseEscrow(id)` | Releases funds to the beneficiary |
+| `refundEscrow(id)` | Refunds funds to the depositor after expiry |
+| `getEscrow(id)` | Fetches an `EscrowRecord` by ID |
+
+### dispute
+
+| Method | Description |
+|--------|-------------|
+| `openDispute({ escrowId, resolver })` | Opens a dispute and freezes the escrow |
+| `resolveDispute({ disputeId, resolution })` | Resolves an open dispute — resolver only |
+| `getDispute(id)` | Fetches a `DisputeRecord` by ID |
+
+### splitter
+
+| Method | Description |
+|--------|-------------|
+| `createSplit({ recipients, totalAmount })` | Creates a new split instruction |
+| `distribute(id)` | Distributes funds to all recipients |
+| `getSplit(id)` | Fetches a `SplitRecord` by ID |
+
+> Recipient shares must be specified in **basis points** and must sum to exactly **10 000**.
+
+### recurring
+
+| Method | Description |
+|--------|-------------|
+| `setup({ payee, amount, interval })` | Creates a recurring payment authorisation |
+| `execute(id)` | Executes a due charge |
+| `cancel(id)` | Cancels an active recurring payment |
+| `getRecurring(id)` | Fetches a `RecurringRecord` by ID |
+
+### admin
+
+| Method | Description |
+|--------|-------------|
+| `setAdmin(newAdmin)` | Transfers the admin role |
+| `freeze(address)` | Freezes an account |
+| `unfreeze(address)` | Unfreezes an account |
+| `clawback(from, amount)` | Claws back tokens from an account |
+| `pause()` | Pauses the contract |
+| `unpause()` | Unpauses the contract |
+
+### batch
+
+| Method | Description |
+|--------|-------------|
+| `mintBatch(entries)` | Mints tokens to multiple recipients at once |
+| `transferBatch(entries)` | Executes multiple transfers atomically |
+| `freezeBatch(addresses)` | Freezes multiple accounts in one call |
+
+---
+
+## Error Handling
+
+All SDK methods throw `VeriTixError` on contract-level failures.
+
+```ts
+import { VeriTixError, VeriTixErrorCode, parseSorobanError } from '@veritix/contract-sdk';
+
+try {
+  await client.escrow.releaseEscrow(99n);
+} catch (err) {
+  if (err instanceof VeriTixError) {
+    switch (err.code) {
+      case VeriTixErrorCode.EscrowNotFound:
+        console.error('No such escrow.');
+        break;
+      case VeriTixErrorCode.EscrowAlreadySettled:
+        console.warn('Escrow was already settled — nothing to do.');
+        break;
+      default:
+        throw err;   // re-throw unexpected errors
+    }
+  }
+}
+```
+
+You can also call `parseSorobanError(rawError)` directly if you're working with the Stellar SDK at a lower level.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to pick up a module stub and implement it.
+
+---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-
-```
+MIT © VeriTix Contributors

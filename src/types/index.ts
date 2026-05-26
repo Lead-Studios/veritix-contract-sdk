@@ -1,62 +1,168 @@
-export interface User {
-  _id: string
-  email: string
-  role: "super_admin" | "admin" | "user"
-  createdAt: Date
-  updatedAt: Date
+/**
+ * @module types
+ * Shared TypeScript interfaces and enums that mirror the VeriTix Soroban contract structs.
+ * These types are used across all SDK modules to ensure end-to-end type safety.
+ */
+
+// ---------------------------------------------------------------------------
+// Network
+// ---------------------------------------------------------------------------
+
+/**
+ * Identifies which Stellar network the SDK should connect to.
+ */
+export type StellarNetwork = 'testnet' | 'mainnet';
+
+/**
+ * Full configuration required to initialise a {@link VeriTixClient}.
+ */
+export interface NetworkConfig {
+  /** "testnet" or "mainnet" */
+  network: StellarNetwork;
+  /** Bech32-encoded Soroban contract ID (e.g. "CXXXXXXX…") */
+  contractId: string;
+  /** Soroban RPC endpoint URL */
+  rpcUrl: string;
+  /** Stellar network passphrase used for transaction signing */
+  networkPassphrase: string;
 }
 
-export interface Event {
-  _id: string
-  title: string
-  description: string
-  date: Date
-  venue: string
-  totalTickets: number
-  availableTickets: number
-  ticketPrice: number
-  createdAt: Date
-  updatedAt: Date
+// ---------------------------------------------------------------------------
+// Escrow
+// ---------------------------------------------------------------------------
+
+/**
+ * On-chain record for a single escrow deposit.
+ * Mirrors the `EscrowRecord` struct in the VeriTix contract.
+ */
+export interface EscrowRecord {
+  /** Unique numeric identifier for the escrow */
+  id: bigint;
+  /** Stellar account address of the depositor */
+  depositor: string;
+  /** Stellar account address of the intended beneficiary */
+  beneficiary: string;
+  /** Token amount held in escrow (in stroops / smallest denomination) */
+  amount: bigint;
+  /** Whether the escrow has been released to the beneficiary */
+  released: boolean;
+  /** Whether the escrow has been refunded to the depositor */
+  refunded: boolean;
+  /** Ledger sequence number after which the depositor may reclaim the funds */
+  expiryLedger: number;
+  /** Optional free-form memo strings attached to the escrow */
+  memos: string[];
 }
 
-export interface Ticket {
-  _id: string
-  eventId: string
-  userId: string
-  purchaseDate: Date
-  price: number
-  quantity: number
-  status: "active" | "cancelled" | "refunded"
-  createdAt: Date
-  updatedAt: Date
+// ---------------------------------------------------------------------------
+// Split
+// ---------------------------------------------------------------------------
+
+/**
+ * A single recipient entry within a {@link SplitRecord}.
+ * Basis points (BPS) are used so that shares sum to exactly 10 000.
+ */
+export interface SplitRecipient {
+  /** Stellar account address of the recipient */
+  address: string;
+  /**
+   * Share of the total amount expressed in basis points (1 bps = 0.01 %).
+   * All recipients in a split must sum to exactly 10 000 bps.
+   */
+  shareBps: number;
 }
 
-export interface EventSalesSummary {
-  eventId: string
-  eventTitle: string
-  totalTicketsSold: number
-  totalRevenue: number
-  averageTicketPrice: number
-  salesCount: number
+/**
+ * On-chain record for a payment split instruction.
+ * Mirrors the `SplitRecord` struct in the VeriTix contract.
+ */
+export interface SplitRecord {
+  /** Unique numeric identifier for the split */
+  id: bigint;
+  /** Stellar account address that initiated the split */
+  sender: string;
+  /** Ordered list of recipients with their basis-point shares */
+  recipients: SplitRecipient[];
+  /** Total amount to be distributed (in stroops) */
+  totalAmount: bigint;
+  /** Whether the full amount has already been distributed */
+  distributed: boolean;
+  /** Whether the split was cancelled before distribution */
+  cancelled: boolean;
 }
 
-export interface SalesReport {
-  timeframe: "weekly" | "monthly" | "yearly"
-  startDate: Date
-  endDate: Date
-  totalRevenue: number
-  totalTicketsSold: number
-  totalEvents: number
-  events: EventSalesSummary[]
+// ---------------------------------------------------------------------------
+// Dispute
+// ---------------------------------------------------------------------------
+
+/**
+ * Current lifecycle state of a dispute.
+ */
+export enum DisputeStatus {
+  /** Dispute has been opened and is awaiting resolution */
+  Open = 'Open',
+  /** Resolver ruled in favour of the escrow beneficiary */
+  ResolvedForBeneficiary = 'ResolvedForBeneficiary',
+  /** Resolver ruled in favour of the escrow depositor */
+  ResolvedForDepositor = 'ResolvedForDepositor',
 }
 
-export interface AuthRequest extends Request {
-  user?: User
+/**
+ * On-chain record for a dispute raised against an escrow.
+ * Mirrors the `DisputeRecord` struct in the VeriTix contract.
+ */
+export interface DisputeRecord {
+  /** Unique numeric identifier for the dispute */
+  id: bigint;
+  /** The escrow ID that this dispute is attached to */
+  escrowId: bigint;
+  /** Stellar account address of the party that opened the dispute */
+  claimant: string;
+  /** Stellar account address of the designated resolver / arbitrator */
+  resolver: string;
+  /** Current status of the dispute */
+  status: DisputeStatus;
+  /** Ledger sequence number when the dispute was opened */
+  openedAt: number;
 }
 
-export interface QueryParams {
-  timeframe?: "weekly" | "monthly" | "yearly"
-  sort?: "top-selling" | "recent" | "revenue"
-  page?: string
-  limit?: string
+// ---------------------------------------------------------------------------
+// Recurring payment
+// ---------------------------------------------------------------------------
+
+/**
+ * On-chain record for a recurring / subscription payment setup.
+ * Mirrors the `RecurringRecord` struct in the VeriTix contract.
+ */
+export interface RecurringRecord {
+  /** Unique numeric identifier for the recurring payment */
+  id: bigint;
+  /** Stellar account address of the payer */
+  payer: string;
+  /** Stellar account address of the payee */
+  payee: string;
+  /** Amount charged per interval (in stroops) */
+  amount: bigint;
+  /** Charge interval expressed in ledger count */
+  interval: number;
+  /** Whether this recurring payment is still active */
+  active: boolean;
+  /** Ledger sequence number when the most recent charge was executed */
+  lastChargedLedger: number;
+}
+
+// ---------------------------------------------------------------------------
+// Generic helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal representation of a submitted Stellar transaction result.
+ */
+export interface TransactionResult {
+  /** Stellar transaction hash (hex-encoded) */
+  hash: string;
+  /** Final ledger sequence in which the transaction was included */
+  ledger: number;
+  /** Whether the transaction was successful */
+  successful: boolean;
 }

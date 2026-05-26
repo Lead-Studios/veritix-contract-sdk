@@ -1,127 +1,164 @@
-# Contributing to Veritix
+# Contributing to @veritix/contract-sdk
 
-Thank you for considering contributing to Veritix! We welcome all contributions that help improve the project.
-
-## Getting Started
-
-1. **Fork the Repository**: Click the 'Fork' button on GitHub to create a copy of this repository.
-2. **Clone Your Fork**: Run the following command to clone your fork to your local machine:
-
-   ```bash
-   git clone https://github.com/your-username/Veritix-backend.git
-   ```
-
-3. **Navigate to the Project Directory**:
-
-   ```bash
-   cd Veritix-backend
-   ```
-
-4. **Install Dependencies**:
-
-   ```bash
-   npm install
-   ```
-
-5. **Create a New Branch**:
-
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-## Contribution Guidelines
-
-### Code Standards
-
-- Follow best practices and ensure your code is clean and readable.
-- Use meaningful commit messages.
-- Maintain consistent code formatting.
-- Run `npm run lint` to check for linting errors before pushing changes.
-
-## ISSUE TEMPLATE
-
-**Title:** [Short summary of the issue]
-
-**Description:**
-Provide a clear and concise description of the issue. If applicable, add screenshots to help explain the problem.
-
-**Steps to Reproduce:**
-
-1. Go to '...'
-2. Click on '...'
-3. Scroll down to '...'
-4. See the error
-
-**Expected Behavior:**
-A clear and concise description of what you expected to happen.
-
-**Actual Behavior:**
-A clear and concise description of what actually happened.
-
-**Environment:**
-
-- OS: [e.g., Windows, MacOS, Linux]
-- Browser: [e.g., Chrome, Firefox]
-- Version: [e.g., v1.0.0]
-
-**Additional Context:**
-Add any other context about the problem here.
-
-## PULL REQUEST TEMPLATE
-
-**Title:** [Short summary of the changes]
-
-**Description:**
-Provide a brief description of what this PR does and why it is needed.
-
-**Related Issues:**
-Reference any related issues (e.g., Fixes #123, Closes #456).
-
-**Changes Made:**
-
-- [ ] Feature implementation
-- [ ] Bug fix
-- [ ] Code refactoring
-- [ ] Documentation update
-
-**How to Test:**
-
-1. Pull this branch
-2. Run `npm install` (if new dependencies were added)
-3. Run the project using `npm start`
-4. Test the feature as described
-
-**Screenshots (if applicable):**
-Include screenshots or gifs if relevant.
-
-**Checklist:**
-
-- [ ] Code follows the project's coding style
-- [ ] Tests have been added or updated
-- [ ] Documentation has been updated
-- [ ] Changes have been tested and verified
-
-**Additional Notes:**
-Include any additional information reviewers should be aware of.
-
-## Issue Reporting
-
-- Before opening a new issue, check if it has already been reported.
-- Use the provided issue templates.
-- Provide detailed steps to reproduce the issue.
-
-## Testing
-
-- Write unit tests for any new functionality.
-- Run tests before submitting a PR:
-  ```bash
-  npm test
-  ```
-
-## Code of Conduct
-
-By participating in this project, you agree to adhere to our [Code of Conduct](CODE_OF_CONDUCT.md).
+Thank you for helping build the VeriTix SDK! This document describes how to pick up a stub module and implement it correctly.
 
 ---
 
-Thank you for contributing to Veritix! 🚀
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Development Setup](#development-setup)
+- [Project Structure](#project-structure)
+- [Implementing a Module Stub](#implementing-a-module-stub)
+- [Writing Tests](#writing-tests)
+- [Code Style](#code-style)
+- [Submitting a Pull Request](#submitting-a-pull-request)
+
+---
+
+## Prerequisites
+
+| Tool | Version |
+|------|---------|
+| Node.js | ≥ 20 |
+| npm | ≥ 10 |
+| A Stellar Testnet account | [Stellar Laboratory](https://laboratory.stellar.org) |
+
+---
+
+## Development Setup
+
+```bash
+# 1. Fork and clone the repo
+git clone https://github.com/veritix/contract-sdk.git
+cd contract-sdk
+
+# 2. Install dependencies
+npm install
+
+# 3. Copy the env example and fill in your values
+cp .env.example .env
+
+# 4. Build to verify the TypeScript compiles
+npm run build
+
+# 5. Run the existing test suite
+npm test
+```
+
+---
+
+## Project Structure
+
+```
+src/
+  client.ts          ← Main VeriTixClient class
+  modules/           ← One file per contract feature area
+  types/index.ts     ← Shared TypeScript interfaces (do not edit lightly)
+  utils/
+    errors.ts        ← VeriTixError + parseSorobanError
+    network.ts       ← getTestnetConfig, getMainnetConfig, getHorizonUrl
+    transaction.ts   ← buildContractCall, simulateTransaction, submitTransaction
+  index.ts           ← Public barrel export
+tests/               ← Jest test files mirroring src/modules/
+```
+
+---
+
+## Implementing a Module Stub
+
+Each method in `src/modules/*.ts` currently contains a `// TODO: implement` comment and throws `new Error('not implemented')`.  Here is the standard pattern to follow when implementing one:
+
+### 1. Implement the transaction utils first
+
+All write operations go through three utility functions that live in `src/utils/transaction.ts`:
+
+```
+buildContractCall  →  simulateTransaction  →  submitTransaction
+```
+
+These must be completed before module write methods can work.
+
+### 2. Implement a read method
+
+```ts
+// Example: EscrowModule.getEscrow
+async getEscrow(id: bigint): Promise<EscrowRecord | null> {
+  const account = await this.server.getAccount(this.config.sourceAddress);
+  const tx = await buildContractCall(
+    this.server,
+    account,
+    this.config.contractId,
+    'get_escrow',
+    [nativeToScVal(id, { type: 'u64' })],
+    this.config.networkPassphrase,
+  );
+  const { transaction } = await simulateTransaction(this.server, tx);
+  // Parse the ScVal return value into an EscrowRecord
+  // Return null if the contract returns void / None
+  ...
+}
+```
+
+### 3. Implement a write method
+
+```ts
+// Example: EscrowModule.createEscrow
+async createEscrow(params: CreateEscrowParams): Promise<TransactionResult> {
+  if (!this.keypair) throw new Error('keypair required for write operations');
+  const account = await this.server.getAccount(this.keypair.publicKey());
+  const tx = await buildContractCall(...);
+  const { transaction } = await simulateTransaction(this.server, tx);
+  return submitTransaction(this.server, transaction, this.keypair);
+}
+```
+
+### 4. Wrap errors
+
+Catch raw RPC errors and pass them through `parseSorobanError`:
+
+```ts
+} catch (err) {
+  throw parseSorobanError(err);
+}
+```
+
+---
+
+## Writing Tests
+
+- Tests live in `tests/` and mirror `src/modules/`.
+- Each stub test already exists; replace the `rejects.toThrow('not implemented')` assertion with real expectations.
+- Use [Jest mocks](https://jestjs.io/docs/mock-functions) to avoid hitting the live network in unit tests.
+- Integration tests (hitting Testnet) should be placed in a separate `tests/integration/` directory and skipped in CI unless `INTEGRATION=true` is set.
+
+Run tests:
+
+```bash
+npm test               # unit tests only
+npm test -- --watch    # watch mode
+```
+
+---
+
+## Code Style
+
+- **Prettier** handles formatting: `npm run format`
+- **ESLint** handles linting: `npm run lint`
+- All public API methods must have JSDoc comments with `@param`, `@returns`, and `@throws` tags.
+- Prefer `bigint` for token amounts and IDs; never use `number` for amounts.
+- Use `_prefix` for intentionally unused parameters (satisfies `no-unused-vars`).
+
+---
+
+## Submitting a Pull Request
+
+1. Branch from `main`: `git checkout -b feat/implement-token-module`
+2. Implement and test your change.
+3. Run `npm run build && npm test && npm run lint` — all must pass.
+4. Open a PR against `main` with a clear description of what was implemented.
+5. Reference the relevant module in the PR title, e.g. `feat(token): implement mint and burn`.
+
+---
+
+Happy building! 🚀
