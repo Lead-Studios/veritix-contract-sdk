@@ -29,3 +29,6 @@ yarn-error.log*
 
 # Test artefacts
 junit.xml
+
+# Generated API docs
+docs/api/

@@ -3,18 +3,35 @@
   "version": "0.1.0",
   "description": "JavaScript/TypeScript client SDK for the VeriTix Soroban smart contract on the Stellar network",
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "files": [
     "dist/**/*",
     "README.md",
     "CONTRIBUTING.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "build": "tsup",
     "test": "jest --runInBand --forceExit",
+    "test:unit": "jest --testPathPattern='tests/(?!.*\\.integration\\.test\\.ts)' --runInBand --forceExit",
+    "test:integration": "jest --config jest.integration.config.ts --runInBand --forceExit",
     "lint": "eslint 'src/**/*.ts' 'tests/**/*.ts'",
     "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts'",
-    "prepublish": "npm run build"
+    "prepublish": "npm run build",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "npm run build && changeset publish",
+    "docs:generate": "typedoc"
   },
   "keywords": [
     "stellar",
@@ -36,6 +53,7 @@
     "typescript": "^5.4.5"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.27.7",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.14.0",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
@@ -44,22 +62,8 @@
     "jest": "^29.7.0",
     "prettier": "^3.3.2",
     "ts-jest": "^29.1.5",
-    "ts-node": "^10.9.2"
-  },
-  "jest": {
-    "preset": "ts-jest",
-    "testEnvironment": "node",
-    "roots": [
-      "<rootDir>/tests"
-    ],
-    "testMatch": [
-      "**/*.test.ts"
-    ],
-    "collectCoverage": true,
-    "coverageDirectory": "coverage",
-    "coverageReporters": [
-      "text",
-      "lcov"
-    ]
+    "ts-node": "^10.9.2",
+    "tsup": "^8.1.0",
+    "typedoc": "^0.26.3"
   }
 }
