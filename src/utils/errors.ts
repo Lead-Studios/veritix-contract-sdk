@@ -61,6 +61,8 @@ export enum VeriTixErrorCode {
   // — Catch-all -------------------------------------------------------------
   /** Raw panic string could not be mapped to a known code */
   Unknown = 'UNKNOWN',
+  /** RPC endpoint was unreachable after all retries */
+  ConnectionFailed = 'CONNECTION_FAILED',
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +203,7 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.AccountFrozen]: 'Target account is frozen and cannot transact.',
     [VeriTixErrorCode.ContractPaused]: 'Contract is currently paused by the administrator.',
     [VeriTixErrorCode.Unknown]: `Unrecognised contract error: ${rawStr}`,
+    [VeriTixErrorCode.ConnectionFailed]: 'Failed to connect to the Soroban RPC endpoint.',
   };
   return messages[code];
 }

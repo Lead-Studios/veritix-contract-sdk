@@ -25,6 +25,7 @@ export { VeriTixClient } from './client';
 export type {
   StellarNetwork,
   NetworkConfig,
+  ContractMetadata,
   EscrowRecord,
   SplitRecord,
   SplitRecipient,

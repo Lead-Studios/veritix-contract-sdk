@@ -113,6 +113,40 @@ export class TokenModule {
     throw new Error('TokenModule.allowance: not implemented');
   }
 
+  /**
+   * Returns the token name.
+   */
+  async name(): Promise<string> {
+    // TODO: implement — call contract 'name' entry point
+    void this.config;
+    void this.server;
+    throw new Error('TokenModule.name: not implemented');
+  }
+
+  /**
+   * Returns the token symbol.
+   */
+  async symbol(): Promise<string> {
+    // TODO: implement — call contract 'symbol' entry point
+    throw new Error('TokenModule.symbol: not implemented');
+  }
+
+  /**
+   * Returns the number of decimal places.
+   */
+  async decimals(): Promise<number> {
+    // TODO: implement — call contract 'decimals' entry point
+    throw new Error('TokenModule.decimals: not implemented');
+  }
+
+  /**
+   * Returns the total token supply.
+   */
+  async totalSupply(): Promise<bigint> {
+    // TODO: implement — call contract 'total_supply' entry point
+    throw new Error('TokenModule.totalSupply: not implemented');
+  }
+
   // -------------------------------------------------------------------------
   // Write operations
   // -------------------------------------------------------------------------

@@ -25,6 +25,28 @@ export interface NetworkConfig {
   rpcUrl: string;
   /** Stellar network passphrase used for transaction signing */
   networkPassphrase: string;
+  /** Number of connect() retry attempts on transient failure (default 3) */
+  retries?: number;
+  /** Base delay in ms between retries — doubles each attempt (default 1000) */
+  retryDelayMs?: number;
+}
+
+/**
+ * Token metadata returned by {@link VeriTixClient.getContractMetadata}.
+ */
+export interface ContractMetadata {
+  /** Human-readable token name */
+  name: string;
+  /** Token ticker symbol */
+  symbol: string;
+  /** Number of decimal places */
+  decimal: number;
+  /** Total token supply (in smallest denomination) */
+  totalSupply: bigint;
+  /** Soroban contract ID */
+  contractId: string;
+  /** Network the contract is deployed on */
+  network: StellarNetwork;
 }
 
 // ---------------------------------------------------------------------------
