@@ -26,6 +26,10 @@
  * ```
  */
 
+import { SorobanRpc, Keypair, xdr } from '@stellar/stellar-sdk';
+
+import type { NetworkConfig, SimulationResult } from './types/index';
+import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { EventEmitter } from 'events';
 import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
 
@@ -148,6 +152,10 @@ export class VeriTixClient extends EventEmitter {
    * ```
    */
   async connect(): Promise<number> {
+    this.server = new SorobanRpc.Server(this.config.rpcUrl, { allowHttp: false });
+    const ledger = await this.server.getLatestLedger();
+    this.connected = true;
+    return ledger.sequence;
     const retries = this.config.retries ?? 3;
     const retryDelayMs = this.config.retryDelayMs ?? 1_000;
 
@@ -198,6 +206,67 @@ export class VeriTixClient extends EventEmitter {
   }
 
   // -------------------------------------------------------------------------
+  // Simulation  (#77)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Dry-runs any contract method without submitting a transaction.
+   * Works without a `Keypair` — no XLM is spent.
+   *
+   * @param method - Contract function name to invoke.
+   * @param args   - Ordered XDR `ScVal` arguments.
+   * @returns A {@link SimulationResult} with the return value and estimated fee.
+   *
+   * @example
+   * ```ts
+   * const result = await client.simulate('get_escrow', [nativeToScVal(1n, { type: 'u64' })]);
+   * if (result.success) console.log('Return value:', result.returnValue);
+   * ```
+   */
+  async simulate(method: string, args: xdr.ScVal[]): Promise<SimulationResult> {
+    if (!this.connected) {
+      throw new Error('VeriTixClient: call connect() before simulate()');
+    }
+
+    try {
+      // Use a throwaway source account (simulation does not require a real funded account)
+      const { Account } = await import('@stellar/stellar-sdk');
+      const dummyKeypair = Keypair.random();
+      const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+      const tx = await buildContractCall(
+        this.server,
+        sourceAccount,
+        this.config.contractId,
+        method,
+        args,
+        this.config.networkPassphrase,
+      );
+
+      const { transaction, simulatedFee } = await simulateTransaction(this.server, tx);
+
+      // Extract the return value from the simulation result XDR if available
+      const rawResult = await this.server.simulateTransaction(tx);
+      const returnValue =
+        SorobanRpc.Api.isSimulationSuccess(rawResult) && rawResult.result
+          ? rawResult.result.retval
+          : undefined;
+
+      void transaction; // assembled tx not needed for simulate-only path
+
+      return {
+        success: true,
+        returnValue,
+        estimatedFee: simulatedFee,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        returnValue: undefined,
+        estimatedFee: '0',
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   // Convenience methods
   // -------------------------------------------------------------------------
 
