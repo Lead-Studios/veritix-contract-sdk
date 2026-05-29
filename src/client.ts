@@ -26,9 +26,11 @@
  * ```
  */
 
+import { EventEmitter } from 'events';
 import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
 
-import type { NetworkConfig } from './types/index';
+import type { NetworkConfig, ContractMetadata } from './types/index';
+import { VeriTixError, VeriTixErrorCode } from './utils/errors';
 import { TokenModule } from './modules/token';
 import { EscrowModule } from './modules/escrow';
 import { DisputeModule } from './modules/dispute';
@@ -37,13 +39,21 @@ import { RecurringModule } from './modules/recurring';
 import { AdminModule } from './modules/admin';
 import { BatchModule } from './modules/batch';
 
+/** Strongly-typed event map for VeriTixClient */
+export interface VeriTixClientEvents {
+  connected: (data: { ledger: number }) => void;
+  disconnected: () => void;
+  error: (err: VeriTixError) => void;
+  retry: (data: { attempt: number; delayMs: number }) => void;
+}
+
 /**
  * The primary SDK class.  One instance per contract / network pair.
  *
  * Instantiate it, call {@link connect}, then access feature modules via the
  * named properties.
  */
-export class VeriTixClient {
+export class VeriTixClient extends EventEmitter {
   /** Network + contract configuration supplied at construction time */
   public readonly config: NetworkConfig;
 
@@ -72,6 +82,10 @@ export class VeriTixClient {
   private readonly keypair: Keypair | undefined;
   private connected = false;
 
+  /** Cache for getCurrentLedger — { sequence, fetchedAt } */
+  private ledgerCache: { sequence: number; fetchedAt: number } | null = null;
+  private static readonly LEDGER_CACHE_TTL_MS = 5_000;
+
   /**
    * Creates a new `VeriTixClient`.
    *
@@ -82,6 +96,7 @@ export class VeriTixClient {
    *                  Omit for read-only usage.
    */
   constructor(config: NetworkConfig, keypair?: Keypair) {
+    super();
     this.config = config;
     this.keypair = keypair;
 
@@ -99,6 +114,21 @@ export class VeriTixClient {
   }
 
   // -------------------------------------------------------------------------
+  // Typed event emitter overloads
+  // -------------------------------------------------------------------------
+
+  on<K extends keyof VeriTixClientEvents>(event: K, listener: VeriTixClientEvents[K]): this {
+    return super.on(event, listener as (...args: unknown[]) => void);
+  }
+
+  emit<K extends keyof VeriTixClientEvents>(
+    event: K,
+    ...args: Parameters<VeriTixClientEvents[K]>
+  ): boolean {
+    return super.emit(event, ...args);
+  }
+
+  // -------------------------------------------------------------------------
   // Connection
   // -------------------------------------------------------------------------
 
@@ -106,11 +136,10 @@ export class VeriTixClient {
    * Initialises the Soroban RPC server connection and verifies it is reachable
    * by fetching the current ledger sequence.
    *
-   * Must be called before any write operation (read operations that use
-   * simulation also require an active connection).
+   * Retries with exponential backoff up to `config.retries` times (default 3).
    *
    * @returns The current Stellar ledger sequence number.
-   * @throws If the RPC endpoint is unreachable or returns an error.
+   * @throws {VeriTixError} With code `CONNECTION_FAILED` if unreachable after all retries.
    *
    * @example
    * ```ts
@@ -119,15 +148,46 @@ export class VeriTixClient {
    * ```
    */
   async connect(): Promise<number> {
-    // TODO: implement
-    // Suggested steps:
-    //   1. new SorobanRpc.Server(this.config.rpcUrl, { allowHttp: false })
-    //   2. server.getLatestLedger() to verify connectivity
-    //   3. Store server reference; set this.connected = true
-    //   4. Return latestLedger.sequence
-    void SorobanRpc;
-    this.connected = true; // placeholder so TypeScript doesn't warn
-    throw new Error('VeriTixClient.connect: not implemented');
+    const retries = this.config.retries ?? 3;
+    const retryDelayMs = this.config.retryDelayMs ?? 1_000;
+
+    this.server = new SorobanRpc.Server(this.config.rpcUrl, { allowHttp: false });
+
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const latestLedger = await this.server.getLatestLedger();
+        this.connected = true;
+        this.ledgerCache = { sequence: latestLedger.sequence, fetchedAt: Date.now() };
+        this.emit('connected', { ledger: latestLedger.sequence });
+        return latestLedger.sequence;
+      } catch (err) {
+        lastError = err;
+        if (attempt < retries) {
+          const delayMs = retryDelayMs * Math.pow(2, attempt);
+          this.emit('retry', { attempt: attempt + 1, delayMs });
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    const error = new VeriTixError(
+      VeriTixErrorCode.ConnectionFailed,
+      `Failed to connect to RPC at ${this.config.rpcUrl}: ${String(lastError)}`,
+    );
+    this.emit('error', error);
+    throw error;
+  }
+
+  /**
+   * Releases the server connection and resets client state.
+   * Emits a `disconnected` event.
+   */
+  disconnect(): void {
+    this.connected = false;
+    this.server = null as unknown as SorobanRpc.Server;
+    this.ledgerCache = null;
+    this.emit('disconnected');
   }
 
   /**
@@ -135,6 +195,57 @@ export class VeriTixClient {
    */
   isConnected(): boolean {
     return this.connected;
+  }
+
+  // -------------------------------------------------------------------------
+  // Convenience methods
+  // -------------------------------------------------------------------------
+
+  /**
+   * Returns the current ledger sequence number.
+   * Result is cached for 5 seconds to avoid hammering the RPC.
+   *
+   * @throws If not connected.
+   */
+  async getCurrentLedger(): Promise<number> {
+    if (!this.connected || !this.server) {
+      throw new Error('VeriTixClient: call connect() before using module methods');
+    }
+    const now = Date.now();
+    if (
+      this.ledgerCache &&
+      now - this.ledgerCache.fetchedAt < VeriTixClient.LEDGER_CACHE_TTL_MS
+    ) {
+      return this.ledgerCache.sequence;
+    }
+    const latestLedger = await this.server.getLatestLedger();
+    this.ledgerCache = { sequence: latestLedger.sequence, fetchedAt: now };
+    return latestLedger.sequence;
+  }
+
+  /**
+   * Fetches token metadata: name, symbol, decimals, totalSupply, contractId, network.
+   *
+   * @throws If not connected.
+   */
+  async getContractMetadata(): Promise<ContractMetadata> {
+    if (!this.connected || !this.server) {
+      throw new Error('VeriTixClient: call connect() before using module methods');
+    }
+    const [name, symbol, decimal, totalSupply] = await Promise.all([
+      this.token.name(),
+      this.token.symbol(),
+      this.token.decimals(),
+      this.token.totalSupply(),
+    ]);
+    return {
+      name,
+      symbol,
+      decimal,
+      totalSupply,
+      contractId: this.config.contractId,
+      network: this.config.network,
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -149,8 +260,6 @@ export class VeriTixClient {
    * @internal
    */
   private getLazyServer(): SorobanRpc.Server {
-    // We use a Proxy so the error is deferred until a module actually tries
-    // to use the server, not at construction time.
     return new Proxy({} as SorobanRpc.Server, {
       get: (_target, prop) => {
         if (!this.connected || !this.server) {
