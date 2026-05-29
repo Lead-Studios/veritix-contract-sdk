@@ -1,0 +1,8 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "out": "docs/api",
+  "name": "@veritix/contract-sdk",
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeInternal": true
+}
