@@ -162,3 +162,14 @@ npm test -- --watch    # watch mode
 ---
 
 Happy building! 🚀
+
+---
+
+## Versioning with Changesets
+
+This project uses [Changesets](https://github.com/changesets/changesets) for versioning and changelog generation.
+
+1. After making changes, run `npm run changeset` and follow the prompts.
+2. Commit the generated `.changeset/*.md` file alongside your code changes.
+3. When merged to `main`, the Changeset PR bot will open a "Version Packages" PR automatically.
+4. Merging that PR bumps versions and publishes to npm via the release workflow.
