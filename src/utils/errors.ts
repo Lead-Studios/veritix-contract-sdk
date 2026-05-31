@@ -58,6 +58,12 @@ export enum VeriTixErrorCode {
   /** The contract is currently paused */
   ContractPaused = 'CONTRACT_PAUSED',
 
+  // — Token / balance -------------------------------------------------------
+  /** The caller's token balance is too low for the requested operation */
+  InsufficientBalance = 'INSUFFICIENT_BALANCE',
+  /** Generic authorisation failure not tied to a specific sub-module */
+  Unauthorized = 'UNAUTHORIZED',
+
   // — Catch-all -------------------------------------------------------------
   /** Raw panic string could not be mapped to a known code */
   Unknown = 'UNKNOWN',
@@ -106,33 +112,42 @@ export class VeriTixError extends Error {
 
 /**
  * Maps substrings found in Soroban panic strings to their {@link VeriTixErrorCode}.
- * Order matters: more specific patterns should appear before broader ones.
+ * Order matters: more specific patterns must appear before broader ones.
+ *
+ * Matching is **case-insensitive substring** — first match wins.
  */
 const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
-  // Escrow
-  ['escrow not found', VeriTixErrorCode.EscrowNotFound],
-  ['already settled', VeriTixErrorCode.EscrowAlreadySettled],
-  ['escrow not expired', VeriTixErrorCode.EscrowNotExpired],
-  ['escrow unauthorized', VeriTixErrorCode.EscrowUnauthorized],
+  // Escrow — ordered most-specific first so e.g. "escrow not expired" is
+  // matched before the shorter "not expired" alias.
+  ['escrow not found',        VeriTixErrorCode.EscrowNotFound],
+  ['already settled',         VeriTixErrorCode.EscrowAlreadySettled],
+  ['escrow not expired',      VeriTixErrorCode.EscrowNotExpired],
+  ['not expired',             VeriTixErrorCode.EscrowNotExpired],
+  ['escrow unauthorized',     VeriTixErrorCode.EscrowUnauthorized],
 
   // Dispute
-  ['DisputeAlreadyOpen', VeriTixErrorCode.DisputeAlreadyOpen],
-  ['dispute not found', VeriTixErrorCode.DisputeNotFound],
-  ['dispute invalid state', VeriTixErrorCode.DisputeInvalidState],
+  ['DisputeAlreadyOpen',      VeriTixErrorCode.DisputeAlreadyOpen],
+  ['dispute not found',       VeriTixErrorCode.DisputeNotFound],
+  ['dispute invalid state',   VeriTixErrorCode.DisputeInvalidState],
 
   // Split
-  ['split not found', VeriTixErrorCode.SplitNotFound],
-  ['invalid shares', VeriTixErrorCode.SplitInvalidShares],
-  ['already distributed', VeriTixErrorCode.SplitAlreadyDistributed],
+  ['split not found',         VeriTixErrorCode.SplitNotFound],
+  ['invalid shares',          VeriTixErrorCode.SplitInvalidShares],
+  ['already distributed',     VeriTixErrorCode.SplitAlreadyDistributed],
 
   // Recurring
-  ['recurring not found', VeriTixErrorCode.RecurringNotFound],
-  ['interval not elapsed', VeriTixErrorCode.RecurringIntervalNotElapsed],
+  ['recurring not found',     VeriTixErrorCode.RecurringNotFound],
+  ['interval not elapsed',    VeriTixErrorCode.RecurringIntervalNotElapsed],
 
   // Admin
-  ['admin unauthorized', VeriTixErrorCode.AdminUnauthorized],
-  ['account frozen', VeriTixErrorCode.AccountFrozen],
-  ['contract paused', VeriTixErrorCode.ContractPaused],
+  ['admin unauthorized',      VeriTixErrorCode.AdminUnauthorized],
+  ['account frozen',          VeriTixErrorCode.AccountFrozen],
+  ['contract paused',         VeriTixErrorCode.ContractPaused],
+
+  // Token / balance — must come after the more-specific "escrow unauthorized"
+  // and "admin unauthorized" entries so those match first.
+  ['insufficient balance',    VeriTixErrorCode.InsufficientBalance],
+  ['not authorized',          VeriTixErrorCode.Unauthorized],
 ];
 
 // ---------------------------------------------------------------------------
@@ -142,6 +157,10 @@ const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
 /**
  * Converts a raw Soroban RPC error (panic string or `Error` object) into a
  * typed {@link VeriTixError}.
+ *
+ * The function performs **case-insensitive substring matching** against
+ * {@link PANIC_MAP}.  The first match wins, so more-specific patterns are
+ * listed before broader ones.
  *
  * @param raw - The raw error value surfaced by the Soroban RPC or SDK.
  * @returns A {@link VeriTixError} with an appropriate {@link VeriTixErrorCode}.
@@ -187,23 +206,25 @@ function extractRawString(raw: unknown): string {
 /** Produces a human-readable message for a given error code. */
 function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
   const messages: Record<VeriTixErrorCode, string> = {
-    [VeriTixErrorCode.EscrowNotFound]: 'Escrow record not found in contract storage.',
-    [VeriTixErrorCode.EscrowAlreadySettled]: 'Escrow has already been released or refunded.',
-    [VeriTixErrorCode.EscrowNotExpired]: 'Escrow has not yet reached its expiry ledger.',
-    [VeriTixErrorCode.EscrowUnauthorized]: 'Caller is not authorised to act on this escrow.',
-    [VeriTixErrorCode.DisputeAlreadyOpen]: 'A dispute is already open for this escrow.',
-    [VeriTixErrorCode.DisputeNotFound]: 'Dispute record not found in contract storage.',
-    [VeriTixErrorCode.DisputeInvalidState]: 'Dispute is not in the correct state for this operation.',
-    [VeriTixErrorCode.SplitNotFound]: 'Split record not found in contract storage.',
-    [VeriTixErrorCode.SplitInvalidShares]: 'Split shares do not sum to 10 000 basis points.',
-    [VeriTixErrorCode.SplitAlreadyDistributed]: 'Split amount has already been distributed.',
-    [VeriTixErrorCode.RecurringNotFound]: 'Recurring payment record not found.',
+    [VeriTixErrorCode.EscrowNotFound]:             'Escrow record not found in contract storage.',
+    [VeriTixErrorCode.EscrowAlreadySettled]:        'Escrow has already been released or refunded.',
+    [VeriTixErrorCode.EscrowNotExpired]:            'Escrow has not yet reached its expiry ledger.',
+    [VeriTixErrorCode.EscrowUnauthorized]:          'Caller is not authorised to act on this escrow.',
+    [VeriTixErrorCode.DisputeAlreadyOpen]:          'A dispute is already open for this escrow.',
+    [VeriTixErrorCode.DisputeNotFound]:             'Dispute record not found in contract storage.',
+    [VeriTixErrorCode.DisputeInvalidState]:         'Dispute is not in the correct state for this operation.',
+    [VeriTixErrorCode.SplitNotFound]:               'Split record not found in contract storage.',
+    [VeriTixErrorCode.SplitInvalidShares]:          'Split shares do not sum to 10 000 basis points.',
+    [VeriTixErrorCode.SplitAlreadyDistributed]:     'Split amount has already been distributed.',
+    [VeriTixErrorCode.RecurringNotFound]:           'Recurring payment record not found.',
     [VeriTixErrorCode.RecurringIntervalNotElapsed]: 'Charge interval has not yet elapsed.',
-    [VeriTixErrorCode.AdminUnauthorized]: 'Caller is not the contract administrator.',
-    [VeriTixErrorCode.AccountFrozen]: 'Target account is frozen and cannot transact.',
-    [VeriTixErrorCode.ContractPaused]: 'Contract is currently paused by the administrator.',
-    [VeriTixErrorCode.Unknown]: `Unrecognised contract error: ${rawStr}`,
-    [VeriTixErrorCode.ConnectionFailed]: 'Failed to connect to the Soroban RPC endpoint.',
+    [VeriTixErrorCode.AdminUnauthorized]:           'Caller is not the contract administrator.',
+    [VeriTixErrorCode.AccountFrozen]:               'Target account is frozen and cannot transact.',
+    [VeriTixErrorCode.ContractPaused]:              'Contract is currently paused by the administrator.',
+    [VeriTixErrorCode.InsufficientBalance]:         'Account has insufficient token balance for this operation.',
+    [VeriTixErrorCode.Unauthorized]:                'Caller is not authorised to perform this operation.',
+    [VeriTixErrorCode.Unknown]:                     `Unrecognised contract error: ${rawStr}`,
+    [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
   };
   return messages[code];
 }
