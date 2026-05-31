@@ -7,8 +7,36 @@
  * querying balances.
  */
 
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
+import {
+  SorobanRpc,
+  Keypair,
+  Address,
+  StrKey,
+  Account,
+  xdr,
+  scValToNative,
+  nativeToScVal,
+} from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
+import {
+  buildContractCall,
+  simulateTransaction,
+  submitTransaction,
+} from '../utils/transaction';
+import { VeriTixError, VeriTixErrorCode, parseSorobanError } from '../utils/errors';
+
+
+
+/** @internal Convert a Stellar address to ScVal.
+ *  Handles G-addresses (Ed25519 accounts) and C-addresses (contracts).
+ */
+function addressToScVal(address: string): xdr.ScVal {
+  if (StrKey.isValidEd25519PublicKey(address)) {
+    return Address.account(StrKey.decodeEd25519PublicKey(address)).toScVal();
+  }
+  return Address.fromString(address).toScVal();
+}
+
 
 /**
  * Parameters for minting new tokens.
@@ -17,16 +45,6 @@ export interface MintParams {
   /** Recipient Stellar account address */
   to: string;
   /** Amount to mint (in stroops / smallest denomination) */
-  amount: bigint;
-}
-
-/**
- * Parameters for burning tokens.
- */
-export interface BurnParams {
-  /** Account whose tokens will be burned */
-  from: string;
-  /** Amount to burn (in stroops) */
   amount: bigint;
 }
 
@@ -57,6 +75,14 @@ export interface ApproveParams {
 }
 
 /**
+ * Parameters for burning tokens.
+ */
+export interface BurnParams {
+  /** Amount to burn in stroops (smallest denomination) */
+  amount: bigint;
+}
+
+/**
  * Handles all token-level interactions with the VeriTix contract.
  *
  * Obtain an instance via {@link VeriTixClient.token} rather than
@@ -75,7 +101,62 @@ export class TokenModule {
   }
 
   // -------------------------------------------------------------------------
-  // Read operations
+  // Private helpers
+  // -------------------------------------------------------------------------
+
+  /**
+   * Executes a read-only contract call via simulation and returns the decoded
+   * native value. No keypair is required.
+   */
+  private async simulateRead(method: string, args: xdr.ScVal[]): Promise<unknown> {
+    const sourceAccount = new Account(Keypair.random().publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
+
+    const simResult = await this.server.simulateTransaction(tx);
+
+    if (SorobanRpc.Api.isSimulationError(simResult)) {
+      throw parseSorobanError(simResult.error);
+    }
+
+    const retval = (simResult as SorobanRpc.Api.SimulateTransactionSuccessResponse).result?.retval;
+    return retval !== undefined ? scValToNative(retval) : undefined;
+  }
+
+  /**
+   * Executes a state-mutating contract call: builds, simulates, signs, and
+   * submits the transaction. Requires `this.keypair` to be set.
+   */
+  private async writeCall(method: string, args: xdr.ScVal[]): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.Unknown,
+        'A Keypair is required for write operations. Pass it to VeriTixClient.',
+      );
+    }
+
+    const sourceAccount = await this.server.getAccount(this.keypair.publicKey());
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
+
+    const { transaction } = await simulateTransaction(this.server, tx);
+    return submitTransaction(this.server, transaction, this.keypair);
+  }
+
+  // -------------------------------------------------------------------------
+  // Read operations (#86, #87)
   // -------------------------------------------------------------------------
 
   /**
@@ -83,22 +164,12 @@ export class TokenModule {
    *
    * @param address - Stellar account address to query.
    * @returns The balance in stroops (smallest denomination).
-   *
-   * @example
-   * ```ts
-   * const bal = await client.token.balance('GABC…');
-   * console.log('Balance:', bal.toString());
-   * ```
    */
-  async balance(_address: string): Promise<bigint> {
-    // TODO: implement
-    // Suggested steps:
-    //   1. buildContractCall(server, account, contractId, 'balance', [addressToScVal(_address)])
-    //   2. simulateTransaction(server, tx)
-    //   3. Parse ScVal result → bigint
-    void this.config;
-    void this.server;
-    throw new Error('TokenModule.balance: not implemented');
+  async balance(address: string): Promise<bigint> {
+    const result = await this.simulateRead('balance', [
+      addressToScVal(address),
+    ]);
+    return BigInt(result as bigint);
   }
 
   /**
@@ -108,97 +179,164 @@ export class TokenModule {
    * @param spender - The account that received the allowance.
    * @returns The approved amount in stroops.
    */
-  async allowance(_from: string, _spender: string): Promise<bigint> {
-    // TODO: implement
-    throw new Error('TokenModule.allowance: not implemented');
+  async allowance(from: string, spender: string): Promise<bigint> {
+    const result = await this.simulateRead('allowance', [
+      addressToScVal(from),
+      addressToScVal(spender),
+    ]);
+    return BigInt(result as bigint);
   }
 
   /**
    * Returns the token name.
    */
   async name(): Promise<string> {
-    // TODO: implement — call contract 'name' entry point
-    void this.config;
-    void this.server;
-    throw new Error('TokenModule.name: not implemented');
+    const result = await this.simulateRead('name', []);
+    const str = result as Buffer | string;
+    return Buffer.isBuffer(str) ? str.toString('utf8') : str;
   }
 
   /**
    * Returns the token symbol.
    */
   async symbol(): Promise<string> {
-    // TODO: implement — call contract 'symbol' entry point
-    throw new Error('TokenModule.symbol: not implemented');
+    const result = await this.simulateRead('symbol', []);
+    const str = result as Buffer | string;
+    return Buffer.isBuffer(str) ? str.toString('utf8') : str;
   }
 
   /**
    * Returns the number of decimal places.
    */
   async decimals(): Promise<number> {
-    // TODO: implement — call contract 'decimals' entry point
-    throw new Error('TokenModule.decimals: not implemented');
+    const result = await this.simulateRead('decimals', []);
+    return result as number;
   }
 
   /**
    * Returns the total token supply.
    */
   async totalSupply(): Promise<bigint> {
-    // TODO: implement — call contract 'total_supply' entry point
-    throw new Error('TokenModule.totalSupply: not implemented');
+    const result = await this.simulateRead('total_supply', []);
+    return BigInt(result as bigint);
   }
 
   // -------------------------------------------------------------------------
-  // Write operations
+  // Write operations (#90, #91)
   // -------------------------------------------------------------------------
 
   /**
    * Mints new tokens to the specified recipient address.
    * Caller must be the contract admin.
-   *
-   * @param params - {@link MintParams}
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} If the caller is not authorised.
    */
-  async mint(_params: MintParams): Promise<TransactionResult> {
-    // TODO: implement
-    // Suggested steps:
-    //   1. Require this.keypair
-    //   2. buildContractCall → simulateTransaction → submitTransaction
-    void this.keypair;
-    throw new Error('TokenModule.mint: not implemented');
+  async mint(params: MintParams): Promise<TransactionResult> {
+    return this.writeCall('mint', [
+      addressToScVal(params.to),
+      nativeToScVal(params.amount, { type: 'i128' }),
+    ]);
   }
 
   /**
-   * Burns tokens from the specified account.
-   * Caller must be the token owner or have sufficient allowance.
+   * Burns `amount` tokens from the caller's account.
+   * Validates that amount > 0.
    *
-   * @param params - {@link BurnParams}
-   * @returns A {@link TransactionResult} on success.
+   * @param amount - Amount to burn in stroops.
    */
-  async burn(_params: BurnParams): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('TokenModule.burn: not implemented');
+  async burn(amount: bigint): Promise<TransactionResult> {
+    if (amount <= 0n) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'burn: amount must be greater than 0');
+    }
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.Unknown,
+        'A Keypair is required for write operations. Pass it to VeriTixClient.',
+      );
+    }
+    return this.writeCall('burn', [
+      addressToScVal(this.keypair.publicKey()),
+      nativeToScVal(amount, { type: 'i128' }),
+    ]);
+  }
+
+  /**
+   * Burns `amount` tokens from an approved address.
+   * Caller must have sufficient allowance over `from`'s tokens.
+   * Validates that amount > 0.
+   *
+   * @param from   - Account whose tokens will be burned.
+   * @param amount - Amount to burn in stroops.
+   */
+  async burnFrom(from: string, amount: bigint): Promise<TransactionResult> {
+    if (amount <= 0n) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'burnFrom: amount must be greater than 0');
+    }
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.Unknown,
+        'A Keypair is required for write operations. Pass it to VeriTixClient.',
+      );
+    }
+    return this.writeCall('burn_from', [
+      addressToScVal(this.keypair.publicKey()),
+      addressToScVal(from),
+      nativeToScVal(amount, { type: 'i128' }),
+    ]);
   }
 
   /**
    * Transfers tokens from one account to another.
-   *
-   * @param params - {@link TransferParams}
-   * @returns A {@link TransactionResult} on success.
    */
-  async transfer(_params: TransferParams): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('TokenModule.transfer: not implemented');
+  async transfer(params: TransferParams): Promise<TransactionResult> {
+    return this.writeCall('transfer', [
+      addressToScVal(params.from),
+      addressToScVal(params.to),
+      nativeToScVal(params.amount, { type: 'i128' }),
+    ]);
+  }
+
+  /**
+   * Transfers tokens from `from` to `to` using the caller's allowance.
+   * Pre-flight check: validates allowance >= amount before submitting.
+   *
+   * @param from   - Account whose tokens are transferred.
+   * @param to     - Recipient address.
+   * @param amount - Amount to transfer in stroops.
+   * @throws {VeriTixError} VeriTixErrorCode.InsufficientAllowance if check fails.
+   */
+  async transferFrom(from: string, to: string, amount: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.Unknown,
+        'A Keypair is required for transferFrom. Pass it to VeriTixClient.',
+      );
+    }
+
+    const spender = this.keypair.publicKey();
+    const currentAllowance = await this.allowance(from, spender);
+    if (currentAllowance < amount) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InsufficientAllowance,
+        `Spender allowance (${currentAllowance}) is less than requested amount (${amount}).`,
+      );
+    }
+
+    return this.writeCall('transfer_from', [
+      addressToScVal(spender),
+      addressToScVal(from),
+      addressToScVal(to),
+      nativeToScVal(amount, { type: 'i128' }),
+    ]);
   }
 
   /**
    * Approves a `spender` to transfer up to `amount` tokens on behalf of `from`.
-   *
-   * @param params - {@link ApproveParams}
-   * @returns A {@link TransactionResult} on success.
    */
-  async approve(_params: ApproveParams): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('TokenModule.approve: not implemented');
+  async approve(params: ApproveParams): Promise<TransactionResult> {
+    return this.writeCall('approve', [
+      addressToScVal(params.from),
+      addressToScVal(params.spender),
+      nativeToScVal(params.amount, { type: 'i128' }),
+      nativeToScVal(params.expirationLedger, { type: 'u32' }),
+    ]);
   }
 }
