@@ -19,7 +19,7 @@ import {
   BASE_FEE,
 } from '@stellar/stellar-sdk';
 
-import type { TransactionResult } from '../types/index';
+import type { TransactionResult, FeeEstimate } from '../types/index';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from './errors';
 
 // ---------------------------------------------------------------------------
@@ -110,6 +110,71 @@ export async function simulateTransaction(
   return {
     transaction: assembled as Transaction,
     simulatedFee: result.minResourceFee,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fee estimation
+// ---------------------------------------------------------------------------
+
+/** Number of stroops per XLM. */
+const STROOPS_PER_XLM = 10_000_000n;
+
+/**
+ * Estimates the transaction fee for a contract call without submitting it.
+ *
+ * Builds a throwaway transaction, runs it through the Soroban simulation
+ * endpoint, and returns the `minResourceFee` as both a raw stroop count and a
+ * human-readable XLM string.  No XLM is spent and no keypair is required.
+ *
+ * @param server            - An initialised `SorobanRpc.Server` instance.
+ * @param contractId        - Bech32-encoded Soroban contract ID.
+ * @param networkPassphrase - Stellar network passphrase.
+ * @param method            - Contract function name to estimate.
+ * @param args              - Ordered XDR `ScVal` arguments for the call.
+ * @returns A {@link FeeEstimate} with `feeLumens`, `feeXLM`, and `estimatedLedger`.
+ * @throws {VeriTixError} If the simulation returns an error response.
+ *
+ * @example
+ * ```ts
+ * const estimate = await estimateFee(server, contractId, passphrase, 'transfer', [fromScVal, toScVal, amountScVal]);
+ * console.log(`Estimated fee: ${estimate.feeXLM} XLM`);
+ * ```
+ */
+export async function estimateFee(
+  server: SorobanRpc.Server,
+  contractId: string,
+  networkPassphrase: string,
+  method: string,
+  args: xdr.ScVal[],
+): Promise<FeeEstimate> {
+  // Use a throwaway keypair — simulation does not require a funded account
+  const dummyKeypair = Keypair.random();
+  const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+  const tx = await buildContractCall(
+    server,
+    sourceAccount,
+    contractId,
+    method,
+    args,
+    networkPassphrase,
+  );
+
+  const { simulatedFee } = await simulateTransaction(server, tx);
+
+  const latestLedger = await server.getLatestLedger();
+
+  const feeLumensBI = BigInt(simulatedFee);
+  const whole = feeLumensBI / STROOPS_PER_XLM;
+  const remainder = feeLumensBI % STROOPS_PER_XLM;
+  // Format remainder as 7-digit zero-padded fractional part
+  const feeXLM = `${whole}.${remainder.toString().padStart(7, '0')}`;
+
+  return {
+    feeLumens: simulatedFee,
+    feeXLM,
+    estimatedLedger: latestLedger.sequence,
   };
 }
 
