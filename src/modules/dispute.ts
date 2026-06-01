@@ -6,13 +6,17 @@
  * arbitration by a pre-designated resolver address.
  */
 
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type {
   DisputeRecord,
   DisputeStatus,
   NetworkConfig,
   TransactionResult,
 } from '../types/index';
+import { addressToScVal, bigintToScVal } from '../utils/scval';
+import { buildContractCall, submitTransaction } from '../utils/transaction';
+import { parseSorobanError } from '../utils/errors';
+import { parseDisputeRecord } from '../utils/parsers';
 
 /**
  * Parameters required to open a new dispute against an escrow.
@@ -22,6 +26,8 @@ export interface OpenDisputeParams {
   escrowId: bigint;
   /** Stellar account address of the designated resolver / arbitrator */
   resolver: string;
+  /** Optional evidence text attached to the dispute */
+  evidence?: string;
 }
 
 /**
@@ -70,11 +76,42 @@ export class DisputeModule {
    * console.log('Status:', dispute?.status);
    * ```
    */
-  async getDispute(_id: bigint): Promise<DisputeRecord | null> {
-    // TODO: implement
-    void this.config;
-    void this.server;
-    throw new Error('DisputeModule.getDispute: not implemented');
+  async getDispute(id: bigint): Promise<DisputeRecord | null> {
+    const dummyKeypair = Keypair.random();
+    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_dispute',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    if (!returnValue) {
+      return null;
+    }
+
+    if (returnValue.switch() === xdr.ScValType.scvOption()) {
+      const option = returnValue.option();
+      if (!option || !option.value()) {
+        return null;
+      }
+      return parseDisputeRecord(option.value());
+    }
+
+    return parseDisputeRecord(returnValue);
   }
 
   // -------------------------------------------------------------------------
@@ -85,23 +122,69 @@ export class DisputeModule {
    * Opens a new dispute against an escrow, freezing the funds until resolved.
    * Caller becomes the claimant.
    *
-   * @param params - {@link OpenDisputeParams}
+   * @param escrowId - The escrow ID to raise a dispute on.
+   * @param resolver - Stellar account address of the designated resolver.
+   * @param evidence - Optional evidence text attached to the dispute.
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `DISPUTE_ALREADY_OPEN` if one is already active.
    * @throws {VeriTixError} With code `ESCROW_ALREADY_SETTLED` if escrow is settled.
+   * @throws {Error} If the resolver is the caller or evidence exceeds 128 bytes.
    *
    * @example
    * ```ts
-   * await client.dispute.openDispute({
-   *   escrowId: 1n,
-   *   resolver: 'GARB…',
-   * });
+   * await client.dispute.openDispute(1n, 'GARB…', 'ticket not delivered');
    * ```
    */
-  async openDispute(_params: OpenDisputeParams): Promise<TransactionResult> {
-    // TODO: implement
-    void this.keypair;
-    throw new Error('DisputeModule.openDispute: not implemented');
+  async openDispute(
+    escrowId: bigint,
+    resolver: string,
+    evidence?: string,
+  ): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('DisputeModule.openDispute: signing keypair required');
+    }
+
+    const claimant = this.keypair.publicKey();
+    if (resolver === claimant) {
+      throw new Error('DisputeModule.openDispute: resolver cannot be the caller');
+    }
+
+    const evidenceBytes = new TextEncoder().encode(evidence ?? '');
+    if (evidenceBytes.length > 128) {
+      throw new Error('DisputeModule.openDispute: evidence must be 128 bytes or less');
+    }
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(claimant, '0'),
+      this.config.contractId,
+      'open_dispute',
+      [
+        addressToScVal(claimant),
+        bigintToScVal(escrowId, 'u64'),
+        addressToScVal(resolver),
+        xdr.ScVal.scvBytes(Array.from(evidenceBytes)),
+      ],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
   }
 
   /**
