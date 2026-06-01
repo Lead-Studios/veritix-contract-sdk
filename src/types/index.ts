@@ -202,3 +202,22 @@ export interface SimulationResult {
   /** Error message if the simulation failed */
   error?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Fee estimation
+// ---------------------------------------------------------------------------
+
+/**
+ * Human-readable fee estimate returned by {@link estimateFee}.
+ */
+export interface FeeEstimate {
+  /** Raw fee in stroops (smallest Stellar denomination) */
+  feeLumens: string;
+  /**
+   * Fee converted to XLM (stroops ÷ 10 000 000), formatted to 7 decimal
+   * places for display purposes.
+   */
+  feeXLM: string;
+  /** The latest ledger sequence at the time of estimation */
+  estimatedLedger: number;
+}
