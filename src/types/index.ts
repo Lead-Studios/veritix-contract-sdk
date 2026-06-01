@@ -217,12 +217,21 @@ export interface SimulationResult {
   error?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Fee estimation
+// ---------------------------------------------------------------------------
+
 /**
- * Result of client-side validation for split recipients.
+ * Human-readable fee estimate returned by {@link estimateFee}.
  */
-export interface ValidationResult {
-  /** Whether the validation passed */
-  valid: boolean;
-  /** List of error messages describing validation failures */
-  errors: string[];
+export interface FeeEstimate {
+  /** Raw fee in stroops (smallest Stellar denomination) */
+  feeLumens: string;
+  /**
+   * Fee converted to XLM (stroops ÷ 10 000 000), formatted to 7 decimal
+   * places for display purposes.
+   */
+  feeXLM: string;
+  /** The latest ledger sequence at the time of estimation */
+  estimatedLedger: number;
 }
