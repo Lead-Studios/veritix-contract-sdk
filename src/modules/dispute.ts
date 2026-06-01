@@ -13,9 +13,9 @@ import type {
   NetworkConfig,
   TransactionResult,
 } from '../types/index';
-import { addressToScVal, bigintToScVal } from '../utils/scval';
+import { addressToScVal, bigintToScVal, boolToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
-import { parseSorobanError } from '../utils/errors';
+import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseDisputeRecord } from '../utils/parsers';
 
 /**
@@ -203,8 +203,66 @@ export class DisputeModule {
    * });
    * ```
    */
-  async resolveDispute(_params: ResolveDisputeParams): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('DisputeModule.resolveDispute: not implemented');
+  async resolveDispute(
+    disputeId: bigint,
+    forBeneficiary: boolean,
+    note?: string,
+  ): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('DisputeModule.resolveDispute: signing keypair required');
+    }
+
+    const dispute = await this.getDispute(disputeId);
+    if (!dispute) {
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeNotFound,
+        'Dispute not found',
+      );
+    }
+
+    if (dispute.status !== DisputeStatus.Open) {
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeAlreadyResolved,
+        'Dispute already resolved',
+      );
+    }
+
+    const resolver = this.keypair.publicKey();
+    const noteBytes = new TextEncoder().encode(note ?? '');
+    if (noteBytes.length > 128) {
+      throw new Error('DisputeModule.resolveDispute: note must be 128 bytes or less');
+    }
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(resolver, '0'),
+      this.config.contractId,
+      'resolve_dispute',
+      [
+        addressToScVal(resolver),
+        bigintToScVal(disputeId, 'u64'),
+        boolToScVal(forBeneficiary),
+        xdr.ScVal.scvBytes(Array.from(noteBytes)),
+      ],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
   }
 }

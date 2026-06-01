@@ -33,6 +33,8 @@ export enum VeriTixErrorCode {
   DisputeAlreadyOpen = 'DISPUTE_ALREADY_OPEN',
   /** The requested dispute ID does not exist */
   DisputeNotFound = 'DISPUTE_NOT_FOUND',
+  /** The dispute has already been resolved */
+  DisputeAlreadyResolved = 'DISPUTE_ALREADY_RESOLVED',
   /** The dispute is not in the correct state for this operation */
   DisputeInvalidState = 'DISPUTE_INVALID_STATE',
 
@@ -128,6 +130,7 @@ const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
   // Dispute
   ['DisputeAlreadyOpen',      VeriTixErrorCode.DisputeAlreadyOpen],
   ['dispute not found',       VeriTixErrorCode.DisputeNotFound],
+  ['dispute already resolved', VeriTixErrorCode.DisputeAlreadyResolved],
   ['dispute invalid state',   VeriTixErrorCode.DisputeInvalidState],
 
   // Split
@@ -212,6 +215,7 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.EscrowUnauthorized]:          'Caller is not authorised to act on this escrow.',
     [VeriTixErrorCode.DisputeAlreadyOpen]:          'A dispute is already open for this escrow.',
     [VeriTixErrorCode.DisputeNotFound]:             'Dispute record not found in contract storage.',
+    [VeriTixErrorCode.DisputeAlreadyResolved]:      'Dispute has already been resolved.',
     [VeriTixErrorCode.DisputeInvalidState]:         'Dispute is not in the correct state for this operation.',
     [VeriTixErrorCode.SplitNotFound]:               'Split record not found in contract storage.',
     [VeriTixErrorCode.SplitInvalidShares]:          'Split shares do not sum to 10 000 basis points.',
