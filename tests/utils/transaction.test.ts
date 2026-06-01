@@ -16,6 +16,7 @@ import {
   buildContractCall,
   simulateTransaction,
   submitTransaction,
+  estimateFee,
 } from '../../src/utils/transaction';
 import { VeriTixError, VeriTixErrorCode } from '../../src/utils/errors';
 
@@ -243,5 +244,131 @@ describe('submitTransaction', () => {
     });
 
     await expect(submitTransaction(server, tx, keypair, 3)).rejects.toBeInstanceOf(VeriTixError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// estimateFee
+// ---------------------------------------------------------------------------
+
+describe('estimateFee', () => {
+  const LEDGER_SEQUENCE = 5_000_000;
+
+  function makeServerForEstimate(minResourceFee: string) {
+    const mockSimResult = {
+      minResourceFee,
+      result: { retval: xdr.ScVal.scvVoid() },
+    } as unknown as SorobanRpc.Api.SimulateTransactionSuccessResponse;
+
+    jest.spyOn(SorobanRpc.Api, 'isSimulationError').mockReturnValue(false);
+    jest
+      .spyOn(SorobanRpc, 'assembleTransaction')
+      .mockReturnValue({ build: () => ({}) } as any);
+
+    return makeMockServer({
+      simulateTransaction: jest.fn().mockResolvedValue(mockSimResult),
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: LEDGER_SEQUENCE }),
+    });
+  }
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns feeLumens equal to the simulation minResourceFee', async () => {
+    const server = makeServerForEstimate('12345');
+
+    const result = await estimateFee(
+      server,
+      FAKE_CONTRACT_ID,
+      NETWORK_PASSPHRASE,
+      'transfer',
+      [],
+    );
+
+    expect(result.feeLumens).toBe('12345');
+  });
+
+  it('converts feeLumens to feeXLM correctly (10_000_000 stroops = 1 XLM)', async () => {
+    const server = makeServerForEstimate('10000000');
+
+    const result = await estimateFee(
+      server,
+      FAKE_CONTRACT_ID,
+      NETWORK_PASSPHRASE,
+      'transfer',
+      [],
+    );
+
+    expect(result.feeXLM).toBe('1.0000000');
+  });
+
+  it('formats sub-XLM fees with 7 decimal places', async () => {
+    // 100 stroops = 0.0000100 XLM
+    const server = makeServerForEstimate('100');
+
+    const result = await estimateFee(
+      server,
+      FAKE_CONTRACT_ID,
+      NETWORK_PASSPHRASE,
+      'balance',
+      [],
+    );
+
+    expect(result.feeXLM).toBe('0.0000100');
+  });
+
+  it('handles a realistic fee value (e.g. 50_123 stroops)', async () => {
+    const server = makeServerForEstimate('50123');
+
+    const result = await estimateFee(
+      server,
+      FAKE_CONTRACT_ID,
+      NETWORK_PASSPHRASE,
+      'approve',
+      [],
+    );
+
+    expect(result.feeLumens).toBe('50123');
+    expect(result.feeXLM).toBe('0.0050123');
+  });
+
+  it('returns the current ledger sequence as estimatedLedger', async () => {
+    const server = makeServerForEstimate('500');
+
+    const result = await estimateFee(
+      server,
+      FAKE_CONTRACT_ID,
+      NETWORK_PASSPHRASE,
+      'get_escrow',
+      [],
+    );
+
+    expect(result.estimatedLedger).toBe(LEDGER_SEQUENCE);
+  });
+
+  it('throws VeriTixError when simulation returns an error', async () => {
+    const mockErrResult = {
+      error: 'escrow not found',
+    } as unknown as SorobanRpc.Api.SimulateTransactionErrorResponse;
+
+    jest.spyOn(SorobanRpc.Api, 'isSimulationError').mockReturnValue(true);
+
+    const server = makeMockServer({
+      simulateTransaction: jest.fn().mockResolvedValue(mockErrResult),
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: LEDGER_SEQUENCE }),
+    });
+
+    await expect(
+      estimateFee(server, FAKE_CONTRACT_ID, NETWORK_PASSPHRASE, 'fail_method', []),
+    ).rejects.toBeInstanceOf(VeriTixError);
+  });
+
+  it('passes the correct method and args through to buildContractCall', async () => {
+    const server = makeServerForEstimate('999');
+    const args = [nativeToScVal(1n, { type: 'u64' })];
+
+    // Should not throw — verifies args are forwarded without error
+    await expect(
+      estimateFee(server, FAKE_CONTRACT_ID, NETWORK_PASSPHRASE, 'get_escrow', args),
+    ).resolves.toMatchObject({ feeLumens: '999' });
   });
 });

@@ -58,11 +58,9 @@ export enum VeriTixErrorCode {
   /** The contract is currently paused */
   ContractPaused = 'CONTRACT_PAUSED',
 
-  // — Token / balance -------------------------------------------------------
-  /** The caller's token balance is too low for the requested operation */
-  InsufficientBalance = 'INSUFFICIENT_BALANCE',
-  /** Generic authorisation failure not tied to a specific sub-module */
-  Unauthorized = 'UNAUTHORIZED',
+  // — Token -----------------------------------------------------------------
+  /** Transfer or mint amount must be greater than zero */
+  InvalidAmount = 'INVALID_AMOUNT',
 
   // — Catch-all -------------------------------------------------------------
   /** Raw panic string could not be mapped to a known code */
@@ -231,6 +229,12 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.Unauthorized]:                'Caller is not authorised to perform this operation.',
     [VeriTixErrorCode.Unknown]:                     `Unrecognised contract error: ${rawStr}`,
     [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
+    [VeriTixErrorCode.AdminUnauthorized]: 'Caller is not the contract administrator.',
+    [VeriTixErrorCode.AccountFrozen]: 'Target account is frozen and cannot transact.',
+    [VeriTixErrorCode.ContractPaused]: 'Contract is currently paused by the administrator.',
+    [VeriTixErrorCode.InvalidAmount]: 'Amount must be greater than zero.',
+    [VeriTixErrorCode.Unknown]: `Unrecognised contract error: ${rawStr}`,
+    [VeriTixErrorCode.ConnectionFailed]: 'Failed to connect to the Soroban RPC endpoint.',
   };
   return messages[code];
 }
