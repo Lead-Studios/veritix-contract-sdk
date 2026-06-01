@@ -28,12 +28,9 @@
 
 import { SorobanRpc, Keypair, xdr } from '@stellar/stellar-sdk';
 
-import type { NetworkConfig, SimulationResult } from './types/index';
+import type { NetworkConfig, SimulationResult, ContractMetadata } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { EventEmitter } from 'events';
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
-
-import type { NetworkConfig, ContractMetadata } from './types/index';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
 import { TokenModule } from './modules/token';
 import { EscrowModule } from './modules/escrow';
@@ -267,6 +264,8 @@ export class VeriTixClient extends EventEmitter {
         error: err instanceof Error ? err.message : String(err),
       };
     }
+  }
+
   // Convenience methods
   // -------------------------------------------------------------------------
 

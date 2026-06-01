@@ -64,6 +64,8 @@ export enum VeriTixErrorCode {
 
   // — Catch-all -------------------------------------------------------------
   /** Raw panic string could not be mapped to a known code */
+  InsufficientAllowance = 'INSUFFICIENT_ALLOWANCE',
+
   Unknown = 'UNKNOWN',
   /** RPC endpoint was unreachable after all retries */
   ConnectionFailed = 'CONNECTION_FAILED',
@@ -136,6 +138,9 @@ const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
   // Recurring
   ['recurring not found',     VeriTixErrorCode.RecurringNotFound],
   ['interval not elapsed',    VeriTixErrorCode.RecurringIntervalNotElapsed],
+
+  // Token
+  ['insufficient allowance', VeriTixErrorCode.InsufficientAllowance],
 
   // Admin
   ['admin unauthorized',      VeriTixErrorCode.AdminUnauthorized],
@@ -216,6 +221,14 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.SplitAlreadyDistributed]:     'Split amount has already been distributed.',
     [VeriTixErrorCode.RecurringNotFound]:           'Recurring payment record not found.',
     [VeriTixErrorCode.RecurringIntervalNotElapsed]: 'Charge interval has not yet elapsed.',
+    [VeriTixErrorCode.AdminUnauthorized]:           'Caller is not the contract administrator.',
+    [VeriTixErrorCode.AccountFrozen]:               'Target account is frozen and cannot transact.',
+    [VeriTixErrorCode.ContractPaused]:              'Contract is currently paused by the administrator.',
+    [VeriTixErrorCode.InsufficientAllowance]:       'Spender allowance is insufficient for the requested transfer amount.',
+    [VeriTixErrorCode.InsufficientBalance]:         'Account has insufficient token balance for this operation.',
+    [VeriTixErrorCode.Unauthorized]:                'Caller is not authorised to perform this operation.',
+    [VeriTixErrorCode.Unknown]:                     `Unrecognised contract error: ${rawStr}`,
+    [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
     [VeriTixErrorCode.AdminUnauthorized]: 'Caller is not the contract administrator.',
     [VeriTixErrorCode.AccountFrozen]: 'Target account is frozen and cannot transact.',
     [VeriTixErrorCode.ContractPaused]: 'Contract is currently paused by the administrator.',
