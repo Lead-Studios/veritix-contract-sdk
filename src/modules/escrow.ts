@@ -6,13 +6,17 @@
  * condition is met, a resolver adjudicates a dispute, or the escrow expires.
  */
 
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type {
   EscrowRecord,
   NetworkConfig,
   TicketEscrowParams,
   TransactionResult,
+  BatchSettlementResult,
 } from '../types/index';
+import { buildContractCall, submitTransaction } from '../utils/transaction';
+import { bigintToScVal } from '../utils/scval';
+import { parseSorobanError } from '../utils/errors';
 
 /**
  * Parameters required to create a new escrow.
@@ -152,5 +156,84 @@ export class EscrowModule {
   async refundEscrow(_id: bigint): Promise<TransactionResult> {
     // TODO: implement
     throw new Error('EscrowModule.refundEscrow: not implemented');
+  }
+
+  /**
+   * Batch settles multiple escrows in chunks (max 50 per transaction).
+   * Efficiently releases funds after a large event completes.
+   *
+   * @param escrowIds - Array of escrow IDs to settle. Will be chunked into batches of max 50.
+   * @returns A {@link BatchSettlementResult} with settlement statistics.
+   * @throws {Error} If no signing keypair is available.
+   *
+   * @example
+   * ```ts
+   * const result = await client.escrow.settleEvent([1n, 2n, 3n, 4n, 5n]);
+   * console.log(`Settled ${result.settled}, failed: ${result.failed.length}`);
+   * console.log('Transaction hashes:', result.txHashes);
+   * ```
+   */
+  async settleEvent(escrowIds: bigint[]): Promise<BatchSettlementResult> {
+    if (!this.keypair) {
+      throw new Error('EscrowModule.settleEvent: signing keypair required');
+    }
+
+    const CHUNK_SIZE = 50;
+    const chunks: bigint[][] = [];
+
+    // Split escrowIds into chunks of max 50
+    for (let i = 0; i < escrowIds.length; i += CHUNK_SIZE) {
+      chunks.push(escrowIds.slice(i, i + CHUNK_SIZE));
+    }
+
+    const result: BatchSettlementResult = {
+      settled: 0,
+      failed: [],
+      txHashes: [],
+    };
+
+    // Process each chunk
+    for (const chunk of chunks) {
+      try {
+        const caller = this.keypair.publicKey();
+        const sourceAccount = new Account(caller, '0');
+
+        // Convert chunk to ScVal vector of u64 values
+        const idScVals = chunk.map((id) => bigintToScVal(id, 'u64'));
+        const idsVector = xdr.ScVal.scvVec(idScVals);
+
+        const tx = await buildContractCall(
+          this.server,
+          sourceAccount,
+          this.config.contractId,
+          'settle_event',
+          [idsVector],
+          this.config.networkPassphrase,
+        );
+
+        const raw = await this.server.simulateTransaction(tx);
+        if (SorobanRpc.Api.isSimulationError(raw)) {
+          throw parseSorobanError(raw.error);
+        }
+
+        const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+        const txResult = await submitTransaction(this.server, assembled, this.keypair);
+
+        result.txHashes.push(txResult.hash);
+
+        // Parse the return value to get settled count and failed IDs
+        const returnValue = txResult.returnValue;
+        if (returnValue && typeof returnValue === 'object' && 'settled' in returnValue && 'failed' in returnValue) {
+          const settleInfo = returnValue as { settled: number; failed: bigint[] };
+          result.settled += settleInfo.settled;
+          result.failed.push(...settleInfo.failed);
+        }
+      } catch (error) {
+        // On chunk failure, try to extract failed IDs from the chunk
+        result.failed.push(...chunk);
+      }
+    }
+
+    return result;
   }
 }

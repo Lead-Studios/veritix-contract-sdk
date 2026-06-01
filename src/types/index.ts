@@ -92,6 +92,18 @@ export interface TicketEscrowParams {
   bufferLedgers?: number;
 }
 
+/**
+ * Result of a batch escrow settlement operation via {@link EscrowModule.settleEvent}.
+ */
+export interface BatchSettlementResult {
+  /** Number of escrows successfully settled */
+  settled: number;
+  /** Escrow IDs that failed to settle */
+  failed: bigint[];
+  /** Transaction hashes for all submitted settlement transactions */
+  txHashes: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Split
 // ---------------------------------------------------------------------------
