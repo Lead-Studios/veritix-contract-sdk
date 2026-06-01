@@ -58,6 +58,50 @@ describe('DisputeModule', () => {
     expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
   });
 
+  it('returns true when isDisputeOpen finds an open dispute', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvBool(true),
+      },
+    });
+
+    const isOpen = await client.dispute.isDisputeOpen(FAKE_ESCROW_ID);
+
+    expect(isOpen).toBe(true);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns false when isDisputeOpen finds no open dispute', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvBool(false),
+      },
+    });
+
+    const isOpen = await client.dispute.isDisputeOpen(FAKE_ESCROW_ID);
+
+    expect(isOpen).toBe(false);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns false when isDisputeOpen returns no result', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: undefined,
+      },
+    });
+
+    const isOpen = await client.dispute.isDisputeOpen(FAKE_ESCROW_ID);
+
+    expect(isOpen).toBe(false);
+  });
+
   it('throws DisputeNotFound when resolving a non-existent dispute', async () => {
     const { client } = makeConnectedClient(keypair);
     jest.spyOn(client.dispute, 'getDispute').mockResolvedValue(null);

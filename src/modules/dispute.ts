@@ -6,14 +6,14 @@
  * arbitration by a pre-designated resolver address.
  */
 
-import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Account, xdr, scValToNative } from '@stellar/stellar-sdk';
 import type {
   DisputeRecord,
   DisputeStatus,
   NetworkConfig,
   TransactionResult,
 } from '../types/index';
-import { addressToScVal, bigintToScVal, boolToScVal } from '../utils/scval';
+import { addressToScVal, bigintToScVal, boolToScVal, scValToBoolean } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseDisputeRecord } from '../utils/parsers';
@@ -112,6 +112,50 @@ export class DisputeModule {
     }
 
     return parseDisputeRecord(returnValue);
+  }
+
+  /**
+   * Checks if an open dispute exists for the given escrow.
+   *
+   * @param escrowId - Numeric escrow identifier.
+   * @returns `true` if an open dispute exists, `false` otherwise.
+   *
+   * @example
+   * ```ts
+   * const isOpen = await client.dispute.isDisputeOpen(1n);
+   * if (isOpen) {
+   *   console.log('Cannot release/refund: dispute is open');
+   * }
+   * ```
+   */
+  async isDisputeOpen(escrowId: bigint): Promise<boolean> {
+    const dummyKeypair = Keypair.random();
+    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'is_dispute_open',
+      [bigintToScVal(escrowId, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    if (!returnValue) {
+      return false;
+    }
+
+    return scValToBoolean(returnValue);
   }
 
   // -------------------------------------------------------------------------
