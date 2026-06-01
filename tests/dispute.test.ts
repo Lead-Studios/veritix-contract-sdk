@@ -1,6 +1,8 @@
 import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
+import { DisputeStatus } from '../src/types/index';
+import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
 
 const FAKE_CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
 const FAKE_ESCROW_ID = 123n;
@@ -54,5 +56,113 @@ describe('DisputeModule', () => {
 
     expect(dispute).toBeNull();
     expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns true when isDisputeOpen finds an open dispute', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvBool(true),
+      },
+    });
+
+    const isOpen = await client.dispute.isDisputeOpen(FAKE_ESCROW_ID);
+
+    expect(isOpen).toBe(true);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns false when isDisputeOpen finds no open dispute', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvBool(false),
+      },
+    });
+
+    const isOpen = await client.dispute.isDisputeOpen(FAKE_ESCROW_ID);
+
+    expect(isOpen).toBe(false);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns false when isDisputeOpen returns no result', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: undefined,
+      },
+    });
+
+    const isOpen = await client.dispute.isDisputeOpen(FAKE_ESCROW_ID);
+
+    expect(isOpen).toBe(false);
+  });
+
+  it('throws DisputeNotFound when resolving a non-existent dispute', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.dispute, 'getDispute').mockResolvedValue(null);
+
+    await expect(client.dispute.resolveDispute(FAKE_ESCROW_ID, true)).rejects.toMatchObject({
+      code: VeriTixErrorCode.DisputeNotFound,
+    });
+  });
+
+  it('throws DisputeAlreadyResolved for a dispute that is not open', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.dispute, 'getDispute').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      escrowId: 321n,
+      claimant: 'GB6...SOME',
+      resolver: keypair.publicKey(),
+      status: DisputeStatus.ResolvedForDepositor,
+      openedAt: 1,
+    });
+
+    await expect(client.dispute.resolveDispute(FAKE_ESCROW_ID, false)).rejects.toMatchObject({
+      code: VeriTixErrorCode.DisputeAlreadyResolved,
+    });
+  });
+
+  it('resolves an open dispute and submits the transaction', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    jest.spyOn(client.dispute, 'getDispute').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      escrowId: 321n,
+      claimant: 'GB6...SOME',
+      resolver: keypair.publicKey(),
+      status: DisputeStatus.Open,
+      openedAt: 1,
+    });
+
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: 456n,
+      },
+    });
+    mockServer.sendTransaction.mockResolvedValue({
+      hash: 'fake-hash',
+      status: 'OK',
+    });
+    mockServer.getTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      ledger: 100,
+    });
+
+    const result = await client.dispute.resolveDispute(FAKE_ESCROW_ID, true, 'valid note');
+
+    expect(result).toMatchObject({
+      hash: 'fake-hash',
+      ledger: 100,
+      successful: true,
+      returnValue: 456n,
+    });
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+    expect(mockServer.sendTransaction).toHaveBeenCalledTimes(1);
+    expect(mockServer.getTransaction).toHaveBeenCalledTimes(1);
   });
 });
