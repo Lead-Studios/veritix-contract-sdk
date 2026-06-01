@@ -7,7 +7,12 @@
  */
 
 import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
-import type { EscrowRecord, NetworkConfig, TransactionResult } from '../types/index';
+import type {
+  EscrowRecord,
+  NetworkConfig,
+  TicketEscrowParams,
+  TransactionResult,
+} from '../types/index';
 
 /**
  * Parameters required to create a new escrow.
@@ -94,6 +99,33 @@ export class EscrowModule {
     // TODO: implement
     void this.keypair;
     throw new Error('EscrowModule.createEscrow: not implemented');
+  }
+
+  /**
+   * Creates a ticket escrow for a scheduled event and attaches the ticket UUID.
+   *
+   * @param params - {@link TicketEscrowParams}
+   * @returns The created escrow ID.
+   */
+  async createTicketEscrow(params: TicketEscrowParams): Promise<bigint> {
+    const expiryLedger = params.eventLedger + (params.bufferLedgers ?? 5_000);
+
+    const result = await this.createEscrow({
+      beneficiary: params.organizer,
+      amount: params.ticketPrice,
+      expiryLedger,
+      memos: [params.ticketRef],
+    });
+
+    if (result.returnValue === undefined) {
+      throw new Error('EscrowModule.createTicketEscrow: missing escrow ID in createEscrow result');
+    }
+
+    if (typeof result.returnValue !== 'bigint') {
+      throw new Error('EscrowModule.createTicketEscrow: expected escrow ID to be bigint');
+    }
+
+    return result.returnValue;
   }
 
   /**

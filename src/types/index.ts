@@ -76,6 +76,22 @@ export interface EscrowRecord {
   memos: string[];
 }
 
+/**
+ * Parameters used when creating a ticket escrow for a specific event.
+ */
+export interface TicketEscrowParams {
+  /** Stellar account address for the event organizer / ticket beneficiary */
+  organizer: string;
+  /** Ticket price amount to lock in escrow (in stroops) */
+  ticketPrice: bigint;
+  /** Ledger sequence number when the event occurs */
+  eventLedger: number;
+  /** Unique ticket reference identifier attached on-chain */
+  ticketRef: string;
+  /** Optional number of ledger buffers beyond the event ledger */
+  bufferLedgers?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Split
 // ---------------------------------------------------------------------------
@@ -187,6 +203,8 @@ export interface TransactionResult {
   ledger: number;
   /** Whether the transaction was successful */
   successful: boolean;
+  /** Optional decoded return value from the contract invocation */
+  returnValue?: unknown;
 }
 
 /**

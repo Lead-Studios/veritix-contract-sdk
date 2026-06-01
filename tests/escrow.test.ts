@@ -30,6 +30,34 @@ describe('EscrowModule (stubs)', () => {
     ).rejects.toThrow('not implemented');
   });
 
+  it('createTicketEscrow() builds the ticket escrow and returns the escrow ID', async () => {
+    const spy = jest
+      .spyOn(client.escrow, 'createEscrow')
+      .mockResolvedValue({
+        hash: 'fake-hash',
+        ledger: 42,
+        successful: true,
+        returnValue: 99n,
+      });
+
+    const escrowId = await client.escrow.createTicketEscrow({
+      organizer: FAKE_ADDRESS,
+      ticketPrice: 2_000_000n,
+      eventLedger: 1_000_000,
+      ticketRef: 'ticket-uuid-123',
+    });
+
+    expect(escrowId).toBe(99n);
+    expect(spy).toHaveBeenCalledWith({
+      beneficiary: FAKE_ADDRESS,
+      amount: 2_000_000n,
+      expiryLedger: 1_005_000,
+      memos: ['ticket-uuid-123'],
+    });
+
+    spy.mockRestore();
+  });
+
   it('releaseEscrow() throws "not implemented"', async () => {
     await expect(client.escrow.releaseEscrow(1n)).rejects.toThrow('not implemented');
   });

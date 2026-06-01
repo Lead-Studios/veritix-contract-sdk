@@ -27,6 +27,7 @@ export type {
   NetworkConfig,
   ContractMetadata,
   EscrowRecord,
+  TicketEscrowParams,
   SplitRecord,
   SplitRecipient,
   DisputeRecord,
