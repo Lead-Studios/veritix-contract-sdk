@@ -159,6 +159,111 @@ export class DisputeModule {
   }
 
   /**
+   * Fetches all open dispute IDs across the contract.
+   *
+   * @returns Array of open dispute IDs.
+   *
+   * @example
+   * ```ts
+   * const openDisputes = await client.dispute.getOpenDisputes();
+   * console.log('Open disputes:', openDisputes);
+   * ```
+   */
+  async getOpenDisputes(): Promise<bigint[]> {
+    const dummyKeypair = Keypair.random();
+    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_open_disputes',
+      [],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    if (!returnValue) {
+      return [];
+    }
+
+    const native = scValToNative(returnValue);
+    if (!Array.isArray(native)) {
+      throw new Error('Expected array from get_open_disputes');
+    }
+
+    return native.map((id) => {
+      if (typeof id === 'bigint') return id;
+      if (typeof id === 'number') return BigInt(id);
+      throw new Error(`Unexpected type in disputes array: ${typeof id}`);
+    });
+  }
+
+  /**
+   * Fetches all dispute IDs assigned to a specific resolver.
+   *
+   * @param resolver - Stellar account address of the resolver.
+   * @returns Array of dispute IDs for the resolver.
+   *
+   * @example
+   * ```ts
+   * const disputes = await client.dispute.getDisputesByResolver('GARB…');
+   * console.log('Resolver disputes:', disputes);
+   * ```
+   */
+  async getDisputesByResolver(resolver: string): Promise<bigint[]> {
+    const dummyKeypair = Keypair.random();
+    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_disputes_by_resolver',
+      [addressToScVal(resolver)],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    if (!returnValue) {
+      return [];
+    }
+
+    const native = scValToNative(returnValue);
+    if (!Array.isArray(native)) {
+      throw new Error('Expected array from get_disputes_by_resolver');
+    }
+
+    return native.map((id) => {
+      if (typeof id === 'bigint') return id;
+      if (typeof id === 'number') return BigInt(id);
+      throw new Error(`Unexpected type in disputes array: ${typeof id}`);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Write operations
+  // -------------------------------------------------------------------------
+
+  /**
    * Fetches the complete dispute history for an escrow, including resolved disputes.
    *
    * @param escrowId - Numeric escrow identifier.

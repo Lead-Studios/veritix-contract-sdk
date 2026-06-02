@@ -7,12 +7,17 @@
  * equal 10 000 bps).
  */
 
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Account } from '@stellar/stellar-sdk';
+import { addressToScVal, scValToBigint } from '../utils/scval';
+import { buildContractCall, simulateTransaction } from '../utils/transaction';
+import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import type {
   NetworkConfig,
   SplitRecord,
   SplitRecipient,
   TransactionResult,
+  RevenueSplitParams,
+  ValidationResult,
 } from '../types/index';
 
 /**
@@ -58,12 +63,92 @@ export class SplitterModule {
    * console.log('Distributed:', split?.distributed);
    * ```
    */
-  async getSplit(_id: bigint): Promise<SplitRecord | null> {
-    // TODO: implement
-    void this.config;
-    void this.server;
-    throw new Error('SplitterModule.getSplit: not implemented');
+  /**
+   * Returns all split IDs created by a given sender address.
+   *
+   * @param sender - Stellar account address of the split creator.
+   * @returns Array of split identifiers (bigint).
+   */
+  /**
+   * Returns all split IDs where the given address is a recipient.
+   *
+   * @param address - Stellar account address of the recipient.
+   * @returns Array of split identifiers (bigint).
+   */
+  async getSplitsForRecipient(address: string): Promise<bigint[]> {
+    // Build a dummy source account for simulation (no funds needed)
+    const dummyKeypair = Keypair.random();
+    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+    // Build contract call
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_splits_for_recipient',
+      [addressToScVal(address)],
+      this.config.networkPassphrase,
+    );
+
+    // Simulate transaction to retrieve return value
+    const rawResult = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(rawResult)) {
+      throw parseSorobanError(rawResult.error);
+    }
+    const retval = rawResult.result?.retval;
+    if (!retval) return [];
+    const vec = (retval as any).vec as any[];
+    return vec.map((v) => scValToBigint(v));
   }
+
+  // Write operations
+
+  /**
+   * Validates an array of split recipients on the client side.
+   *
+   * Rules enforced:
+   *   • Total BPS must equal exactly 10 000.
+   *   • No duplicate addresses (case‑insensitive).
+   *   • Maximum of 20 recipients.
+   *   • Each recipient's shareBps must be greater than 0.
+   *
+   * @param recipients List of SplitRecipient objects.
+   * @returns ValidationResult indicating success and any error messages.
+   */
+  validateRecipients(recipients: SplitRecipient[]): ValidationResult {
+    const errors: string[] = [];
+
+    // Rule: shareBps > 0
+    recipients.forEach((r, i) => {
+      if (r.shareBps <= 0) {
+        errors.push(`Recipient #${i + 1} (${r.address}) has non‑positive shareBps`);
+      }
+    });
+
+    // Rule: duplicate addresses (case‑insensitive)
+    const seen = new Set<string>();
+    recipients.forEach((r) => {
+      const lc = r.address.toLowerCase();
+      if (seen.has(lc)) {
+        errors.push(`Duplicate address found: ${r.address}`);
+      }
+      seen.add(lc);
+    });
+
+    // Rule: max 20 recipients
+    if (recipients.length > 20) {
+      errors.push(`Too many recipients: ${recipients.length} (max 20)`);
+    }
+
+    // Rule: total BPS == 10 000
+    const totalBps = recipients.reduce((sum, r) => sum + r.shareBps, 0);
+    if (totalBps !== 10_000) {
+      errors.push(`Total basis points must equal 10 000, got ${totalBps}`);
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
 
   // -------------------------------------------------------------------------
   // Write operations
@@ -90,11 +175,39 @@ export class SplitterModule {
    * });
    * ```
    */
-  async createSplit(_params: CreateSplitParams): Promise<TransactionResult> {
-    // TODO: implement
-    void this.keypair;
-    throw new Error('SplitterModule.createSplit: not implemented');
+  /**
+   * Creates a 3‑way revenue split (organizer, artist, platform).
+   *
+   * The organizer and artist shares are provided in basis points; the platform
+   * receives the remaining share to ensure the total equals exactly 10 000 bps.
+   *
+   * @param params {@link RevenueSplitParams}
+   * @returns {@link TransactionResult}
+   * @throws {VeriTixError} With code `SPLIT_INVALID_SHARES` if the provided
+   *   organizerBps + artistBps is greater than or equal to 10 000.
+   */
+  async createRevenueSplit(params: RevenueSplitParams): Promise<TransactionResult> {
+    const { organizer, organizerBps, artist, artistBps, platform, totalAmount } = params;
+    const totalBps = organizerBps + artistBps;
+    if (totalBps >= 10000) {
+      throw new VeriTixError(VeriTixErrorCode.SplitInvalidShares,
+        'Organizer and artist shares must sum to less than 10 000 basis points.',
+      );
+    }
+    const platformBps = 10000 - totalBps;
+    const recipients: SplitRecipient[] = [
+      { address: organizer, shareBps: organizerBps },
+      { address: artist, shareBps: artistBps },
+      { address: platform, shareBps: platformBps },
+    ];
+    // Forward to existing createSplit implementation
+    return this.createSplit({ recipients, totalAmount });
   }
+
+  /**
+   * Creates a new split instruction on-chain.
+   * Locks `totalAmount` tokens from the caller's balance.
+*** End of ReplacementChunk ***
 
   /**
    * Distributes the locked funds to all recipients according to their shares.

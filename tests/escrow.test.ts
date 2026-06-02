@@ -6,6 +6,7 @@
  * Replace with real assertions once the implementation is complete.
  */
 
+import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
 import type { EscrowRecord } from '../src/types/index';
@@ -13,6 +14,21 @@ import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
 
 const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
 const FAKE_ADDRESS  = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+
+function makeConnectedClient(keypair: Keypair) {
+  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), keypair);
+  const mockServer = {
+    simulateTransaction: jest.fn(),
+    sendTransaction: jest.fn(),
+    getTransaction: jest.fn(),
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (client as any).server = mockServer;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (client as any).connected = true;
+  return { client, mockServer };
+}
 
 describe('EscrowModule (stubs)', () => {
   const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
@@ -197,6 +213,306 @@ describe('EscrowModule.getEscrowsBatch', () => {
     expect(spy).toHaveBeenCalledTimes(50);
 
     spy.mockRestore();
+  });
+});
+
+describe('EscrowModule.isSettled', () => {
+  const keypair = Keypair.random();
+  const FAKE_ESCROW_ID = 1n;
+
+  it('returns true when escrow is released', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: true,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+    });
+
+    const settled = await client.escrow.isSettled(FAKE_ESCROW_ID);
+
+    expect(settled).toBe(true);
+  });
+
+  it('returns true when escrow is refunded', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: true,
+      expiryLedger: 1_000_000,
+      memos: [],
+    });
+
+    const settled = await client.escrow.isSettled(FAKE_ESCROW_ID);
+
+    expect(settled).toBe(true);
+  });
+
+  it('returns false when escrow is neither released nor refunded', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+    });
+
+    const settled = await client.escrow.isSettled(FAKE_ESCROW_ID);
+
+    expect(settled).toBe(false);
+  });
+
+  it('throws error when escrow does not exist', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(null);
+
+    await expect(client.escrow.isSettled(FAKE_ESCROW_ID)).rejects.toThrow('escrow 1 not found');
+  });
+});
+
+describe('EscrowModule.isExpired', () => {
+  const keypair = Keypair.random();
+  const FAKE_ESCROW_ID = 1n;
+  const EXPIRY_LEDGER = 1_000_000;
+
+  it('returns true when current ledger >= expiry ledger', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: EXPIRY_LEDGER,
+      memos: [],
+    });
+
+    const expired = await client.escrow.isExpired(FAKE_ESCROW_ID, EXPIRY_LEDGER);
+
+    expect(expired).toBe(true);
+  });
+
+  it('returns true when current ledger > expiry ledger', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: EXPIRY_LEDGER,
+      memos: [],
+    });
+
+    const expired = await client.escrow.isExpired(FAKE_ESCROW_ID, EXPIRY_LEDGER + 1);
+
+    expect(expired).toBe(true);
+  });
+
+  it('returns false when current ledger < expiry ledger', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: EXPIRY_LEDGER,
+      memos: [],
+    });
+
+    const expired = await client.escrow.isExpired(FAKE_ESCROW_ID, EXPIRY_LEDGER - 1);
+
+    expect(expired).toBe(false);
+  });
+
+  it('fetches current ledger when not provided', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: EXPIRY_LEDGER,
+      memos: [],
+    });
+    mockServer.getLatestLedger = jest
+      .fn()
+      .mockResolvedValue({ sequence: EXPIRY_LEDGER + 1000 });
+
+    const expired = await client.escrow.isExpired(FAKE_ESCROW_ID);
+
+    expect(expired).toBe(true);
+    expect(mockServer.getLatestLedger).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws error when escrow does not exist', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(null);
+
+    await expect(client.escrow.isExpired(FAKE_ESCROW_ID, 1_000_000)).rejects.toThrow(
+      'escrow 1 not found',
+    );
+  });
+});
+
+describe('EscrowModule.settleEvent', () => {
+  const keypair = Keypair.random();
+
+  it('throws error when no signing keypair is available', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    await expect(client.escrow.settleEvent([1n, 2n, 3n])).rejects.toThrow(
+      'signing keypair required',
+    );
+  });
+
+  it('returns empty result for empty escrow array', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const result = await client.escrow.settleEvent([]);
+    expect(result).toEqual({
+      settled: 0,
+      failed: [],
+      txHashes: [],
+    });
+    expect(mockServer.simulateTransaction).not.toHaveBeenCalled();
+  });
+
+  it('successfully settles a single chunk of escrows', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const escrowIds = [1n, 2n, 3n];
+
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvU64(xdr.Uint64.fromString('3')) },
+    });
+    mockServer.sendTransaction.mockResolvedValue({
+      hash: 'tx-hash-1',
+      status: 'OK',
+    });
+    mockServer.getTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      ledger: 100,
+    });
+
+    const result = await client.escrow.settleEvent(escrowIds);
+
+    expect(result.txHashes).toContain('tx-hash-1');
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+    expect(mockServer.sendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('splits large escrow array into multiple transactions', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+
+    // Create 125 escrow IDs (will split into 3 chunks: 50, 50, 25)
+    const escrowIds = Array.from({ length: 125 }, (_, i) => BigInt(i + 1));
+
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvU64(xdr.Uint64.fromString('50')) },
+    });
+    mockServer.sendTransaction.mockResolvedValue({
+      hash: 'tx-hash',
+      status: 'OK',
+    });
+    mockServer.getTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      ledger: 100,
+    });
+
+    const result = await client.escrow.settleEvent(escrowIds);
+
+    expect(result.txHashes.length).toBe(3);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(3);
+    expect(mockServer.sendTransaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('collects transaction hashes from all chunks', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const escrowIds = Array.from({ length: 75 }, (_, i) => BigInt(i + 1));
+
+    let hashCounter = 0;
+    mockServer.sendTransaction.mockImplementation(() => {
+      hashCounter++;
+      return Promise.resolve({
+        hash: `tx-hash-${hashCounter}`,
+        status: 'OK',
+      });
+    });
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvU64(xdr.Uint64.fromString('50')) },
+    });
+    mockServer.getTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      ledger: 100,
+    });
+
+    const result = await client.escrow.settleEvent(escrowIds);
+
+    expect(result.txHashes).toEqual(['tx-hash-1', 'tx-hash-2']);
+  });
+
+  it('handles chunk failure gracefully', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const escrowIds = [1n, 2n, 3n];
+
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'ERROR',
+      error: 'Contract error',
+    });
+
+    const result = await client.escrow.settleEvent(escrowIds);
+
+    expect(result.failed).toEqual(escrowIds);
+    expect(result.settled).toBe(0);
+    expect(result.txHashes.length).toBe(0);
+  });
+
+  it('aggregates results across multiple successful chunks', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const escrowIds = Array.from({ length: 101 }, (_, i) => BigInt(i + 1));
+
+    let callCount = 0;
+    mockServer.sendTransaction.mockImplementation(() => {
+      callCount++;
+      return Promise.resolve({
+        hash: `tx-hash-${callCount}`,
+        status: 'OK',
+      });
+    });
+
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvU64(xdr.Uint64.fromString('50')) },
+    });
+    mockServer.getTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      ledger: 100,
+    });
+
+    const result = await client.escrow.settleEvent(escrowIds);
+
+    expect(result.txHashes.length).toBe(3);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(3);
+    expect(mockServer.sendTransaction).toHaveBeenCalledTimes(3);
   });
 });
 
