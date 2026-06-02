@@ -102,6 +102,26 @@ export class EscrowModule {
     return parseEscrowRecord(returnValue);
   }
 
+  /**
+   * Lists all escrow IDs created by a given depositor address.
+   *
+   * @param address - Stellar account address of the depositor.
+   * @returns Array of escrow IDs owned by that depositor.
+   */
+  async getEscrowsByDepositor(address: string): Promise<bigint[]> {
+    return this.getEscrowIdsByAddress('escrows_by_depositor', address);
+  }
+
+  /**
+   * Lists all escrow IDs whose beneficiary matches the given address.
+   *
+   * @param address - Stellar account address of the beneficiary.
+   * @returns Array of escrow IDs for that beneficiary.
+   */
+  async getEscrowsByBeneficiary(address: string): Promise<bigint[]> {
+    return this.getEscrowIdsByAddress('escrows_by_beneficiary', address);
+  }
+
   // -------------------------------------------------------------------------
   // Write operations
   // -------------------------------------------------------------------------
@@ -228,6 +248,41 @@ export class EscrowModule {
    */
   async refundEscrow(id: bigint): Promise<TransactionResult> {
     return this.settleEscrow('refund_escrow', id);
+  }
+
+  private async getEscrowIdsByAddress(
+    method: 'escrows_by_depositor' | 'escrows_by_beneficiary',
+    address: string,
+  ): Promise<bigint[]> {
+    const dummyKeypair = Keypair.random();
+    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      method,
+      [addressToScVal(address)],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      return [];
+    }
+
+    if (returnValue.switch() !== xdr.ScValType.scvVec()) {
+      throw new Error(`EscrowModule.${method}: expected ScvVec result`);
+    }
+
+    return (returnValue.vec() ?? []).map((item) => scValToBigint(item));
   }
 
   private async settleEscrow(

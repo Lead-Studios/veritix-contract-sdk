@@ -112,6 +112,69 @@ describe('EscrowModule', () => {
     });
   });
 
+  it('returns escrow IDs for a depositor', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvVec([
+          nativeToScVal(1n, { type: 'u64' }),
+          nativeToScVal(7n, { type: 'u64' }),
+          nativeToScVal(42n, { type: 'u64' }),
+        ]),
+      },
+    });
+
+    const escrowIds = await client.escrow.getEscrowsByDepositor(FAKE_DEPOSITOR);
+
+    expect(escrowIds).toEqual([1n, 7n, 42n]);
+  });
+
+  it('returns an empty array when depositor lookup returns no result', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: undefined,
+      },
+    });
+
+    const escrowIds = await client.escrow.getEscrowsByDepositor(FAKE_DEPOSITOR);
+
+    expect(escrowIds).toEqual([]);
+  });
+
+  it('returns escrow IDs for a beneficiary', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvVec([
+          nativeToScVal(3n, { type: 'u64' }),
+          nativeToScVal(8n, { type: 'u64' }),
+        ]),
+      },
+    });
+
+    const escrowIds = await client.escrow.getEscrowsByBeneficiary(FAKE_ADDRESS);
+
+    expect(escrowIds).toEqual([3n, 8n]);
+  });
+
+  it('returns an empty array when beneficiary lookup returns void', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.fromXDR(VOID_XDR, 'base64'),
+      },
+    });
+
+    const escrowIds = await client.escrow.getEscrowsByBeneficiary(FAKE_ADDRESS);
+
+    expect(escrowIds).toEqual([]);
+  });
+
   it('rejects createEscrow without a signing keypair', async () => {
     const { client } = makeConnectedClient();
 
