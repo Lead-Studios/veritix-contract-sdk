@@ -158,13 +158,71 @@ export class DisputeModule {
     return scValToBoolean(returnValue);
   }
 
-  // -------------------------------------------------------------------------
-  // Write operations
-  // -------------------------------------------------------------------------
-
   /**
-   * Opens a new dispute against an escrow, freezing the funds until resolved.
-   * Caller becomes the claimant.
+   * Fetches the complete dispute history for an escrow, including resolved disputes.
+   *
+   * @param escrowId - Numeric escrow identifier.
+   * @returns Array of all dispute IDs (both open and resolved) associated with this escrow,
+   *          in chronological order. Returns an empty array if no disputes exist.
+   *
+   * @example
+   * ```ts
+   * const disputeIds = await client.dispute.getDisputeHistory(1n);
+   * for (const id of disputeIds) {
+   *   const dispute = await client.dispute.getDispute(id);
+   *   console.log(`Dispute ${id}: ${dispute?.status}`);
+   * }
+   * ```
+   */
+  async getDisputeHistory(escrowId: bigint): Promise<bigint[]> {
+    const dummyKeypair = Keypair.random();
+    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_dispute_history_for_escrow',
+      [bigintToScVal(escrowId, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    if (!returnValue) {
+      return [];
+    }
+
+    // Convert ScVal vector to native array
+    const native = scValToNative(returnValue);
+
+    // Ensure we have an array
+    if (!Array.isArray(native)) {
+      throw new Error(
+        `Expected get_dispute_history_for_escrow to return a vector, got ${typeof native}`,
+      );
+    }
+
+    // Convert each element to bigint
+    return native.map((id) => {
+      if (typeof id === 'bigint') {
+        return id;
+      }
+      if (typeof id === 'number') {
+        return BigInt(id);
+      }
+      throw new Error(`Expected dispute ID to be numeric, got ${typeof id}`);
+    });
+  }
+
    *
    * @param escrowId - The escrow ID to raise a dispute on.
    * @param resolver - Stellar account address of the designated resolver.
