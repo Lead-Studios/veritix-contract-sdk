@@ -166,6 +166,104 @@ describe('DisputeModule', () => {
     expect(mockServer.getTransaction).toHaveBeenCalledTimes(1);
   });
 
+  it('returns an empty array when getDisputeHistory finds no disputes', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: undefined,
+      },
+    });
+
+    const history = await client.dispute.getDisputeHistory(FAKE_ESCROW_ID);
+
+    expect(history).toEqual([]);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an array of dispute IDs from getDisputeHistory', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvVec([
+          xdr.ScVal.scvU64(xdr.Uint64.fromString('1')),
+          xdr.ScVal.scvU64(xdr.Uint64.fromString('2')),
+          xdr.ScVal.scvU64(xdr.Uint64.fromString('3')),
+        ]),
+      },
+    });
+
+    const history = await client.dispute.getDisputeHistory(FAKE_ESCROW_ID);
+
+    expect(history).toEqual([1n, 2n, 3n]);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a single dispute ID from getDisputeHistory', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvVec([
+          xdr.ScVal.scvU64(xdr.Uint64.fromString('42')),
+        ]),
+      },
+    });
+
+    const history = await client.dispute.getDisputeHistory(FAKE_ESCROW_ID);
+
+    expect(history).toEqual([42n]);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns dispute IDs in order from getDisputeHistory', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvVec([
+          xdr.ScVal.scvU64(xdr.Uint64.fromString('100')),
+          xdr.ScVal.scvU64(xdr.Uint64.fromString('50')),
+          xdr.ScVal.scvU64(xdr.Uint64.fromString('75')),
+          xdr.ScVal.scvU64(xdr.Uint64.fromString('200')),
+        ]),
+      },
+    });
+
+    const history = await client.dispute.getDisputeHistory(FAKE_ESCROW_ID);
+
+    expect(history).toEqual([100n, 50n, 75n, 200n]);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an empty array from getDisputeHistory when contract returns empty vector', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvVec([]),
+      },
+    });
+
+    const history = await client.dispute.getDisputeHistory(FAKE_ESCROW_ID);
+
+    expect(history).toEqual([]);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws an error if getDisputeHistory does not return a vector', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvBool(true),
+      },
+    });
+
+    await expect(client.dispute.getDisputeHistory(FAKE_ESCROW_ID)).rejects.toThrow(
+      'Expected get_dispute_history_for_escrow to return a vector',
+    );
   describe('getOpenDisputes', () => {
     it('returns empty array when no open disputes exist', async () => {
       const { client, mockServer } = makeConnectedClient(keypair);
@@ -285,3 +383,4 @@ describe('DisputeModule', () => {
     });
   });
 });
+

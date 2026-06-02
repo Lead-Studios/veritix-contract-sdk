@@ -9,6 +9,8 @@
 import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
+import type { EscrowRecord } from '../src/types/index';
+import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
 
 const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
 const FAKE_ADDRESS  = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
@@ -80,6 +82,137 @@ describe('EscrowModule (stubs)', () => {
 
   it('refundEscrow() throws "not implemented"', async () => {
     await expect(client.escrow.refundEscrow(1n)).rejects.toThrow('not implemented');
+  });
+
+  it('getEscrowsBatch() throws "not implemented"', async () => {
+    await expect(client.escrow.getEscrowsBatch([1n, 2n])).rejects.toThrow('not implemented');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getEscrowsBatch validation tests
+// ---------------------------------------------------------------------------
+
+describe('EscrowModule.getEscrowsBatch', () => {
+  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+
+  it('throws BATCH_TOO_LARGE error when more than 50 IDs are provided', async () => {
+    const ids = Array.from({ length: 51 }, (_, i) => BigInt(i + 1));
+    await expect(client.escrow.getEscrowsBatch(ids)).rejects.toThrow(
+      'Batch request exceeded maximum allowed size (50 items). Received 51 IDs.',
+    );
+  });
+
+  it('throws BATCH_TOO_LARGE error with VeriTixErrorCode when more than 50 IDs are provided', async () => {
+    const ids = Array.from({ length: 100 }, (_, i) => BigInt(i + 1));
+    try {
+      await client.escrow.getEscrowsBatch(ids);
+      fail('Should have thrown an error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(VeriTixError);
+      expect((error as VeriTixError).code).toBe(VeriTixErrorCode.BatchTooLarge);
+    }
+  });
+
+  it('returns an empty array for empty batch', async () => {
+    const result = await client.escrow.getEscrowsBatch([]);
+    expect(result).toEqual([]);
+  });
+
+  it('falls back to individual getEscrow calls when contract method is not implemented', async () => {
+    const ids = [1n, 2n, 3n];
+    const mockEscrowRecord: EscrowRecord = {
+      id: 1n,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+    };
+
+    const spy = jest
+      .spyOn(client.escrow, 'getEscrow')
+      .mockResolvedValueOnce(mockEscrowRecord)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(mockEscrowRecord);
+
+    const results = await client.escrow.getEscrowsBatch(ids);
+
+    expect(results).toHaveLength(3);
+    expect(results[0]).toEqual(mockEscrowRecord);
+    expect(results[1]).toBeNull();
+    expect(results[2]).toEqual(mockEscrowRecord);
+    expect(spy).toHaveBeenCalledTimes(3);
+
+    spy.mockRestore();
+  });
+
+  it('preserves order of results matching input IDs', async () => {
+    const ids = [5n, 3n, 7n, 1n];
+    const record1: EscrowRecord = {
+      id: 5n,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 500_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+    };
+    const record2: EscrowRecord = {
+      id: 7n,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 700_000n,
+      released: true,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+    };
+
+    const spy = jest
+      .spyOn(client.escrow, 'getEscrow')
+      .mockResolvedValueOnce(record1)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(record2)
+      .mockResolvedValueOnce(null);
+
+    const results = await client.escrow.getEscrowsBatch(ids);
+
+    expect(results).toHaveLength(4);
+    expect(results[0]?.id).toBe(5n);
+    expect(results[1]).toBeNull();
+    expect(results[2]?.id).toBe(7n);
+    expect(results[3]).toBeNull();
+
+    spy.mockRestore();
+  });
+
+  it('accepts exactly 50 IDs without throwing', async () => {
+    const ids = Array.from({ length: 50 }, (_, i) => BigInt(i + 1));
+    const mockEscrowRecord: EscrowRecord = {
+      id: 1n,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+    };
+
+    const spy = jest
+      .spyOn(client.escrow, 'getEscrow')
+      .mockResolvedValue(mockEscrowRecord);
+
+    const results = await client.escrow.getEscrowsBatch(ids);
+
+    expect(results).toHaveLength(50);
+    expect(spy).toHaveBeenCalledTimes(50);
+
+    spy.mockRestore();
   });
 });
 
@@ -387,7 +520,7 @@ describe('EscrowModule.settleEvent', () => {
 // parseSorobanError integration
 // ---------------------------------------------------------------------------
 
-import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
+import { parseSorobanError } from '../src/utils/errors';
 
 describe('parseSorobanError', () => {
   it('maps "escrow not found" panic to EscrowNotFound', () => {
