@@ -13,6 +13,7 @@ import type {
   TicketEscrowParams,
   TransactionResult,
 } from '../types/index';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /**
  * Parameters required to create a new escrow.
@@ -71,6 +72,75 @@ export class EscrowModule {
     void this.config;
     void this.server;
     throw new Error('EscrowModule.getEscrow: not implemented');
+  }
+
+  /**
+   * Fetches on-chain records for multiple escrows in a single batch call.
+   *
+   * @param ids - Array of numeric escrow identifiers (max 50).
+   * @returns Array of {@link EscrowRecord} or `null` for each ID, in input order.
+   *          Missing escrows are represented as `null`.
+   * @throws {VeriTixError} With code `BATCH_TOO_LARGE` if more than 50 IDs are provided.
+   *
+   * @example
+   * ```ts
+   * const records = await client.escrow.getEscrowsBatch([1n, 2n, 3n]);
+   * records.forEach((record, index) => {
+   *   if (record) {
+   *     console.log(`Escrow ${index}: ${record.beneficiary}`);
+   *   } else {
+   *     console.log(`Escrow ${index}: not found`);
+   *   }
+   * });
+   * ```
+   */
+  async getEscrowsBatch(ids: bigint[]): Promise<(EscrowRecord | null)[]> {
+    // Validate batch size
+    if (ids.length > 50) {
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `Batch request exceeded maximum allowed size (50 items). Received ${ids.length} IDs.`,
+      );
+    }
+
+    // If empty batch, return empty array
+    if (ids.length === 0) {
+      return [];
+    }
+
+    // Try to use get_escrows_batch if available, otherwise fall back to individual calls
+    try {
+      return await this.getEscrowsBatchViaContract(ids);
+    } catch (error) {
+      // If contract doesn't support get_escrows_batch, fall back to individual calls
+      if (error instanceof Error && error.message.includes('not implemented')) {
+        return await this.getEscrowsBatchFallback(ids);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Attempts to fetch escrows via the contract's get_escrows_batch method.
+   * @internal
+   */
+  private async getEscrowsBatchViaContract(ids: bigint[]): Promise<(EscrowRecord | null)[]> {
+    // TODO: implement contract call
+    // Suggested steps:
+    //   1. buildContractCall(server, account, contractId, 'get_escrows_batch', [toScVal(ids, 'vec<u64>')])
+    //   2. simulateTransaction(server, tx)
+    //   3. Parse ScVal result → array of (EscrowRecord | null)
+    void this.config;
+    void this.server;
+    throw new Error('EscrowModule.getEscrowsBatchViaContract: not implemented');
+  }
+
+  /**
+   * Falls back to fetching escrows individually using Promise.all.
+   * @internal
+   */
+  private async getEscrowsBatchFallback(ids: bigint[]): Promise<(EscrowRecord | null)[]> {
+    return Promise.all(ids.map((id) => this.getEscrow(id)));
   }
 
   // -------------------------------------------------------------------------
