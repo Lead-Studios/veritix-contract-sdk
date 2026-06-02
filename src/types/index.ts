@@ -196,7 +196,21 @@ export interface RecurringRecord {
 /**
  * Minimal representation of a submitted Stellar transaction result.
  */
-export interface TransactionResult {
+export interface RevenueSplitParams {
+  /** Stellar address of the organizer */
+  organizer: string;
+  /** Organizer's share in basis points (1 bps = 0.01%) */
+  organizerBps: number;
+  /** Stellar address of the artist */
+  artist: string;
+  /** Artist's share in basis points */
+  artistBps: number;
+  /** Stellar address of the platform */
+  platform: string;
+  /** Total amount to split (in stroops) */
+  totalAmount: bigint;
+}
+
   /** Stellar transaction hash (hex-encoded) */
   hash: string;
   /** Final ledger sequence in which the transaction was included */
