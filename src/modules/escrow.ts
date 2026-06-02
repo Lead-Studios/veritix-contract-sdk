@@ -6,13 +6,17 @@
  * condition is met, a resolver adjudicates a dispute, or the escrow expires.
  */
 
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Account, xdr, Address } from '@stellar/stellar-sdk';
 import type {
   EscrowRecord,
   NetworkConfig,
   TicketEscrowParams,
   TransactionResult,
 } from '../types/index';
+import { addressToScVal, bigintToScVal, scValToBigint, stringToScVal } from '../utils/scval';
+import { buildContractCall, submitTransaction } from '../utils/transaction';
+import { parseSorobanError } from '../utils/errors';
+import { parseEscrowRecord } from '../utils/parsers';
 
 /**
  * Parameters required to create a new escrow.
@@ -62,15 +66,40 @@ export class EscrowModule {
    * console.log('Beneficiary:', record.beneficiary);
    * ```
    */
-  async getEscrow(_id: bigint): Promise<EscrowRecord | null> {
-    // TODO: implement
-    // Suggested steps:
-    //   1. buildContractCall(server, account, contractId, 'get_escrow', [toScVal(id, 'u64')])
-    //   2. simulateTransaction(server, tx)
-    //   3. Parse ScVal result → EscrowRecord or null
-    void this.config;
-    void this.server;
-    throw new Error('EscrowModule.getEscrow: not implemented');
+  async getEscrow(id: bigint): Promise<EscrowRecord | null> {
+    const dummyKeypair = Keypair.random();
+    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_escrow',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      return null;
+    }
+
+    if (returnValue.switch() === xdr.ScValType.scvOption()) {
+      const option = returnValue.option();
+      if (!option || !option.value()) {
+        return null;
+      }
+      return parseEscrowRecord(option.value());
+    }
+
+    return parseEscrowRecord(returnValue);
   }
 
   // -------------------------------------------------------------------------
@@ -82,8 +111,8 @@ export class EscrowModule {
    * The caller becomes the depositor.
    *
    * @param params - {@link CreateEscrowParams}
-   * @returns A {@link TransactionResult} on success. The escrow ID can be
-   *          decoded from the transaction's return value.
+   * @returns A {@link TransactionResult} on success, including the decoded
+   *          `escrowId` of the newly-created escrow.
    * @throws {VeriTixError} If the depositor lacks sufficient token balance.
    *
    * @example
@@ -95,10 +124,67 @@ export class EscrowModule {
    * });
    * ```
    */
-  async createEscrow(_params: CreateEscrowParams): Promise<TransactionResult> {
-    // TODO: implement
-    void this.keypair;
-    throw new Error('EscrowModule.createEscrow: not implemented');
+  async createEscrow(
+    params: CreateEscrowParams,
+  ): Promise<TransactionResult & { escrowId: bigint }> {
+    if (!this.keypair) {
+      throw new Error('EscrowModule.createEscrow: signing keypair required');
+    }
+
+    if (params.amount <= 0n) {
+      throw new Error('EscrowModule.createEscrow: amount must be greater than zero');
+    }
+
+    const currentLedger = (await this.server.getLatestLedger()).sequence;
+    if (params.expiryLedger <= currentLedger) {
+      throw new Error(
+        'EscrowModule.createEscrow: expiryLedger must be greater than current ledger',
+      );
+    }
+
+    try {
+      new Address(params.beneficiary);
+    } catch {
+      throw new Error('EscrowModule.createEscrow: beneficiary must be a valid Stellar address');
+    }
+
+    const depositor = this.keypair.publicKey();
+    const tx = await buildContractCall(
+      this.server,
+      new Account(depositor, '0'),
+      this.config.contractId,
+      'create_escrow',
+      [
+        addressToScVal(depositor),
+        addressToScVal(params.beneficiary),
+        bigintToScVal(params.amount, 'i128'),
+        bigintToScVal(BigInt(params.expiryLedger), 'u64'),
+        xdr.ScVal.scvVec((params.memos ?? []).map((memo) => stringToScVal(memo))),
+      ],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue) {
+      throw new Error('EscrowModule.createEscrow: missing escrow ID in simulation result');
+    }
+
+    const escrowId = scValToBigint(returnValue);
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue: escrowId,
+      escrowId,
+    };
   }
 
   /**
@@ -117,15 +203,7 @@ export class EscrowModule {
       memos: [params.ticketRef],
     });
 
-    if (result.returnValue === undefined) {
-      throw new Error('EscrowModule.createTicketEscrow: missing escrow ID in createEscrow result');
-    }
-
-    if (typeof result.returnValue !== 'bigint') {
-      throw new Error('EscrowModule.createTicketEscrow: expected escrow ID to be bigint');
-    }
-
-    return result.returnValue;
+    return result.escrowId;
   }
 
   /**
