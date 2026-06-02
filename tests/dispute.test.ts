@@ -165,4 +165,123 @@ describe('DisputeModule', () => {
     expect(mockServer.sendTransaction).toHaveBeenCalledTimes(1);
     expect(mockServer.getTransaction).toHaveBeenCalledTimes(1);
   });
+
+  describe('getOpenDisputes', () => {
+    it('returns empty array when no open disputes exist', async () => {
+      const { client, mockServer } = makeConnectedClient(keypair);
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: {
+          retval: xdr.ScVal.scvVec([]),
+        },
+      });
+
+      const disputes = await client.dispute.getOpenDisputes();
+
+      expect(disputes).toEqual([]);
+      expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns array of dispute IDs when open disputes exist', async () => {
+      const { client, mockServer } = makeConnectedClient(keypair);
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: {
+          retval: xdr.ScVal.scvVec([
+            xdr.ScVal.scvU64(xdr.Uint64.fromString('1')),
+            xdr.ScVal.scvU64(xdr.Uint64.fromString('2')),
+            xdr.ScVal.scvU64(xdr.Uint64.fromString('3')),
+          ]),
+        },
+      });
+
+      const disputes = await client.dispute.getOpenDisputes();
+
+      expect(disputes).toEqual([1n, 2n, 3n]);
+      expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns empty array when result is undefined', async () => {
+      const { client, mockServer } = makeConnectedClient(keypair);
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: {
+          retval: undefined,
+        },
+      });
+
+      const disputes = await client.dispute.getOpenDisputes();
+
+      expect(disputes).toEqual([]);
+    });
+
+    it('throws error on simulation failure', async () => {
+      const { client, mockServer } = makeConnectedClient(keypair);
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'ERROR',
+        error: 'Contract not found',
+      });
+
+      await expect(client.dispute.getOpenDisputes()).rejects.toThrow();
+    });
+  });
+
+  describe('getDisputesByResolver', () => {
+    it('returns empty array when resolver has no disputes', async () => {
+      const { client, mockServer } = makeConnectedClient(keypair);
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: {
+          retval: xdr.ScVal.scvVec([]),
+        },
+      });
+
+      const disputes = await client.dispute.getDisputesByResolver(resolver);
+
+      expect(disputes).toEqual([]);
+      expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns array of dispute IDs assigned to resolver', async () => {
+      const { client, mockServer } = makeConnectedClient(keypair);
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: {
+          retval: xdr.ScVal.scvVec([
+            xdr.ScVal.scvU64(xdr.Uint64.fromString('5')),
+            xdr.ScVal.scvU64(xdr.Uint64.fromString('10')),
+          ]),
+        },
+      });
+
+      const disputes = await client.dispute.getDisputesByResolver(resolver);
+
+      expect(disputes).toEqual([5n, 10n]);
+      expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns empty array when result is undefined', async () => {
+      const { client, mockServer } = makeConnectedClient(keypair);
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: {
+          retval: undefined,
+        },
+      });
+
+      const disputes = await client.dispute.getDisputesByResolver(resolver);
+
+      expect(disputes).toEqual([]);
+    });
+
+    it('throws error on simulation failure', async () => {
+      const { client, mockServer } = makeConnectedClient(keypair);
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'ERROR',
+        error: 'Invalid address',
+      });
+
+      await expect(client.dispute.getDisputesByResolver(resolver)).rejects.toThrow();
+    });
+  });
 });
