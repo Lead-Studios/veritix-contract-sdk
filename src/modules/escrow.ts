@@ -77,6 +77,55 @@ export class EscrowModule {
     throw new Error('EscrowModule.getEscrow: not implemented');
   }
 
+  /**
+   * Checks if an escrow has been settled (released or refunded).
+   *
+   * @param id - Numeric escrow identifier.
+   * @returns `true` if the escrow is released or refunded, `false` otherwise.
+   * @throws {VeriTixError} With code `ESCROW_NOT_FOUND` if the escrow does not exist.
+   *
+   * @example
+   * ```ts
+   * const settled = await client.escrow.isSettled(1n);
+   * if (settled) {
+   *   console.log('Escrow has been settled');
+   * }
+   * ```
+   */
+  async isSettled(id: bigint): Promise<boolean> {
+    const record = await this.getEscrow(id);
+    if (!record) {
+      throw new Error(`EscrowModule.isSettled: escrow ${id} not found`);
+    }
+    return record.released || record.refunded;
+  }
+
+  /**
+   * Checks if an escrow has expired and is eligible for refund.
+   *
+   * @param id - Numeric escrow identifier.
+   * @param currentLedger - Optional current ledger sequence. If not provided, fetches from the server.
+   * @returns `true` if current ledger >= escrow's expiry ledger, `false` otherwise.
+   * @throws {VeriTixError} With code `ESCROW_NOT_FOUND` if the escrow does not exist.
+   *
+   * @example
+   * ```ts
+   * const expired = await client.escrow.isExpired(1n);
+   * if (expired) {
+   *   const result = await client.escrow.refundEscrow(1n);
+   * }
+   * ```
+   */
+  async isExpired(id: bigint, currentLedger?: number): Promise<boolean> {
+    const record = await this.getEscrow(id);
+    if (!record) {
+      throw new Error(`EscrowModule.isExpired: escrow ${id} not found`);
+    }
+
+    const ledger = currentLedger ?? (await this.server.getLatestLedger()).sequence;
+    return ledger >= record.expiryLedger;
+  }
+
   // -------------------------------------------------------------------------
   // Write operations
   // -------------------------------------------------------------------------

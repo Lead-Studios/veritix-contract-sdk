@@ -83,6 +83,163 @@ describe('EscrowModule (stubs)', () => {
   });
 });
 
+describe('EscrowModule.isSettled', () => {
+  const keypair = Keypair.random();
+  const FAKE_ESCROW_ID = 1n;
+
+  it('returns true when escrow is released', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: true,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+    });
+
+    const settled = await client.escrow.isSettled(FAKE_ESCROW_ID);
+
+    expect(settled).toBe(true);
+  });
+
+  it('returns true when escrow is refunded', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: true,
+      expiryLedger: 1_000_000,
+      memos: [],
+    });
+
+    const settled = await client.escrow.isSettled(FAKE_ESCROW_ID);
+
+    expect(settled).toBe(true);
+  });
+
+  it('returns false when escrow is neither released nor refunded', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+    });
+
+    const settled = await client.escrow.isSettled(FAKE_ESCROW_ID);
+
+    expect(settled).toBe(false);
+  });
+
+  it('throws error when escrow does not exist', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(null);
+
+    await expect(client.escrow.isSettled(FAKE_ESCROW_ID)).rejects.toThrow('escrow 1 not found');
+  });
+});
+
+describe('EscrowModule.isExpired', () => {
+  const keypair = Keypair.random();
+  const FAKE_ESCROW_ID = 1n;
+  const EXPIRY_LEDGER = 1_000_000;
+
+  it('returns true when current ledger >= expiry ledger', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: EXPIRY_LEDGER,
+      memos: [],
+    });
+
+    const expired = await client.escrow.isExpired(FAKE_ESCROW_ID, EXPIRY_LEDGER);
+
+    expect(expired).toBe(true);
+  });
+
+  it('returns true when current ledger > expiry ledger', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: EXPIRY_LEDGER,
+      memos: [],
+    });
+
+    const expired = await client.escrow.isExpired(FAKE_ESCROW_ID, EXPIRY_LEDGER + 1);
+
+    expect(expired).toBe(true);
+  });
+
+  it('returns false when current ledger < expiry ledger', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: EXPIRY_LEDGER,
+      memos: [],
+    });
+
+    const expired = await client.escrow.isExpired(FAKE_ESCROW_ID, EXPIRY_LEDGER - 1);
+
+    expect(expired).toBe(false);
+  });
+
+  it('fetches current ledger when not provided', async () => {
+    const { client, mockServer } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_ADDRESS,
+      beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: EXPIRY_LEDGER,
+      memos: [],
+    });
+    mockServer.getLatestLedger = jest
+      .fn()
+      .mockResolvedValue({ sequence: EXPIRY_LEDGER + 1000 });
+
+    const expired = await client.escrow.isExpired(FAKE_ESCROW_ID);
+
+    expect(expired).toBe(true);
+    expect(mockServer.getLatestLedger).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws error when escrow does not exist', async () => {
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(null);
+
+    await expect(client.escrow.isExpired(FAKE_ESCROW_ID, 1_000_000)).rejects.toThrow(
+      'escrow 1 not found',
+    );
+  });
+});
+
 describe('EscrowModule.settleEvent', () => {
   const keypair = Keypair.random();
 
