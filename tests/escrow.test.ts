@@ -238,14 +238,168 @@ describe('EscrowModule', () => {
     });
   });
 
-  it('releaseEscrow() throws "not implemented"', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    await expect(client.escrow.releaseEscrow(1n)).rejects.toThrow('not implemented');
+  it('releaseEscrow throws EscrowNotFound when escrow does not exist', async () => {
+    const { client } = makeConnectedClient(Keypair.random());
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(null);
+
+    await expect(client.escrow.releaseEscrow(FAKE_ESCROW_ID)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowNotFound,
+    });
   });
 
-  it('refundEscrow() throws "not implemented"', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    await expect(client.escrow.refundEscrow(1n)).rejects.toThrow('not implemented');
+  it('refundEscrow throws EscrowNotFound when escrow does not exist', async () => {
+    const { client } = makeConnectedClient(Keypair.random());
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(null);
+
+    await expect(client.escrow.refundEscrow(FAKE_ESCROW_ID)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowNotFound,
+    });
+  });
+
+  it('releaseEscrow throws EscrowAlreadySettled when escrow is already released', async () => {
+    const { client } = makeConnectedClient(Keypair.random());
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_DEPOSITOR,
+      beneficiary: FAKE_ADDRESS,
+      amount: 2_000_000n,
+      released: true,
+      refunded: false,
+      expiryLedger: 1_005_000,
+      memos: [],
+    });
+
+    await expect(client.escrow.releaseEscrow(FAKE_ESCROW_ID)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowAlreadySettled,
+    });
+  });
+
+  it('refundEscrow throws EscrowAlreadySettled when escrow is already refunded', async () => {
+    const { client } = makeConnectedClient(Keypair.random());
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_DEPOSITOR,
+      beneficiary: FAKE_ADDRESS,
+      amount: 2_000_000n,
+      released: false,
+      refunded: true,
+      expiryLedger: 1_005_000,
+      memos: [],
+    });
+
+    await expect(client.escrow.refundEscrow(FAKE_ESCROW_ID)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowAlreadySettled,
+    });
+  });
+
+  it('releaseEscrow submits the release transaction for an unsettled escrow', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const fakeTx = { id: 'unsigned-release' } as never;
+    const fakeAssembledTx = { id: 'assembled-release' } as never;
+
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_DEPOSITOR,
+      beneficiary: FAKE_ADDRESS,
+      amount: 2_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: 1_005_000,
+      memos: [],
+    });
+    jest.spyOn(transactionUtils, 'buildContractCall').mockResolvedValue(fakeTx);
+    jest
+      .spyOn(SorobanRpc, 'assembleTransaction')
+      .mockReturnValue({ build: () => fakeAssembledTx } as never);
+    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
+      hash: 'release-hash',
+      ledger: 200,
+      successful: true,
+    });
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvVoid(),
+      },
+    });
+
+    const result = await client.escrow.releaseEscrow(FAKE_ESCROW_ID);
+
+    expect(transactionUtils.buildContractCall).toHaveBeenCalledWith(
+      mockServer,
+      expect.anything(),
+      FAKE_CONTRACT,
+      'release_escrow',
+      expect.any(Array),
+      getTestnetConfig(FAKE_CONTRACT).networkPassphrase,
+    );
+    expect(transactionUtils.submitTransaction).toHaveBeenCalledWith(
+      mockServer,
+      fakeAssembledTx,
+      keypair,
+    );
+    expect(result).toEqual({
+      hash: 'release-hash',
+      ledger: 200,
+      successful: true,
+      returnValue: xdr.ScVal.scvVoid(),
+    });
+  });
+
+  it('refundEscrow submits the refund transaction for an unsettled escrow', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const fakeTx = { id: 'unsigned-refund' } as never;
+    const fakeAssembledTx = { id: 'assembled-refund' } as never;
+
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      depositor: FAKE_DEPOSITOR,
+      beneficiary: FAKE_ADDRESS,
+      amount: 2_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: 1_005_000,
+      memos: [],
+    });
+    jest.spyOn(transactionUtils, 'buildContractCall').mockResolvedValue(fakeTx);
+    jest
+      .spyOn(SorobanRpc, 'assembleTransaction')
+      .mockReturnValue({ build: () => fakeAssembledTx } as never);
+    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
+      hash: 'refund-hash',
+      ledger: 201,
+      successful: true,
+    });
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvVoid(),
+      },
+    });
+
+    const result = await client.escrow.refundEscrow(FAKE_ESCROW_ID);
+
+    expect(transactionUtils.buildContractCall).toHaveBeenCalledWith(
+      mockServer,
+      expect.anything(),
+      FAKE_CONTRACT,
+      'refund_escrow',
+      expect.any(Array),
+      getTestnetConfig(FAKE_CONTRACT).networkPassphrase,
+    );
+    expect(transactionUtils.submitTransaction).toHaveBeenCalledWith(
+      mockServer,
+      fakeAssembledTx,
+      keypair,
+    );
+    expect(result).toEqual({
+      hash: 'refund-hash',
+      ledger: 201,
+      successful: true,
+      returnValue: xdr.ScVal.scvVoid(),
+    });
   });
 });
 

@@ -15,7 +15,7 @@ import type {
 } from '../types/index';
 import { addressToScVal, bigintToScVal, scValToBigint, stringToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
-import { parseSorobanError } from '../utils/errors';
+import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseEscrowRecord } from '../utils/parsers';
 
 /**
@@ -214,9 +214,8 @@ export class EscrowModule {
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ESCROW_ALREADY_SETTLED` if already settled.
    */
-  async releaseEscrow(_id: bigint): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('EscrowModule.releaseEscrow: not implemented');
+  async releaseEscrow(id: bigint): Promise<TransactionResult> {
+    return this.settleEscrow('release_escrow', id);
   }
 
   /**
@@ -227,8 +226,56 @@ export class EscrowModule {
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ESCROW_NOT_EXPIRED` if still within expiry.
    */
-  async refundEscrow(_id: bigint): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('EscrowModule.refundEscrow: not implemented');
+  async refundEscrow(id: bigint): Promise<TransactionResult> {
+    return this.settleEscrow('refund_escrow', id);
+  }
+
+  private async settleEscrow(
+    method: 'release_escrow' | 'refund_escrow',
+    id: bigint,
+  ): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error(
+        `EscrowModule.${method === 'release_escrow' ? 'releaseEscrow' : 'refundEscrow'}: signing keypair required`,
+      );
+    }
+
+    const escrow = await this.getEscrow(id);
+    if (!escrow) {
+      throw new VeriTixError(VeriTixErrorCode.EscrowNotFound, 'Escrow not found');
+    }
+
+    if (escrow.released || escrow.refunded) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowAlreadySettled,
+        'Escrow has already been released or refunded',
+      );
+    }
+
+    const caller = this.keypair.publicKey();
+    const tx = await buildContractCall(
+      this.server,
+      new Account(caller, '0'),
+      this.config.contractId,
+      method,
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
   }
 }
