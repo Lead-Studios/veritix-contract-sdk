@@ -197,9 +197,16 @@ export async function estimateFee(
 export async function submitTransaction(
   server: SorobanRpc.Server,
   tx: Transaction,
-  keypair: Keypair,
+  keypair: Keypair | undefined,
   maxAttempts: number = MAX_POLL_ATTEMPTS,
 ): Promise<TransactionResult> {
+  if (!keypair) {
+    throw new VeriTixError(
+      VeriTixErrorCode.ReadOnlyClient,
+      'This client is read-only. Provide a Keypair to enable write operations.',
+    );
+  }
+
   // 1. Sign
   tx.sign(keypair);
 
