@@ -7,7 +7,7 @@
  */
 
 import { SorobanRpc, Keypair, Account, xdr, scValToNative } from '@stellar/stellar-sdk';
-import type {
+import {
   DisputeRecord,
   DisputeStatus,
   NetworkConfig,
@@ -101,14 +101,6 @@ export class DisputeModule {
 
     if (!returnValue) {
       return null;
-    }
-
-    if (returnValue.switch() === xdr.ScValType.scvOption()) {
-      const option = returnValue.option();
-      if (!option || !option.value()) {
-        return null;
-      }
-      return parseDisputeRecord(option.value());
     }
 
     return parseDisputeRecord(returnValue);
@@ -328,6 +320,8 @@ export class DisputeModule {
     });
   }
 
+  /**
+   * Opens a dispute against an escrow and freezes the funds pending resolution.
    *
    * @param escrowId - The escrow ID to raise a dispute on.
    * @param resolver - Stellar account address of the designated resolver.
@@ -370,7 +364,7 @@ export class DisputeModule {
         addressToScVal(claimant),
         bigintToScVal(escrowId, 'u64'),
         addressToScVal(resolver),
-        xdr.ScVal.scvBytes(Array.from(evidenceBytes)),
+        xdr.ScVal.scvBytes(Buffer.from(evidenceBytes)),
       ],
       this.config.networkPassphrase,
     );
@@ -449,7 +443,7 @@ export class DisputeModule {
         addressToScVal(resolver),
         bigintToScVal(disputeId, 'u64'),
         boolToScVal(forBeneficiary),
-        xdr.ScVal.scvBytes(Array.from(noteBytes)),
+        xdr.ScVal.scvBytes(Buffer.from(noteBytes)),
       ],
       this.config.networkPassphrase,
     );
