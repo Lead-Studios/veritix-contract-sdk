@@ -79,6 +79,12 @@ export enum VeriTixErrorCode {
   BatchTooLarge = 'BATCH_TOO_LARGE',
   /** Client has no Keypair — write operations are not available */
   ReadOnlyClient = 'READ_ONLY_CLIENT',
+  /** Supplied address is not a valid Stellar Ed25519 public key */
+  InvalidAddress = 'INVALID_ADDRESS',
+  /** watchTransaction() timed out waiting for confirmation */
+  WatchTimeout = 'WATCH_TIMEOUT',
+  /** Transaction was rejected by the network */
+  TransactionFailed = 'TRANSACTION_FAILED',
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +250,9 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
     [VeriTixErrorCode.BatchTooLarge]:               'Batch request exceeded maximum allowed size.',
     [VeriTixErrorCode.ReadOnlyClient]:              'This client is read-only. Provide a Keypair to enable write operations.',
+    [VeriTixErrorCode.InvalidAddress]:              'Supplied address is not a valid Stellar Ed25519 public key.',
+    [VeriTixErrorCode.WatchTimeout]:                'watchTransaction() timed out before the transaction was confirmed.',
+    [VeriTixErrorCode.TransactionFailed]:           'Transaction was rejected by the Stellar network.',
   };
   return messages[code];
 }

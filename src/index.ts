@@ -18,6 +18,7 @@
 // Client
 // ---------------------------------------------------------------------------
 export { VeriTixClient } from './client';
+export type { WatchOptions } from './client';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,6 +71,8 @@ export {
   getHorizonUrl,
   TESTNET_PASSPHRASE,
   MAINNET_PASSPHRASE,
+  isValidStellarAddress,
+  assertValidAddress,
 } from './utils/network';
 
 // ---------------------------------------------------------------------------

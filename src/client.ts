@@ -28,7 +28,7 @@
 
 import { SorobanRpc, Keypair, xdr } from '@stellar/stellar-sdk';
 
-import type { NetworkConfig, SimulationResult, ContractMetadata } from './types/index';
+import type { NetworkConfig, SimulationResult, ContractMetadata, TransactionResult } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { EventEmitter } from 'events';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
@@ -46,6 +46,14 @@ export interface VeriTixClientEvents {
   disconnected: () => void;
   error: (err: VeriTixError) => void;
   retry: (data: { attempt: number; delayMs: number }) => void;
+}
+
+/** Options for {@link VeriTixClient.watchTransaction} */
+export interface WatchOptions {
+  /** Polling interval in milliseconds (default: 2000) */
+  intervalMs?: number;
+  /** Maximum wait time in milliseconds before rejecting (default: 60000) */
+  timeoutMs?: number;
 }
 
 /**
@@ -297,6 +305,55 @@ export class VeriTixClient extends EventEmitter {
     const latestLedger = await this.server.getLatestLedger();
     this.ledgerCache = { sequence: latestLedger.sequence, fetchedAt: now };
     return latestLedger.sequence;
+  }
+
+  /**
+   * Polls the RPC until the transaction is confirmed or fails.
+   *
+   * @param hash    - Stellar transaction hash to watch.
+   * @param options - Polling interval and timeout options.
+   * @returns Resolved {@link TransactionResult} when the transaction is confirmed.
+   * @throws {VeriTixError} `TRANSACTION_FAILED` if the transaction fails.
+   * @throws {VeriTixError} `WATCH_TIMEOUT` after `timeoutMs` ms.
+   */
+  async watchTransaction(hash: string, options?: WatchOptions): Promise<TransactionResult> {
+    if (!this.connected || !this.server) {
+      throw new Error('VeriTixClient: call connect() before using module methods');
+    }
+    const intervalMs = options?.intervalMs ?? 2_000;
+    const timeoutMs = options?.timeoutMs ?? 60_000;
+    const deadline = Date.now() + timeoutMs;
+
+    return new Promise((resolve, reject) => {
+      const poll = async () => {
+        if (Date.now() >= deadline) {
+          return reject(
+            new VeriTixError(VeriTixErrorCode.WatchTimeout, `Transaction ${hash} timed out after ${timeoutMs}ms`),
+          );
+        }
+        try {
+          const result = await this.server.getTransaction(hash);
+          if (result.status === 'SUCCESS') {
+            return resolve({
+              hash,
+              ledger: (result as { ledger?: number }).ledger ?? 0,
+              successful: true,
+              returnValue: (result as { returnValue?: unknown }).returnValue,
+            });
+          }
+          if (result.status === 'FAILED') {
+            return reject(
+              new VeriTixError(VeriTixErrorCode.TransactionFailed, `Transaction ${hash} failed`),
+            );
+          }
+          // NOT_FOUND or PENDING — keep polling
+          setTimeout(poll, intervalMs);
+        } catch {
+          setTimeout(poll, intervalMs);
+        }
+      };
+      void poll();
+    });
   }
 
   /**
