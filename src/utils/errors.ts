@@ -79,6 +79,8 @@ export enum VeriTixErrorCode {
   BatchTooLarge = 'BATCH_TOO_LARGE',
   /** Client has no Keypair — write operations are not available */
   ReadOnlyClient = 'READ_ONLY_CLIENT',
+  /** watchEscrow timed out before the escrow settled */
+  WatchTimeout = 'WATCH_TIMEOUT',
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +246,7 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
     [VeriTixErrorCode.BatchTooLarge]:               'Batch request exceeded maximum allowed size.',
     [VeriTixErrorCode.ReadOnlyClient]:              'This client is read-only. Provide a Keypair to enable write operations.',
+    [VeriTixErrorCode.WatchTimeout]:                'watchEscrow timed out before the escrow settled.',
   };
   return messages[code];
 }
