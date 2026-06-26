@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module modules/batch
  * Batch operations exposed by the VeriTix Soroban contract.
  *
@@ -6,16 +6,19 @@
  * invocation to reduce transaction overhead and fees.
  */
 
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Account, xdr, nativeToScVal } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
+import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { addressToScVal } from '../utils/scval';
+
+const APPROVE_BATCH_MAX = 20;
 
 /**
  * A single mint instruction within a batch.
  */
 export interface BatchMintEntry {
-  /** Recipient Stellar account address */
   to: string;
-  /** Amount to mint (in stroops) */
   amount: bigint;
 }
 
@@ -23,12 +26,21 @@ export interface BatchMintEntry {
  * A single transfer instruction within a batch.
  */
 export interface BatchTransferEntry {
-  /** Sender Stellar account address */
   from: string;
-  /** Recipient Stellar account address */
   to: string;
-  /** Amount to transfer (in stroops) */
   amount: bigint;
+}
+
+/**
+ * A single allowance grant in a {@link BatchModule.approveBatch} call.
+ */
+export interface BatchApprovalEntry {
+  /** Stellar account address of the spender being granted the allowance */
+  spender: string;
+  /** Allowance amount (in stroops) */
+  amount: bigint;
+  /** Ledger sequence number after which the allowance expires */
+  expirationLedger: number;
 }
 
 /**
@@ -49,64 +61,103 @@ export class BatchModule {
   }
 
   // -------------------------------------------------------------------------
+  // Internal helpers
+  // -------------------------------------------------------------------------
+
+  private async writeCall(method: string, args: xdr.ScVal[]): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.AdminUnauthorized,
+        'A Keypair is required for this operation.',
+      );
+    }
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
+    const { transaction } = await simulateTransaction(this.server, tx);
+    return submitTransaction(this.server, transaction, this.keypair);
+  }
+
+  // -------------------------------------------------------------------------
   // Batch operations
   // -------------------------------------------------------------------------
 
-  /**
-   * Mints tokens to multiple recipients in a single contract invocation.
-   * Caller must be the contract admin.
-   *
-   * @param entries - Array of {@link BatchMintEntry} instructions.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
-   *
-   * @example
-   * ```ts
-   * await client.batch.mintBatch([
-   *   { to: 'GABC…', amount: 1_000_000n },
-   *   { to: 'GXYZ…', amount: 2_000_000n },
-   * ]);
-   * ```
-   */
   async mintBatch(_entries: BatchMintEntry[]): Promise<TransactionResult> {
-    // TODO: implement
     void this.config;
     void this.server;
     void this.keypair;
     throw new Error('BatchModule.mintBatch: not implemented');
   }
 
-  /**
-   * Executes multiple token transfers in a single contract invocation.
-   * Each transfer is independently authorised; if any fails the entire
-   * batch reverts.
-   *
-   * @param entries - Array of {@link BatchTransferEntry} instructions.
-   * @returns A {@link TransactionResult} on success.
-   *
-   * @example
-   * ```ts
-   * await client.batch.transferBatch([
-   *   { from: 'GABC…', to: 'G111…', amount: 500_000n },
-   *   { from: 'GABC…', to: 'G222…', amount: 500_000n },
-   * ]);
-   * ```
-   */
   async transferBatch(_entries: BatchTransferEntry[]): Promise<TransactionResult> {
-    // TODO: implement
     throw new Error('BatchModule.transferBatch: not implemented');
   }
 
-  /**
-   * Freezes multiple accounts in a single contract invocation.
-   * Caller must be the contract admin.
-   *
-   * @param addresses - Array of Stellar account addresses to freeze.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
-   */
   async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
-    // TODO: implement
     throw new Error('BatchModule.freezeBatch: not implemented');
+  }
+
+  /**
+   * Grants token allowances to multiple spenders in a single contract
+   * invocation. Useful for setting up permissions for multiple venue
+   * contracts to pull ticket payments in one call.
+   *
+   * Maximum 20 approvals per call (lower than other batch caps because
+   * allowances are high-value write operations).
+   *
+   * @param approvals - Array of {@link BatchApprovalEntry} entries (max 20).
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if no Keypair provided.
+   * @throws {VeriTixError} With code `BATCH_TOO_LARGE` if more than 20 approvals.
+   * @throws Error if approvals array is empty.
+   * @throws Error if any expirationLedger is not in the future.
+   * @throws {VeriTixError} With code `INVALID_AMOUNT` if any amount is <= 0n.
+   *
+   * @example
+   * ```ts
+   * const latestLedger = await server.getLatestLedger();
+   * await client.batch.approveBatch([
+   *   { spender: 'GABC...', amount: 10_000_000n, expirationLedger: latestLedger.sequence + 5_000 },
+   *   { spender: 'GXYZ...', amount: 5_000_000n,  expirationLedger: latestLedger.sequence + 5_000 },
+   * ]);
+   * ```
+   */
+  async approveBatch(approvals: BatchApprovalEntry[]): Promise<TransactionResult> {
+    if (approvals.length === 0) throw new Error('BatchModule.approveBatch: approvals array must not be empty');
+    if (approvals.length > APPROVE_BATCH_MAX) {
+      throw new VeriTixError(VeriTixErrorCode.BatchTooLarge, `approveBatch supports at most ${APPROVE_BATCH_MAX} approvals.`);
+    }
+
+    // Fetch current ledger to validate expiry
+    const latestLedger = await this.server.getLatestLedger();
+    const currentSequence = latestLedger.sequence;
+
+    for (const a of approvals) {
+      if (a.amount <= 0n) {
+        throw new VeriTixError(VeriTixErrorCode.InvalidAmount, 'Each approval amount must be greater than zero.');
+      }
+      if (a.expirationLedger <= currentSequence) {
+        throw new Error(
+          `BatchModule.approveBatch: expirationLedger ${a.expirationLedger} must be in the future (current: ${currentSequence}).`,
+        );
+      }
+    }
+
+    const entries = xdr.ScVal.scvVec(
+      approvals.map((a) =>
+        xdr.ScVal.scvVec([
+          addressToScVal(a.spender),
+          nativeToScVal(a.amount, { type: 'i128' }),
+          nativeToScVal(a.expirationLedger, { type: 'u32' }),
+        ]),
+      ),
+    );
+    return this.writeCall('approve_batch', [entries]);
   }
 }
