@@ -7,7 +7,6 @@
  */
 
 import { SorobanRpc, Keypair, Account, xdr, Address } from '@stellar/stellar-sdk';
-import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type {
   EscrowRecord,
   NetworkConfig,
@@ -19,10 +18,6 @@ import { addressToScVal, bigintToScVal, scValToBigint, stringToScVal } from '../
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseEscrowRecord } from '../utils/parsers';
-import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
-import { buildContractCall, submitTransaction } from '../utils/transaction';
-import { bigintToScVal } from '../utils/scval';
-import { parseSorobanError } from '../utils/errors';
 
 /**
  * Parameters required to create a new escrow.
@@ -95,14 +90,6 @@ export class EscrowModule {
 
     if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
       return null;
-    }
-
-    if (returnValue.switch() === xdr.ScValType.scvOption()) {
-      const option = returnValue.option();
-      if (!option || !option.value()) {
-        return null;
-      }
-      return parseEscrowRecord(option.value());
     }
 
     return parseEscrowRecord(returnValue);
@@ -178,12 +165,8 @@ export class EscrowModule {
    * Attempts to fetch escrows via the contract's get_escrows_batch method.
    * @internal
    */
-  private async getEscrowsBatchViaContract(ids: bigint[]): Promise<(EscrowRecord | null)[]> {
+  private async getEscrowsBatchViaContract(_ids: bigint[]): Promise<(EscrowRecord | null)[]> {
     // TODO: implement contract call
-    // Suggested steps:
-    //   1. buildContractCall(server, account, contractId, 'get_escrows_batch', [toScVal(ids, 'vec<u64>')])
-    //   2. simulateTransaction(server, tx)
-    //   3. Parse ScVal result → array of (EscrowRecord | null)
     void this.config;
     void this.server;
     throw new Error('EscrowModule.getEscrowsBatchViaContract: not implemented');
@@ -195,6 +178,9 @@ export class EscrowModule {
    */
   private async getEscrowsBatchFallback(ids: bigint[]): Promise<(EscrowRecord | null)[]> {
     return Promise.all(ids.map((id) => this.getEscrow(id)));
+  }
+
+  /**
    * Checks if an escrow has been settled (released or refunded).
    *
    * @param id - Numeric escrow identifier.

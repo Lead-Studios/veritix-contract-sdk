@@ -264,6 +264,8 @@ describe('DisputeModule', () => {
     await expect(client.dispute.getDisputeHistory(FAKE_ESCROW_ID)).rejects.toThrow(
       'Expected get_dispute_history_for_escrow to return a vector',
     );
+  });
+
   describe('getOpenDisputes', () => {
     it('returns empty array when no open disputes exist', async () => {
       const { client, mockServer } = makeConnectedClient(keypair);

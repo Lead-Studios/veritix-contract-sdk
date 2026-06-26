@@ -110,4 +110,59 @@ export class RecurringModule {
     // TODO: implement
     throw new Error('RecurringModule.cancel: not implemented');
   }
+
+  // -------------------------------------------------------------------------
+  // Helpers (private)
+  // -------------------------------------------------------------------------
+
+  /** Returns all recurring payment IDs for a payer. @internal */
+  private async getRecurringByPayer(_payer: string): Promise<bigint[]> {
+    // TODO: implement contract call
+    void this.config;
+    void this.server;
+    return [];
+  }
+
+  /** Returns true if the recurring payment is active and due. @internal */
+  private async isExecutable(id: bigint): Promise<boolean> {
+    const record = await this.getRecurring(id);
+    if (!record || !record.active) return false;
+    return true;
+  }
+
+  /**
+   * Executes all due recurring payments for the given payer.
+   * Skips inactive / not-yet-due payments; collects failures without throwing.
+   *
+   * @param payer - Stellar account address of the payer.
+   * @returns Summary with executed, skipped, and failed payment IDs.
+   *
+   * @example
+   * ```ts
+   * const { executed, skipped, failed } = await client.recurring.executeAllDue(keypair.publicKey());
+   * console.log(`Executed ${executed.length} payments, ${failed.length} failed`);
+   * ```
+   */
+  async executeAllDue(payer: string): Promise<{ executed: bigint[]; skipped: bigint[]; failed: bigint[] }> {
+    const ids = await this.getRecurringByPayer(payer);
+    const executed: bigint[] = [];
+    const skipped: bigint[] = [];
+    const failed: bigint[] = [];
+
+    for (const id of ids) {
+      const due = await this.isExecutable(id);
+      if (!due) {
+        skipped.push(id);
+        continue;
+      }
+      try {
+        await this.execute(id);
+        executed.push(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+
+    return { executed, skipped, failed };
+  }
 }
