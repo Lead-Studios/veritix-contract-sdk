@@ -202,6 +202,14 @@ export class VeriTixClient extends EventEmitter {
     return this.connected;
   }
 
+  /**
+   * Returns `true` when no `Keypair` was supplied — write operations will
+   * throw `VeriTixError` with code `READ_ONLY_CLIENT`.
+   */
+  isReadOnly(): boolean {
+    return !this.keypair;
+  }
+
   // -------------------------------------------------------------------------
   // Simulation  (#77)
   // -------------------------------------------------------------------------

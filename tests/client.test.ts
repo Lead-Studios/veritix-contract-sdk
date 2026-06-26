@@ -144,4 +144,21 @@ describe('VeriTixClient', () => {
       expect(mockServer.getLatestLedger).toHaveBeenCalledTimes(1);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // isReadOnly() — issue #76
+  // -------------------------------------------------------------------------
+
+  describe('isReadOnly()', () => {
+    it('returns true when no keypair provided', () => {
+      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+      expect(c.isReadOnly()).toBe(true);
+    });
+
+    it('returns false when a keypair is provided', () => {
+      const { Keypair: KP } = require('@stellar/stellar-sdk');
+      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID), KP.random());
+      expect(c.isReadOnly()).toBe(false);
+    });
+  });
 });
