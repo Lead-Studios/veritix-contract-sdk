@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module modules/batch
  * Batch operations exposed by the VeriTix Soroban contract.
  *
@@ -6,16 +6,19 @@
  * invocation to reduce transaction overhead and fees.
  */
 
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
+import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { addressToScVal } from '../utils/scval';
+
+const FREEZE_BATCH_MAX = 50;
 
 /**
  * A single mint instruction within a batch.
  */
 export interface BatchMintEntry {
-  /** Recipient Stellar account address */
   to: string;
-  /** Amount to mint (in stroops) */
   amount: bigint;
 }
 
@@ -23,11 +26,8 @@ export interface BatchMintEntry {
  * A single transfer instruction within a batch.
  */
 export interface BatchTransferEntry {
-  /** Sender Stellar account address */
   from: string;
-  /** Recipient Stellar account address */
   to: string;
-  /** Amount to transfer (in stroops) */
   amount: bigint;
 }
 
@@ -49,64 +49,91 @@ export class BatchModule {
   }
 
   // -------------------------------------------------------------------------
+  // Internal helpers
+  // -------------------------------------------------------------------------
+
+  private async writeCall(method: string, args: xdr.ScVal[]): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.AdminUnauthorized,
+        'A Keypair with admin rights is required for this operation.',
+      );
+    }
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
+    const { transaction } = await simulateTransaction(this.server, tx);
+    return submitTransaction(this.server, transaction, this.keypair);
+  }
+
+  // -------------------------------------------------------------------------
   // Batch operations
   // -------------------------------------------------------------------------
 
-  /**
-   * Mints tokens to multiple recipients in a single contract invocation.
-   * Caller must be the contract admin.
-   *
-   * @param entries - Array of {@link BatchMintEntry} instructions.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
-   *
-   * @example
-   * ```ts
-   * await client.batch.mintBatch([
-   *   { to: 'GABC…', amount: 1_000_000n },
-   *   { to: 'GXYZ…', amount: 2_000_000n },
-   * ]);
-   * ```
-   */
   async mintBatch(_entries: BatchMintEntry[]): Promise<TransactionResult> {
-    // TODO: implement
     void this.config;
     void this.server;
     void this.keypair;
     throw new Error('BatchModule.mintBatch: not implemented');
   }
 
-  /**
-   * Executes multiple token transfers in a single contract invocation.
-   * Each transfer is independently authorised; if any fails the entire
-   * batch reverts.
-   *
-   * @param entries - Array of {@link BatchTransferEntry} instructions.
-   * @returns A {@link TransactionResult} on success.
-   *
-   * @example
-   * ```ts
-   * await client.batch.transferBatch([
-   *   { from: 'GABC…', to: 'G111…', amount: 500_000n },
-   *   { from: 'GABC…', to: 'G222…', amount: 500_000n },
-   * ]);
-   * ```
-   */
   async transferBatch(_entries: BatchTransferEntry[]): Promise<TransactionResult> {
-    // TODO: implement
     throw new Error('BatchModule.transferBatch: not implemented');
   }
 
   /**
-   * Freezes multiple accounts in a single contract invocation.
+   * Freezes multiple Stellar accounts in a single contract invocation.
+   * Prevents frozen accounts from sending or receiving tokens via this contract.
    * Caller must be the contract admin.
    *
-   * @param addresses - Array of Stellar account addresses to freeze.
+   * @param addresses - Array of Stellar account addresses to freeze (max 50).
    * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if no admin Keypair provided.
+   * @throws {VeriTixError} With code `BATCH_TOO_LARGE` if more than 50 addresses.
+   * @throws Error if the addresses array is empty.
+   *
+   * @example
+   * ```ts
+   * await client.batch.freezeBatch(['GABC...', 'GXYZ...']);
+   * ```
    */
-  async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('BatchModule.freezeBatch: not implemented');
+  async freezeBatch(addresses: string[]): Promise<TransactionResult> {
+    if (addresses.length === 0) throw new Error('BatchModule.freezeBatch: addresses array must not be empty');
+    if (addresses.length > FREEZE_BATCH_MAX) {
+      throw new VeriTixError(VeriTixErrorCode.BatchTooLarge, `freezeBatch supports at most ${FREEZE_BATCH_MAX} addresses.`);
+    }
+    const addrsScVal = xdr.ScVal.scvVec(addresses.map((a) => addressToScVal(a)));
+    return this.writeCall('freeze_batch', [addrsScVal]);
+  }
+
+  /**
+   * Unfreezes multiple Stellar accounts in a single contract invocation.
+   * Restores the ability to send and receive tokens for the specified accounts.
+   * Caller must be the contract admin.
+   *
+   * @param addresses - Array of Stellar account addresses to unfreeze (max 50).
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if no admin Keypair provided.
+   * @throws {VeriTixError} With code `BATCH_TOO_LARGE` if more than 50 addresses.
+   * @throws Error if the addresses array is empty.
+   *
+   * @example
+   * ```ts
+   * await client.batch.unfreezeBatch(['GABC...', 'GXYZ...']);
+   * ```
+   */
+  async unfreezeBatch(addresses: string[]): Promise<TransactionResult> {
+    if (addresses.length === 0) throw new Error('BatchModule.unfreezeBatch: addresses array must not be empty');
+    if (addresses.length > FREEZE_BATCH_MAX) {
+      throw new VeriTixError(VeriTixErrorCode.BatchTooLarge, `unfreezeBatch supports at most ${FREEZE_BATCH_MAX} addresses.`);
+    }
+    const addrsScVal = xdr.ScVal.scvVec(addresses.map((a) => addressToScVal(a)));
+    return this.writeCall('unfreeze_batch', [addrsScVal]);
   }
 }
