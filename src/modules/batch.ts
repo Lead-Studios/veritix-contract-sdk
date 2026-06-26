@@ -104,6 +104,11 @@ export class BatchModule {
    * @param addresses - Array of Stellar account addresses to freeze.
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.batch.freezeBatch(['GABC…', 'GXYZ…', 'GDEF…']);
+   * ```
    */
   async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
     // TODO: implement

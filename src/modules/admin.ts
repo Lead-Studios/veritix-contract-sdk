@@ -63,6 +63,11 @@ export class AdminModule {
    * @param address - Stellar account address to freeze.
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.freeze('GBAD…');
+   * ```
    */
   async freeze(_address: string): Promise<TransactionResult> {
     // TODO: implement
@@ -75,6 +80,11 @@ export class AdminModule {
    * @param address - Stellar account address to unfreeze.
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.unfreeze('GBAD…');
+   * ```
    */
   async unfreeze(_address: string): Promise<TransactionResult> {
     // TODO: implement
@@ -93,6 +103,11 @@ export class AdminModule {
    * @param amount - Amount to claw back (in stroops).
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.clawback('GBAD…', 5_000_000n);
+   * ```
    */
   async clawback(_from: string, _amount: bigint): Promise<TransactionResult> {
     // TODO: implement
@@ -109,6 +124,11 @@ export class AdminModule {
    *
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.pause();
+   * ```
    */
   async pause(): Promise<TransactionResult> {
     // TODO: implement
@@ -120,6 +140,11 @@ export class AdminModule {
    *
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.unpause();
+   * ```
    */
   async unpause(): Promise<TransactionResult> {
     // TODO: implement

@@ -68,8 +68,12 @@ export {
   getTestnetConfig,
   getMainnetConfig,
   getHorizonUrl,
+  ledgersFromNow,
+  ledgersFromDate,
+  ledgerToApproxDate,
   TESTNET_PASSPHRASE,
   MAINNET_PASSPHRASE,
+  LEDGER_CLOSE_SECONDS,
 } from './utils/network';
 
 // ---------------------------------------------------------------------------

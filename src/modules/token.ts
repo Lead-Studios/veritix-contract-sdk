@@ -114,6 +114,18 @@ export class TokenModule {
   // Read operations
   // -------------------------------------------------------------------------
 
+  /**
+   * Returns the token balance for an address.
+   *
+   * @param address - Stellar account address to query.
+   * @returns Balance in stroops (smallest denomination).
+   *
+   * @example
+   * ```ts
+   * const balance = await client.token.balance('GABC…');
+   * console.log('Balance (stroops):', balance.toString());
+   * ```
+   */
   async balance(address: string): Promise<bigint> {
     const result = await this.simulateRead('balance', [addressToScVal(address)]);
     return BigInt(result as bigint);
@@ -124,6 +136,12 @@ export class TokenModule {
    * Throws `BATCH_TOO_LARGE` if more than 100 addresses are supplied.
    *
    * @param addresses - Array of Stellar account addresses (max 100).
+   *
+   * @example
+   * ```ts
+   * const balances = await client.token.balanceOfBatch(['GABC…', 'GXYZ…']);
+   * balances.forEach((b, i) => console.log(`Address ${i}:`, b.toString()));
+   * ```
    */
   async balanceOfBatch(addresses: string[]): Promise<bigint[]> {
     if (addresses.length > 100) {
@@ -135,6 +153,19 @@ export class TokenModule {
     return Promise.all(addresses.map((addr) => this.balance(addr)));
   }
 
+  /**
+   * Returns the approved allowance the `spender` may spend on behalf of `owner`.
+   *
+   * @param owner   - Stellar account address of the token owner.
+   * @param spender - Stellar account address of the approved spender.
+   * @returns Approved amount in stroops.
+   *
+   * @example
+   * ```ts
+   * const allowed = await client.token.allowance('GABC…', 'GSPENDER…');
+   * console.log('Allowance:', allowed.toString());
+   * ```
+   */
   async allowance(owner: string, spender: string): Promise<bigint> {
     const dummyKeypair = Keypair.random();
     const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
@@ -176,28 +207,76 @@ export class TokenModule {
     }
   }
 
+  /**
+   * Returns the token name.
+   *
+   * @example
+   * ```ts
+   * const tokenName = await client.token.name();
+   * console.log('Token name:', tokenName);
+   * ```
+   */
   async name(): Promise<string> {
     const result = await this.simulateRead('name', []);
     const str = result as Buffer | string;
     return Buffer.isBuffer(str) ? str.toString('utf8') : str;
   }
 
+  /**
+   * Returns the token ticker symbol.
+   *
+   * @example
+   * ```ts
+   * const sym = await client.token.symbol();
+   * console.log('Symbol:', sym); // e.g. "VTX"
+   * ```
+   */
   async symbol(): Promise<string> {
     const result = await this.simulateRead('symbol', []);
     const str = result as Buffer | string;
     return Buffer.isBuffer(str) ? str.toString('utf8') : str;
   }
 
+  /**
+   * Returns the number of decimal places used by the token.
+   *
+   * @example
+   * ```ts
+   * const dec = await client.token.decimals();
+   * console.log('Decimals:', dec); // typically 7
+   * ```
+   */
   async decimals(): Promise<number> {
     const result = await this.simulateRead('decimals', []);
     return result as number;
   }
 
+  /**
+   * Returns the total token supply in the smallest denomination (stroops).
+   *
+   * @example
+   * ```ts
+   * const supply = await client.token.totalSupply();
+   * console.log('Total supply (stroops):', supply.toString());
+   * ```
+   */
   async totalSupply(): Promise<bigint> {
     const result = await this.simulateRead('total_supply', []);
     return BigInt(result as bigint);
   }
 
+  /**
+   * Returns whether an account has been frozen by an admin.
+   *
+   * @param address - Stellar account address to check.
+   * @returns `true` if the account is frozen, `false` otherwise.
+   *
+   * @example
+   * ```ts
+   * const frozen = await client.token.isFrozen('GABC…');
+   * if (frozen) console.warn('Account is frozen');
+   * ```
+   */
   async isFrozen(address: string): Promise<boolean> {
     try {
       const result = await this.simulateRead('is_frozen', [
@@ -214,6 +293,17 @@ export class TokenModule {
   // Write operations
   // -------------------------------------------------------------------------
 
+  /**
+   * Mints new tokens to the given address. Caller must be admin.
+   *
+   * @param params - `{ to, amount }` where `amount` is in stroops.
+   * @returns A {@link TransactionResult} on success.
+   *
+   * @example
+   * ```ts
+   * await client.token.mint({ to: 'GABC…', amount: 10_000_000n }); // mint 1 XLM
+   * ```
+   */
   async mint(params: MintParams): Promise<TransactionResult> {
     return this.writeCall('mint', [
       addressToScVal(params.to),
@@ -221,6 +311,17 @@ export class TokenModule {
     ]);
   }
 
+  /**
+   * Burns tokens from the caller's own account.
+   *
+   * @param amount - Amount to burn in stroops. Must be > 0.
+   * @returns A {@link TransactionResult} on success.
+   *
+   * @example
+   * ```ts
+   * await client.token.burn(5_000_000n); // burn 0.5 XLM
+   * ```
+   */
   async burn(amount: bigint): Promise<TransactionResult> {
     if (amount <= 0n) {
       throw new VeriTixError(VeriTixErrorCode.InvalidAmount, 'burn: amount must be greater than 0');
@@ -237,6 +338,18 @@ export class TokenModule {
     ]);
   }
 
+  /**
+   * Burns tokens from `from`'s account using the caller's allowance.
+   *
+   * @param from   - Address to burn tokens from.
+   * @param amount - Amount to burn in stroops. Must be > 0.
+   * @returns A {@link TransactionResult} on success.
+   *
+   * @example
+   * ```ts
+   * await client.token.burnFrom('GABC…', 1_000_000n);
+   * ```
+   */
   async burnFrom(from: string, amount: bigint): Promise<TransactionResult> {
     if (amount <= 0n) {
       throw new VeriTixError(VeriTixErrorCode.InvalidAmount, 'burnFrom: amount must be greater than 0');
@@ -254,6 +367,17 @@ export class TokenModule {
     ]);
   }
 
+  /**
+   * Transfers tokens from `from` to `to`.
+   *
+   * @param params - `{ from, to, amount }`.
+   * @returns A {@link TransactionResult} on success.
+   *
+   * @example
+   * ```ts
+   * await client.token.transfer({ from: 'GABC…', to: 'GXYZ…', amount: 2_000_000n });
+   * ```
+   */
   async transfer(params: TransferParams): Promise<TransactionResult> {
     return this.writeCall('transfer', [
       addressToScVal(params.from),
@@ -292,6 +416,20 @@ export class TokenModule {
     ]);
   }
 
+  /**
+   * Transfers tokens from `from` to `to` using the caller's allowance.
+   *
+   * @param from   - Token owner address.
+   * @param to     - Recipient address.
+   * @param amount - Amount to transfer in stroops.
+   * @returns A {@link TransactionResult} on success.
+   *
+   * @example
+   * ```ts
+   * // Caller must have been approved via client.token.approve(...)
+   * await client.token.transferFrom('GOWNER…', 'GRECIPIENT…', 1_000_000n);
+   * ```
+   */
   async transferFrom(from: string, to: string, amount: bigint): Promise<TransactionResult> {
     if (!this.keypair) {
       throw new VeriTixError(
@@ -317,6 +455,22 @@ export class TokenModule {
     ]);
   }
 
+  /**
+   * Approves `spender` to spend up to `amount` tokens from `from`'s account.
+   *
+   * @param params - `{ from, spender, amount, expirationLedger }`.
+   * @returns A {@link TransactionResult} on success.
+   *
+   * @example
+   * ```ts
+   * await client.token.approve({
+   *   from: 'GABC…',
+   *   spender: 'GCONTRACT…',
+   *   amount: 10_000_000n,
+   *   expirationLedger: currentLedger + 17_280,
+   * });
+   * ```
+   */
   async approve(params: ApproveParams): Promise<TransactionResult> {
     return this.writeCall('approve', [
       addressToScVal(params.from),
