@@ -63,6 +63,12 @@ export enum VeriTixErrorCode {
   // — Token -----------------------------------------------------------------
   /** Transfer or mint amount must be greater than zero */
   InvalidAmount = 'INVALID_AMOUNT',
+  /** Expiry ledger is in the past or equals current ledger */
+  InvalidExpiryLedger = 'INVALID_EXPIRY_LEDGER',
+  /** Address provided is not a valid Stellar account address */
+  InvalidAddress = 'INVALID_ADDRESS',
+  /** Beneficiary must not be the same as the depositor */
+  InvalidBeneficiary = 'INVALID_BENEFICIARY',
 
   // — Catch-all and client-side validation --------------------------------
   /** Raw panic string could not be mapped to a known code */
@@ -240,6 +246,9 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.InsufficientBalance]:         'Account balance is insufficient for the requested operation.',
     [VeriTixErrorCode.Unauthorized]:                'Caller is not authorized to perform this operation.',
     [VeriTixErrorCode.InvalidAmount]:               'Amount must be greater than zero.',
+    [VeriTixErrorCode.InvalidExpiryLedger]:         'Expiry ledger must be greater than the current ledger.',
+    [VeriTixErrorCode.InvalidAddress]:              'Beneficiary is not a valid Stellar account address.',
+    [VeriTixErrorCode.InvalidBeneficiary]:          'Beneficiary must not be the same as the depositor.',
     [VeriTixErrorCode.Unknown]:                     `Unrecognised contract error: ${rawStr}`,
     [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
     [VeriTixErrorCode.BatchTooLarge]:               'Batch request exceeded maximum allowed size.',
