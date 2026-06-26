@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module modules/batch
  * Batch operations exposed by the VeriTix Soroban contract.
  *
@@ -6,16 +6,19 @@
  * invocation to reduce transaction overhead and fees.
  */
 
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Account, xdr, nativeToScVal } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
+import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { addressToScVal } from '../utils/scval';
+
+const CLAWBACK_BATCH_MAX = 50;
 
 /**
  * A single mint instruction within a batch.
  */
 export interface BatchMintEntry {
-  /** Recipient Stellar account address */
   to: string;
-  /** Amount to mint (in stroops) */
   amount: bigint;
 }
 
@@ -23,11 +26,18 @@ export interface BatchMintEntry {
  * A single transfer instruction within a batch.
  */
 export interface BatchTransferEntry {
-  /** Sender Stellar account address */
   from: string;
-  /** Recipient Stellar account address */
   to: string;
-  /** Amount to transfer (in stroops) */
+  amount: bigint;
+}
+
+/**
+ * A single clawback target in a {@link BatchModule.clawbackBatch} call.
+ */
+export interface BatchClawbackTarget {
+  /** Stellar account address to claw back tokens from */
+  address: string;
+  /** Amount to claw back (in stroops) */
   amount: bigint;
 }
 
@@ -49,64 +59,93 @@ export class BatchModule {
   }
 
   // -------------------------------------------------------------------------
+  // Internal helpers
+  // -------------------------------------------------------------------------
+
+  private async writeCall(method: string, args: xdr.ScVal[]): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.AdminUnauthorized,
+        'A Keypair with admin rights is required for this operation.',
+      );
+    }
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
+    const { transaction } = await simulateTransaction(this.server, tx);
+    return submitTransaction(this.server, transaction, this.keypair);
+  }
+
+  // -------------------------------------------------------------------------
   // Batch operations
   // -------------------------------------------------------------------------
 
-  /**
-   * Mints tokens to multiple recipients in a single contract invocation.
-   * Caller must be the contract admin.
-   *
-   * @param entries - Array of {@link BatchMintEntry} instructions.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
-   *
-   * @example
-   * ```ts
-   * await client.batch.mintBatch([
-   *   { to: 'GABC…', amount: 1_000_000n },
-   *   { to: 'GXYZ…', amount: 2_000_000n },
-   * ]);
-   * ```
-   */
   async mintBatch(_entries: BatchMintEntry[]): Promise<TransactionResult> {
-    // TODO: implement
     void this.config;
     void this.server;
     void this.keypair;
     throw new Error('BatchModule.mintBatch: not implemented');
   }
 
-  /**
-   * Executes multiple token transfers in a single contract invocation.
-   * Each transfer is independently authorised; if any fails the entire
-   * batch reverts.
-   *
-   * @param entries - Array of {@link BatchTransferEntry} instructions.
-   * @returns A {@link TransactionResult} on success.
-   *
-   * @example
-   * ```ts
-   * await client.batch.transferBatch([
-   *   { from: 'GABC…', to: 'G111…', amount: 500_000n },
-   *   { from: 'GABC…', to: 'G222…', amount: 500_000n },
-   * ]);
-   * ```
-   */
   async transferBatch(_entries: BatchTransferEntry[]): Promise<TransactionResult> {
-    // TODO: implement
     throw new Error('BatchModule.transferBatch: not implemented');
   }
 
+  async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
+    throw new Error('BatchModule.freezeBatch: not implemented');
+  }
+
   /**
-   * Freezes multiple accounts in a single contract invocation.
+   * Revokes (claws back) tokens from multiple accounts in a single contract
+   * invocation. Typically used after a scalping incident or regulatory action.
    * Caller must be the contract admin.
    *
-   * @param addresses - Array of Stellar account addresses to freeze.
+   * Validates that none of the target addresses is the contract ID itself,
+   * preventing accidental clawback from the contract's own token pool.
+   *
+   * @param targets - Array of {@link BatchClawbackTarget} entries (max 50).
    * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if no admin Keypair.
+   * @throws {VeriTixError} With code `BATCH_TOO_LARGE` if more than 50 targets.
+   * @throws Error if any target address equals the contract ID.
+   * @throws {VeriTixError} With code `INVALID_AMOUNT` if any amount is <= 0n.
+   *
+   * @example
+   * ```ts
+   * await client.batch.clawbackBatch([
+   *   { address: 'GABC...', amount: 1_000_000n },
+   *   { address: 'GXYZ...', amount: 500_000n },
+   * ]);
+   * ```
    */
-  async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('BatchModule.freezeBatch: not implemented');
+  async clawbackBatch(targets: BatchClawbackTarget[]): Promise<TransactionResult> {
+    if (targets.length === 0) throw new Error('BatchModule.clawbackBatch: targets array must not be empty');
+    if (targets.length > CLAWBACK_BATCH_MAX) {
+      throw new VeriTixError(VeriTixErrorCode.BatchTooLarge, `clawbackBatch supports at most ${CLAWBACK_BATCH_MAX} targets.`);
+    }
+    for (const t of targets) {
+      if (t.amount <= 0n) {
+        throw new VeriTixError(VeriTixErrorCode.InvalidAmount, 'Each clawback amount must be greater than zero.');
+      }
+      if (t.address === this.config.contractId) {
+        throw new Error(`BatchModule.clawbackBatch: target address must not be the contract address (${this.config.contractId}).`);
+      }
+    }
+
+    const entries = xdr.ScVal.scvVec(
+      targets.map((t) =>
+        xdr.ScVal.scvVec([
+          addressToScVal(t.address),
+          nativeToScVal(t.amount, { type: 'i128' }),
+        ]),
+      ),
+    );
+    return this.writeCall('clawback_batch', [entries]);
   }
 }
