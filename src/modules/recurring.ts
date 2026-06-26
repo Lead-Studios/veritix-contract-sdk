@@ -6,8 +6,12 @@
  * at a fixed interval measured in Stellar ledger count.
  */
 
-import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
-import type { NetworkConfig, RecurringRecord, TransactionResult } from '../types/index';
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
+import type { NetworkConfig, RecurringRecord, RecurringExecutionEntry, TransactionResult } from '../types/index';
+import { bigintToScVal } from '../utils/scval';
+import { buildContractCall } from '../utils/transaction';
+import { parseSorobanError } from '../utils/errors';
+import { parseRecurringExecutionEntry } from '../utils/parsers';
 
 /**
  * Parameters required to set up a new recurring payment.
@@ -109,6 +113,56 @@ export class RecurringModule {
   async cancel(_id: bigint): Promise<TransactionResult> {
     // TODO: implement
     throw new Error('RecurringModule.cancel: not implemented');
+  }
+
+  // -------------------------------------------------------------------------
+  // History
+  // -------------------------------------------------------------------------
+
+  /**
+   * Fetches the execution history for a recurring payment.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns Array of {@link RecurringExecutionEntry} records, ordered by most recent first.
+   *
+   * @example
+   * ```ts
+   * const history = await client.recurring.getRecurringHistory(1n);
+   * for (const entry of history) {
+   *   console.log(`Ledger ${entry.executedAtLedger}: ${entry.amount} stroops`);
+   * }
+   * ```
+   */
+  async getRecurringHistory(id: bigint): Promise<RecurringExecutionEntry[]> {
+    const dummyKeypair = Keypair.random();
+    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_recurring_history',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      return [];
+    }
+
+    if (returnValue.switch() !== xdr.ScValType.scvVec()) {
+      throw new Error('RecurringModule.getRecurringHistory: expected ScvVec result');
+    }
+
+    return (returnValue.vec() ?? []).map((item) => parseRecurringExecutionEntry(item));
   }
 
   // -------------------------------------------------------------------------
