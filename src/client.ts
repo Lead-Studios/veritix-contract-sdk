@@ -28,7 +28,7 @@
 
 import { SorobanRpc, Keypair, xdr } from '@stellar/stellar-sdk';
 
-import type { NetworkConfig, SimulationResult, ContractMetadata } from './types/index';
+import type { NetworkConfig, SimulationResult, ContractMetadata, WatchOptions, EscrowRecord } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { EventEmitter } from 'events';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
@@ -322,6 +322,50 @@ export class VeriTixClient extends EventEmitter {
       contractId: this.config.contractId,
       network: this.config.network,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // watchEscrow  (#153)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Polls `getEscrow(id)` at the given interval and yields the record each
+   * time `released` or `refunded` flips to `true`.
+   *
+   * Throws a `VeriTixError` with code `WATCH_TIMEOUT` if no state change is
+   * detected within `timeoutMs`.
+   *
+   * @param id      - Escrow ID to watch.
+   * @param options - {@link WatchOptions} (intervalMs, timeoutMs).
+   *
+   * @example
+   * ```ts
+   * for await (const record of client.watchEscrow(1n)) {
+   *   console.log('Escrow settled:', record);
+   *   break;
+   * }
+   * ```
+   */
+  async *watchEscrow(id: bigint, options?: WatchOptions): AsyncIterableIterator<EscrowRecord> {
+    const intervalMs = options?.intervalMs ?? 3_000;
+    const timeoutMs = options?.timeoutMs ?? 60_000;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const record = await this.escrow.getEscrow(id);
+      if (record && (record.released || record.refunded)) {
+        yield record;
+        return;
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(intervalMs, remaining)));
+    }
+
+    throw new VeriTixError(
+      VeriTixErrorCode.WatchTimeout,
+      `watchEscrow timed out after ${timeoutMs}ms waiting for escrow ${id} to settle`,
+    );
   }
 
   // -------------------------------------------------------------------------
