@@ -10,7 +10,7 @@ import { SorobanRpc, Keypair, Account, xdr, nativeToScVal } from '@stellar/stell
 import type { NetworkConfig, TransactionResult } from '../types/index';
 import { addressToScVal } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
-import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 const MINT_BATCH_MAX = 50;
 const APPROVE_BATCH_MAX = 20;
