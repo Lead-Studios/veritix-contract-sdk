@@ -58,6 +58,11 @@ export enum VeriTixErrorCode {
   /** The target account has been frozen */
   AccountFrozen = 'ACCOUNT_FROZEN',
   /** The contract is currently paused */
+  ContractAlreadyPaused = 'CONTRACT_ALREADY_PAUSED',
+  /** unpause() was called but the contract is not currently paused */
+  ContractNotPaused = 'CONTRACT_NOT_PAUSED',
+
+  /** The contract is currently paused */
   ContractPaused = 'CONTRACT_PAUSED',
 
   // — Token -----------------------------------------------------------------
@@ -85,6 +90,8 @@ export enum VeriTixErrorCode {
   WatchTimeout = 'WATCH_TIMEOUT',
   /** Transaction was rejected by the network */
   TransactionFailed = 'TRANSACTION_FAILED',
+  /** watchEscrow timed out before the escrow settled */
+  WatchTimeout = 'WATCH_TIMEOUT',
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +169,8 @@ const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
   // Admin
   ['admin unauthorized',      VeriTixErrorCode.AdminUnauthorized],
   ['account frozen',          VeriTixErrorCode.AccountFrozen],
+  ['already paused',          VeriTixErrorCode.ContractAlreadyPaused],
+  ['not paused',              VeriTixErrorCode.ContractNotPaused],
   ['contract paused',         VeriTixErrorCode.ContractPaused],
 
   // Token / balance — must come after the more-specific "escrow unauthorized"
@@ -242,6 +251,8 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.AdminUnauthorized]:           'Caller is not the contract administrator.',
     [VeriTixErrorCode.AccountFrozen]:               'Target account is frozen and cannot transact.',
     [VeriTixErrorCode.ContractPaused]:              'Contract is currently paused by the administrator.',
+    [VeriTixErrorCode.ContractAlreadyPaused]:       'Contract is already paused — call unpause() first.',
+    [VeriTixErrorCode.ContractNotPaused]:           'Contract is not currently paused — nothing to unpause.',
     [VeriTixErrorCode.InsufficientAllowance]:       'Spender allowance is insufficient for the requested transfer amount.',
     [VeriTixErrorCode.InsufficientBalance]:         'Account balance is insufficient for the requested operation.',
     [VeriTixErrorCode.Unauthorized]:                'Caller is not authorized to perform this operation.',
@@ -253,6 +264,7 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.InvalidAddress]:              'Supplied address is not a valid Stellar Ed25519 public key.',
     [VeriTixErrorCode.WatchTimeout]:                'watchTransaction() timed out before the transaction was confirmed.',
     [VeriTixErrorCode.TransactionFailed]:           'Transaction was rejected by the Stellar network.',
+    [VeriTixErrorCode.WatchTimeout]:                'watchEscrow timed out before the escrow settled.',
   };
   return messages[code];
 }
