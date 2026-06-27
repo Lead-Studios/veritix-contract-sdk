@@ -31,6 +31,9 @@ export {
   scValToNumber,
 } from './scval';
 
+// XLM / stroop formatting helpers
+export { stroopsToXLM, xlmToStroops, formatXLM } from './format';
+
 // XDR struct parsers
 export {
   parseEscrowRecord,

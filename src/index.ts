@@ -33,6 +33,7 @@ export type {
   DisputeRecord,
   RecurringRecord,
   TransactionResult,
+  WatchOptions,
 } from './types/index';
 
 export { DisputeStatus } from './types/index';
@@ -75,6 +76,11 @@ export {
   MAINNET_PASSPHRASE,
   LEDGER_CLOSE_SECONDS,
 } from './utils/network';
+
+// ---------------------------------------------------------------------------
+// Format helpers
+// ---------------------------------------------------------------------------
+export { stroopsToXLM, xlmToStroops, formatXLM } from './utils/format';
 
 // ---------------------------------------------------------------------------
 // Transaction helpers (for advanced / custom use)
