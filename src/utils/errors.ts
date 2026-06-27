@@ -58,6 +58,11 @@ export enum VeriTixErrorCode {
   /** The target account has been frozen */
   AccountFrozen = 'ACCOUNT_FROZEN',
   /** The contract is currently paused */
+  ContractAlreadyPaused = 'CONTRACT_ALREADY_PAUSED',
+  /** unpause() was called but the contract is not currently paused */
+  ContractNotPaused = 'CONTRACT_NOT_PAUSED',
+
+  /** The contract is currently paused */
   ContractPaused = 'CONTRACT_PAUSED',
 
   // — Token -----------------------------------------------------------------
@@ -156,6 +161,8 @@ const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
   // Admin
   ['admin unauthorized',      VeriTixErrorCode.AdminUnauthorized],
   ['account frozen',          VeriTixErrorCode.AccountFrozen],
+  ['already paused',          VeriTixErrorCode.ContractAlreadyPaused],
+  ['not paused',              VeriTixErrorCode.ContractNotPaused],
   ['contract paused',         VeriTixErrorCode.ContractPaused],
 
   // Token / balance — must come after the more-specific "escrow unauthorized"
@@ -236,6 +243,8 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.AdminUnauthorized]:           'Caller is not the contract administrator.',
     [VeriTixErrorCode.AccountFrozen]:               'Target account is frozen and cannot transact.',
     [VeriTixErrorCode.ContractPaused]:              'Contract is currently paused by the administrator.',
+    [VeriTixErrorCode.ContractAlreadyPaused]:       'Contract is already paused — call unpause() first.',
+    [VeriTixErrorCode.ContractNotPaused]:           'Contract is not currently paused — nothing to unpause.',
     [VeriTixErrorCode.InsufficientAllowance]:       'Spender allowance is insufficient for the requested transfer amount.',
     [VeriTixErrorCode.InsufficientBalance]:         'Account balance is insufficient for the requested operation.',
     [VeriTixErrorCode.Unauthorized]:                'Caller is not authorized to perform this operation.',
