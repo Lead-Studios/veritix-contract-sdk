@@ -13,6 +13,8 @@ export {
   getHorizonUrl,
   TESTNET_PASSPHRASE,
   MAINNET_PASSPHRASE,
+  isValidStellarAddress,
+  assertValidAddress,
 } from './network';
 
 // ScVal conversion helpers
