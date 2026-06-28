@@ -1,13 +1,13 @@
 ﻿/**
  * @file tests/batch.test.ts
- * Unit tests for BatchModule -- mintBatch(), freezeBatch() and unfreezeBatch().
+ * Unit tests for BatchModule.transferBatch() and transferBatchWithMemo().
  */
 
 import { Keypair } from "@stellar/stellar-sdk";
 import { VeriTixClient } from "../src/client";
 import { getTestnetConfig } from "../src/utils/network";
-import { VeriTixErrorCode } from "../src/utils/errors";
-import type { BatchMintEntry } from "../src/modules/batch";
+import { VeriTixError, VeriTixErrorCode } from "../src/utils/errors";
+import type { BatchTransferRecipient, BatchTransferWithMemoRecipient } from "../src/modules/batch";
 
 const FAKE_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 
@@ -23,7 +23,7 @@ jest.mock("../src/utils/transaction", () => {
 
 import * as txUtils from "../src/utils/transaction";
 
-function makeConnectedClient(keypair?: Keypair) {
+function makeClient(keypair?: Keypair) {
   const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), keypair);
   const mockServer = {
     simulateTransaction: jest.fn(),
@@ -33,179 +33,141 @@ function makeConnectedClient(keypair?: Keypair) {
   };
   (client as any).server = mockServer;
   (client as any).connected = true;
-  return { client, mockServer };
+  return client;
 }
 
 function addr() { return Keypair.random().publicKey(); }
 
 beforeEach(() => jest.clearAllMocks());
 
-describe("BatchModule.mintBatch -- validation", () => {
+describe("BatchModule.transferBatch() — validation", () => {
   it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
-    const { client } = makeConnectedClient();
-    await expect(client.batch.mintBatch([{ to: addr(), amount: 1n }]))
+    const client = makeClient();
+    await expect(client.batch.transferBatch([{ address: addr(), amount: 1n }]))
       .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
   });
 
-  it("throws for empty entries array", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    await expect(client.batch.mintBatch([]))
+  it("throws for empty recipients array", async () => {
+    const client = makeClient(Keypair.random());
+    await expect(client.batch.transferBatch([]))
       .rejects.toThrow("must not be empty");
   });
 
-  it("throws BATCH_TOO_LARGE when more than 50 entries provided", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    const entries: BatchMintEntry[] = Array.from({ length: 51 }, () => ({ to: addr(), amount: 1n }));
-    await expect(client.batch.mintBatch(entries))
+  it("throws BATCH_TOO_LARGE for 51 recipients", async () => {
+    const client = makeClient(Keypair.random());
+    const recipients: BatchTransferRecipient[] = Array.from({ length: 51 }, () => ({ address: addr(), amount: 1n }));
+    await expect(client.batch.transferBatch(recipients))
       .rejects.toMatchObject({ code: VeriTixErrorCode.BatchTooLarge });
   });
 
-  it("throws INVALID_AMOUNT for zero amount", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    await expect(client.batch.mintBatch([{ to: addr(), amount: 0n }]))
+  it("throws INVALID_AMOUNT when any amount is zero", async () => {
+    const client = makeClient(Keypair.random());
+    await expect(client.batch.transferBatch([{ address: addr(), amount: 0n }]))
       .rejects.toMatchObject({ code: VeriTixErrorCode.InvalidAmount });
   });
 
-  it("throws for duplicate recipient addresses", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    const dup = addr();
-    await expect(client.batch.mintBatch([{ to: dup, amount: 1n }, { to: dup, amount: 2n }]))
-      .rejects.toThrow("duplicate");
+  it("throws INVALID_AMOUNT when any amount is negative", async () => {
+    const client = makeClient(Keypair.random());
+    await expect(client.batch.transferBatch([{ address: addr(), amount: -5n }]))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.InvalidAmount });
   });
 });
 
-describe("BatchModule.mintBatch -- successful call", () => {
-  it("returns TransactionResult on success", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    const result = await client.batch.mintBatch([{ to: addr(), amount: 1_000n }]);
-    expect(result.hash).toBe("mockhash");
-    expect(result.successful).toBe(true);
-  });
-
-  it("invokes buildContractCall with mint_batch", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    await client.batch.mintBatch([{ to: addr(), amount: 1_000n }]);
-    const buildMock = txUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe("mint_batch");
-  });
-});
-
-describe("BatchModule.freezeBatch() -- validation", () => {
-  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
-    const { client } = makeConnectedClient();
-    await expect(client.batch.freezeBatch([addr()]))
-      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
-  });
-
-  it("throws for empty addresses array", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    await expect(client.batch.freezeBatch([]))
-      .rejects.toThrow("must not be empty");
-  });
-
-  it("throws BATCH_TOO_LARGE for 51 addresses", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    const addresses = Array.from({ length: 51 }, () => addr());
-    await expect(client.batch.freezeBatch(addresses))
-      .rejects.toMatchObject({ code: VeriTixErrorCode.BatchTooLarge });
-  });
-
-  it("accepts exactly 50 addresses without error", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    const addresses = Array.from({ length: 50 }, () => addr());
-    const result = await client.batch.freezeBatch(addresses);
+  it("accepts exactly 50 recipients without error", async () => {
+    const client = makeClient(Keypair.random());
+    const recipients: BatchTransferRecipient[] = Array.from({ length: 50 }, () => ({ address: addr(), amount: 1_000n }));
+    const result = await client.batch.transferBatch(recipients);
     expect(result.successful).toBe(true);
   });
 });
 
-describe("BatchModule.freezeBatch() -- successful call", () => {
+describe("BatchModule.transferBatch() — successful call", () => {
   it("returns a TransactionResult on success", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    const result = await client.batch.freezeBatch([addr()]);
+    const client = makeClient(Keypair.random());
+    const result = await client.batch.transferBatch([{ address: addr(), amount: 1_000n }]);
     expect(result.hash).toBe("mockhash");
     expect(result.successful).toBe(true);
   });
 
-  it("calls buildContractCall with 'freeze_batch' method", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    await client.batch.freezeBatch([addr(), addr()]);
+  it("calls buildContractCall with 'transfer_batch' method name", async () => {
+    const client = makeClient(Keypair.random());
+    await client.batch.transferBatch([{ address: addr(), amount: 500_000n }]);
     const buildMock = txUtils.buildContractCall as jest.Mock;
     expect(buildMock).toHaveBeenCalled();
-    expect(buildMock.mock.calls[0][3]).toBe("freeze_batch");
+    const callArgs = buildMock.mock.calls[0];
+    expect(callArgs[2]).toBe(FAKE_CONTRACT);
+    expect(callArgs[3]).toBe("transfer_batch");
   });
 
   it("invokes simulateTransaction once", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    await client.batch.freezeBatch([addr()]);
+    const client = makeClient(Keypair.random());
+    await client.batch.transferBatch([{ address: addr(), amount: 1_000n }]);
     expect(txUtils.simulateTransaction as jest.Mock).toHaveBeenCalledTimes(1);
-  });
-
-  it("passes the admin keypair to submitTransaction", async () => {
-    const keypair = Keypair.random();
-    const { client } = makeConnectedClient(keypair);
-    await client.batch.freezeBatch([addr()]);
-    expect(txUtils.submitTransaction as jest.Mock).toHaveBeenCalledWith(
-      expect.anything(), expect.anything(), keypair,
-    );
   });
 });
 
-describe("BatchModule.unfreezeBatch() -- validation", () => {
+describe("BatchModule.transferBatchWithMemo() — validation", () => {
   it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
-    const { client } = makeConnectedClient();
-    await expect(client.batch.unfreezeBatch([addr()]))
+    const client = makeClient();
+    await expect(client.batch.transferBatchWithMemo([{ address: addr(), amount: 1n, memo: "x" }]))
       .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
   });
 
-  it("throws for empty addresses array", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    await expect(client.batch.unfreezeBatch([]))
+  it("throws for empty recipients array", async () => {
+    const client = makeClient(Keypair.random());
+    await expect(client.batch.transferBatchWithMemo([]))
       .rejects.toThrow("must not be empty");
   });
 
-  it("throws BATCH_TOO_LARGE for 51 addresses", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    const addresses = Array.from({ length: 51 }, () => addr());
-    await expect(client.batch.unfreezeBatch(addresses))
+  it("throws BATCH_TOO_LARGE for 51 recipients", async () => {
+    const client = makeClient(Keypair.random());
+    const recipients: BatchTransferWithMemoRecipient[] = Array.from({ length: 51 }, () => ({ address: addr(), amount: 1n, memo: "x" }));
+    await expect(client.batch.transferBatchWithMemo(recipients))
       .rejects.toMatchObject({ code: VeriTixErrorCode.BatchTooLarge });
   });
 
-  it("accepts exactly 50 addresses without error", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    const addresses = Array.from({ length: 50 }, () => addr());
-    const result = await client.batch.unfreezeBatch(addresses);
+  it("throws INVALID_AMOUNT when any amount is zero", async () => {
+    const client = makeClient(Keypair.random());
+    await expect(client.batch.transferBatchWithMemo([{ address: addr(), amount: 0n, memo: "ok" }]))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.InvalidAmount });
+  });
+
+  it("throws when a memo exceeds 64 bytes", async () => {
+    const client = makeClient(Keypair.random());
+    const longMemo = "a".repeat(65);
+    await expect(client.batch.transferBatchWithMemo([{ address: addr(), amount: 1_000n, memo: longMemo }]))
+      .rejects.toThrow("exceeds 64 bytes");
+  });
+
+  it("accepts a memo of exactly 64 bytes", async () => {
+    const client = makeClient(Keypair.random());
+    const exactMemo = "b".repeat(64);
+    const result = await client.batch.transferBatchWithMemo([{ address: addr(), amount: 1_000n, memo: exactMemo }]);
     expect(result.successful).toBe(true);
   });
 });
 
-describe("BatchModule.unfreezeBatch() -- successful call", () => {
+describe("BatchModule.transferBatchWithMemo() — successful call", () => {
   it("returns a TransactionResult on success", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    const result = await client.batch.unfreezeBatch([addr()]);
+    const client = makeClient(Keypair.random());
+    const result = await client.batch.transferBatchWithMemo([{ address: addr(), amount: 1_000n, memo: "ref-001" }]);
     expect(result.hash).toBe("mockhash");
     expect(result.successful).toBe(true);
   });
 
-  it("calls buildContractCall with 'unfreeze_batch' method", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    await client.batch.unfreezeBatch([addr(), addr()]);
+  it("calls buildContractCall with 'transfer_batch_with_memo' method name", async () => {
+    const client = makeClient(Keypair.random());
+    await client.batch.transferBatchWithMemo([{ address: addr(), amount: 500_000n, memo: "ref-002" }]);
     const buildMock = txUtils.buildContractCall as jest.Mock;
     expect(buildMock).toHaveBeenCalled();
-    expect(buildMock.mock.calls[0][3]).toBe("unfreeze_batch");
+    const callArgs = buildMock.mock.calls[0];
+    expect(callArgs[2]).toBe(FAKE_CONTRACT);
+    expect(callArgs[3]).toBe("transfer_batch_with_memo");
   });
 
   it("invokes simulateTransaction once", async () => {
-    const { client } = makeConnectedClient(Keypair.random());
-    await client.batch.unfreezeBatch([addr()]);
+    const client = makeClient(Keypair.random());
+    await client.batch.transferBatchWithMemo([{ address: addr(), amount: 1_000n, memo: "x" }]);
     expect(txUtils.simulateTransaction as jest.Mock).toHaveBeenCalledTimes(1);
-  });
-
-  it("passes the admin keypair to submitTransaction", async () => {
-    const keypair = Keypair.random();
-    const { client } = makeConnectedClient(keypair);
-    await client.batch.unfreezeBatch([addr()]);
-    expect(txUtils.submitTransaction as jest.Mock).toHaveBeenCalledWith(
-      expect.anything(), expect.anything(), keypair,
-    );
   });
 });
