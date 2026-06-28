@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module modules/batch
  * Batch operations exposed by the VeriTix Soroban contract.
  *
@@ -14,6 +14,7 @@ import { addressToScVal, stringToScVal } from '../utils/scval';
 
 const BATCH_MAX = 50;
 const MINT_BATCH_MAX = 50;
+const FREEZE_BATCH_MAX = 50;
 
 /**
  * A single mint instruction within a batch.

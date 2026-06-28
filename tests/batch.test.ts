@@ -71,6 +71,7 @@ describe("BatchModule.transferBatch() — validation", () => {
     await expect(client.batch.transferBatch([{ address: addr(), amount: -5n }]))
       .rejects.toMatchObject({ code: VeriTixErrorCode.InvalidAmount });
   });
+});
 
   it("accepts exactly 50 recipients without error", async () => {
     const client = makeClient(Keypair.random());
