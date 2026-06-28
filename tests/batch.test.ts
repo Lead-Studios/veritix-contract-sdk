@@ -10,6 +10,8 @@ import { VeriTixError, VeriTixErrorCode } from "../src/utils/errors";
 import type { BatchTransferRecipient, BatchTransferWithMemoRecipient } from "../src/modules/batch";
 
 const FAKE_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+const CURRENT_LEDGER = 1000;
+const FUTURE_LEDGER = CURRENT_LEDGER + 5_000;
 
 jest.mock("../src/utils/transaction", () => {
   const actual = jest.requireActual("../src/utils/transaction");
@@ -29,7 +31,7 @@ function makeClient(keypair?: Keypair) {
     simulateTransaction: jest.fn(),
     sendTransaction: jest.fn(),
     getTransaction: jest.fn(),
-    getLatestLedger: jest.fn().mockResolvedValue({ sequence: 100 }),
+    getLatestLedger: jest.fn().mockResolvedValue({ sequence: CURRENT_LEDGER }),
   };
   (client as any).server = mockServer;
   (client as any).connected = true;
@@ -37,9 +39,13 @@ function makeClient(keypair?: Keypair) {
 }
 
 function addr() { return Keypair.random().publicKey(); }
+function approval(expirationLedger = FUTURE_LEDGER): BatchApprovalEntry {
+  return { spender: addr(), amount: 1_000_000n, expirationLedger };
+}
 
 beforeEach(() => jest.clearAllMocks());
 
+describe("BatchModule.mintBatch -- validation", () => {
 describe("BatchModule.transferBatch() — validation", () => {
   it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
     const client = makeClient();

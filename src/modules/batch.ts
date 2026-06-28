@@ -254,6 +254,14 @@ export class BatchModule {
     throw new Error('BatchModule.freezeBatch: not implemented');
   }
 
+  async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
+    throw new Error('BatchModule.freezeBatch: not implemented');
+  }
+
+  async clawbackBatch(_targets: BatchClawbackTarget[]): Promise<TransactionResult> {
+    throw new Error('BatchModule.clawbackBatch: not implemented');
+  }
+
   /**
    * Freezes multiple accounts in a single contract invocation.
    */
