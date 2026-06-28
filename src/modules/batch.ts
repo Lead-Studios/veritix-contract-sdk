@@ -250,6 +250,10 @@ export class BatchModule {
     return this.writeCall('transfer_batch_with_memo', [entries]);
   }
 
+  async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
+    throw new Error('BatchModule.freezeBatch: not implemented');
+  }
+
   /**
    * Freezes multiple accounts in a single contract invocation.
    */
