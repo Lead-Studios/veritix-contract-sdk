@@ -239,6 +239,16 @@ export interface RevenueSplitParams {
 }
 
 /**
+ * Options for {@link VeriTixClient.watchEscrow}.
+ */
+export interface WatchOptions {
+  /** Polling interval in milliseconds (default 3000) */
+  intervalMs?: number;
+  /** Maximum time to wait for a state change in milliseconds (default 60000) */
+  timeoutMs?: number;
+}
+
+/**
  * Minimal representation of a submitted Stellar transaction result.
  */
 export interface TransactionResult {
