@@ -68,6 +68,12 @@ export enum VeriTixErrorCode {
   // — Token -----------------------------------------------------------------
   /** Transfer or mint amount must be greater than zero */
   InvalidAmount = 'INVALID_AMOUNT',
+  /** Expiry ledger is in the past or equals current ledger */
+  InvalidExpiryLedger = 'INVALID_EXPIRY_LEDGER',
+  /** Address provided is not a valid Stellar account address */
+  InvalidAddress = 'INVALID_ADDRESS',
+  /** Beneficiary must not be the same as the depositor */
+  InvalidBeneficiary = 'INVALID_BENEFICIARY',
 
   // — Catch-all and client-side validation --------------------------------
   /** Raw panic string could not be mapped to a known code */
@@ -84,6 +90,12 @@ export enum VeriTixErrorCode {
   BatchTooLarge = 'BATCH_TOO_LARGE',
   /** Client has no Keypair — write operations are not available */
   ReadOnlyClient = 'READ_ONLY_CLIENT',
+  /** Supplied address is not a valid Stellar Ed25519 public key */
+  InvalidAddress = 'INVALID_ADDRESS',
+  /** watchTransaction() timed out waiting for confirmation */
+  WatchTimeout = 'WATCH_TIMEOUT',
+  /** Transaction was rejected by the network */
+  TransactionFailed = 'TRANSACTION_FAILED',
   /** watchEscrow timed out before the escrow settled */
   WatchTimeout = 'WATCH_TIMEOUT',
 }
@@ -251,10 +263,16 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.InsufficientBalance]:         'Account balance is insufficient for the requested operation.',
     [VeriTixErrorCode.Unauthorized]:                'Caller is not authorized to perform this operation.',
     [VeriTixErrorCode.InvalidAmount]:               'Amount must be greater than zero.',
+    [VeriTixErrorCode.InvalidExpiryLedger]:         'Expiry ledger must be greater than the current ledger.',
+    [VeriTixErrorCode.InvalidAddress]:              'Beneficiary is not a valid Stellar account address.',
+    [VeriTixErrorCode.InvalidBeneficiary]:          'Beneficiary must not be the same as the depositor.',
     [VeriTixErrorCode.Unknown]:                     `Unrecognised contract error: ${rawStr}`,
     [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
     [VeriTixErrorCode.BatchTooLarge]:               'Batch request exceeded maximum allowed size.',
     [VeriTixErrorCode.ReadOnlyClient]:              'This client is read-only. Provide a Keypair to enable write operations.',
+    [VeriTixErrorCode.InvalidAddress]:              'Supplied address is not a valid Stellar Ed25519 public key.',
+    [VeriTixErrorCode.WatchTimeout]:                'watchTransaction() timed out before the transaction was confirmed.',
+    [VeriTixErrorCode.TransactionFailed]:           'Transaction was rejected by the Stellar network.',
     [VeriTixErrorCode.WatchTimeout]:                'watchEscrow timed out before the escrow settled.',
   };
   return messages[code];

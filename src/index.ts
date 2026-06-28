@@ -18,6 +18,7 @@
 // Client
 // ---------------------------------------------------------------------------
 export { VeriTixClient } from './client';
+export type { WatchOptions } from './client';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,6 +33,7 @@ export type {
   SplitRecipient,
   DisputeRecord,
   RecurringRecord,
+  RecurringExecutionEntry,
   TransactionResult,
   WatchOptions,
 } from './types/index';
@@ -75,6 +77,8 @@ export {
   TESTNET_PASSPHRASE,
   MAINNET_PASSPHRASE,
   LEDGER_CLOSE_SECONDS,
+  isValidStellarAddress,
+  assertValidAddress,
 } from './utils/network';
 
 // ---------------------------------------------------------------------------

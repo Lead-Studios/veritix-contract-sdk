@@ -13,6 +13,7 @@ import type {
   SplitRecipient,
   DisputeRecord,
   RecurringRecord,
+  RecurringExecutionEntry,
 } from '../types/index';
 import { DisputeStatus } from '../types/index';
 import {
@@ -178,6 +179,25 @@ export function parseRecurringRecord(val: xdr.ScVal): RecurringRecord {
     interval:           scValToNumber(getField(map, 'interval')),
     active:             scValToBoolean(getField(map, 'active')),
     lastChargedLedger:  scValToNumber(getField(map, 'last_charged_ledger')),
+  };
+}
+
+/**
+ * Parses a Soroban `ScVal` returned by a recurring-payment history view into
+ * a {@link RecurringExecutionEntry}.
+ *
+ * Expected ScvMap keys: `recurring_id`, `executed_at_ledger`, `amount`, `success`
+ *
+ * @throws {Error} if any required field is missing or has the wrong type.
+ */
+export function parseRecurringExecutionEntry(val: xdr.ScVal): RecurringExecutionEntry {
+  const map = scMapToRecord(val);
+
+  return {
+    recurringId:      scValToBigint(getField(map, 'recurring_id')),
+    executedAtLedger: scValToNumber(getField(map, 'executed_at_ledger')),
+    amount:           scValToBigint(getField(map, 'amount')),
+    success:          scValToBoolean(getField(map, 'success')),
   };
 }
 

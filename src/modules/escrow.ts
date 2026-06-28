@@ -259,12 +259,13 @@ export class EscrowModule {
     }
 
     if (params.amount <= 0n) {
-      throw new Error('EscrowModule.createEscrow: amount must be greater than zero');
+      throw new VeriTixError(VeriTixErrorCode.InvalidAmount, 'EscrowModule.createEscrow: amount must be greater than zero');
     }
 
     const currentLedger = (await this.server.getLatestLedger()).sequence;
     if (params.expiryLedger <= currentLedger) {
-      throw new Error(
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidExpiryLedger,
         'EscrowModule.createEscrow: expiryLedger must be greater than current ledger',
       );
     }
@@ -272,7 +273,11 @@ export class EscrowModule {
     try {
       new Address(params.beneficiary);
     } catch {
-      throw new Error('EscrowModule.createEscrow: beneficiary must be a valid Stellar address');
+      throw new VeriTixError(VeriTixErrorCode.InvalidAddress, 'EscrowModule.createEscrow: beneficiary must be a valid Stellar address');
+    }
+
+    if (params.beneficiary === this.keypair.publicKey()) {
+      throw new VeriTixError(VeriTixErrorCode.InvalidBeneficiary, 'EscrowModule.createEscrow: beneficiary must not be the same as the depositor');
     }
 
     const depositor = this.keypair.publicKey();

@@ -17,6 +17,8 @@ export {
   TESTNET_PASSPHRASE,
   MAINNET_PASSPHRASE,
   LEDGER_CLOSE_SECONDS,
+  isValidStellarAddress,
+  assertValidAddress,
 } from './network';
 
 // ScVal conversion helpers

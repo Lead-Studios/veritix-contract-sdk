@@ -6,7 +6,9 @@
  * directly to {@link VeriTixClient}.
  */
 
+import { StrKey } from '@stellar/stellar-sdk';
 import type { NetworkConfig, StellarNetwork } from '../types/index';
+import { VeriTixError, VeriTixErrorCode } from './errors';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -173,4 +175,29 @@ export function ledgerToApproxDate(ledger: number, currentLedger: number, curren
   const now = currentDate ?? new Date();
   const secondsDiff = (ledger - currentLedger) * LEDGER_CLOSE_SECONDS;
   return new Date(now.getTime() + secondsDiff * 1000);
+// Address validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns `true` if the given string is a valid Stellar Ed25519 public key
+ * (starts with `G`, 56 characters, passes StrKey validation).
+ */
+export function isValidStellarAddress(address: string): boolean {
+  return typeof address === 'string' && StrKey.isValidEd25519PublicKey(address);
+}
+
+/**
+ * Throws a {@link VeriTixError} with code `INVALID_ADDRESS` if the address
+ * is not a valid Stellar public key.
+ *
+ * @param address   - The address string to validate.
+ * @param fieldName - Human-readable field name used in the error message.
+ */
+export function assertValidAddress(address: string, fieldName: string): void {
+  if (!isValidStellarAddress(address)) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidAddress,
+      `${fieldName} is not a valid Stellar address: "${address}"`,
+    );
+  }
 }

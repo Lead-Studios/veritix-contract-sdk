@@ -12,6 +12,7 @@ import { SplitterModule } from '../src/modules/splitter';
 import { RecurringModule } from '../src/modules/recurring';
 import { AdminModule } from '../src/modules/admin';
 import { BatchModule } from '../src/modules/batch';
+import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
 
 const FAKE_CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
 
@@ -159,6 +160,67 @@ describe('VeriTixClient', () => {
       const { Keypair: KP } = require('@stellar/stellar-sdk');
       const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID), KP.random());
       expect(c.isReadOnly()).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // watchTransaction()
+  // -------------------------------------------------------------------------
+
+  describe('watchTransaction()', () => {
+    const FAKE_HASH = 'abc123def456';
+
+    function makeClientWithGetTransaction(responses: Array<{ status: string; ledger?: number }>) {
+      const { client: c } = makeConnectedClient();
+      let call = 0;
+      const mockServer = {
+        getLatestLedger: jest.fn().mockResolvedValue({ sequence: 100 }),
+        getTransaction: jest.fn().mockImplementation(() => {
+          const res = responses[Math.min(call, responses.length - 1)];
+          call++;
+          return Promise.resolve(res);
+        }),
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).server = mockServer;
+      return { c, mockServer };
+    }
+
+    it('throws if not connected', async () => {
+      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+      await expect(c.watchTransaction(FAKE_HASH)).rejects.toThrow('call connect()');
+    });
+
+    it('resolves with TransactionResult when status is SUCCESS', async () => {
+      const { c } = makeClientWithGetTransaction([{ status: 'SUCCESS', ledger: 200 }]);
+      const result = await c.watchTransaction(FAKE_HASH, { intervalMs: 0 });
+      expect(result.hash).toBe(FAKE_HASH);
+      expect(result.successful).toBe(true);
+      expect(result.ledger).toBe(200);
+    });
+
+    it('rejects with TRANSACTION_FAILED when status is FAILED', async () => {
+      const { c } = makeClientWithGetTransaction([{ status: 'FAILED' }]);
+      await expect(c.watchTransaction(FAKE_HASH, { intervalMs: 0 })).rejects.toMatchObject({
+        code: VeriTixErrorCode.TransactionFailed,
+      });
+    });
+
+    it('rejects with WATCH_TIMEOUT after timeoutMs', async () => {
+      // Always return NOT_FOUND to trigger timeout
+      const { c } = makeClientWithGetTransaction([{ status: 'NOT_FOUND' }]);
+      await expect(
+        c.watchTransaction(FAKE_HASH, { intervalMs: 1, timeoutMs: 5 }),
+      ).rejects.toMatchObject({ code: VeriTixErrorCode.WatchTimeout });
+    });
+
+    it('polls until SUCCESS after initial NOT_FOUND', async () => {
+      const { c } = makeClientWithGetTransaction([
+        { status: 'NOT_FOUND' },
+        { status: 'SUCCESS', ledger: 300 },
+      ]);
+      const result = await c.watchTransaction(FAKE_HASH, { intervalMs: 1, timeoutMs: 5_000 });
+      expect(result.successful).toBe(true);
     });
   });
 });

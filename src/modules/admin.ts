@@ -11,7 +11,7 @@ import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult, BatchSettlementResult } from '../types/index';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
-import { addressToScVal, bigintToScVal, stringToScVal } from '../utils/scval';
+import { addressToScVal, bigintToScVal, scValToString, stringToScVal } from '../utils/scval';
 
 /**
  * Handles all admin-level interactions with the VeriTix contract.
@@ -72,10 +72,6 @@ export class AdminModule {
     /* eslint-enable @typescript-eslint/no-explicit-any */
     if (SorobanRpc.Api.isSimulationError(result)) throw parseSorobanError(result.error);
     return result?.result?.retval ?? null;
-    const result = await this.server.simulateTransaction(tx);
-    if (SorobanRpc.Api.isSimulationError(result)) throw parseSorobanError(result.error);
-    if (SorobanRpc.Api.isSimulationSuccess(result) && result.result) return result.result.retval;
-    return null;
   }
 
   // -------------------------------------------------------------------------
@@ -96,44 +92,6 @@ export class AdminModule {
     void this.keypair;
     throw new Error('AdminModule.setAdmin: not implemented');
   }
-
-  /**
-   * Proposes a new admin via a two-step rotation — the proposed admin must
-   * subsequently call {@link acceptAdmin} to complete the transfer.
-   *
-   * @param newAdmin - Stellar account address of the proposed incoming admin.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not current admin.
-   */
-  async proposeAdmin(_newAdmin: string): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('AdminModule.proposeAdmin: not implemented');
-  }
-
-  /**
-   * Accepts a previously proposed admin rotation.
-   * Must be called by the address nominated in {@link proposeAdmin}.
-   *
-   * @returns A {@link TransactionResult} on success.
-   */
-  async acceptAdmin(): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('AdminModule.acceptAdmin: not implemented');
-  }
-
-  /**
-   * Returns the pending admin address if a rotation has been proposed.
-   *
-   * @returns The pending admin address, or `null` if no rotation is pending.
-   */
-  async getPendingAdmin(): Promise<string | null> {
-    // TODO: implement
-    throw new Error('AdminModule.getPendingAdmin: not implemented');
-  }
-
-  // -------------------------------------------------------------------------
-  // Account freeze / unfreeze
-  // -------------------------------------------------------------------------
 
   /**
    * Proposes a new admin via a safe two-step rotation.
@@ -220,7 +178,7 @@ export class AdminModule {
   // -------------------------------------------------------------------------
 
   /**
-   * Claws back (burns) tokens from an account — typically a frozen one.
+   * Claws back (burns) tokens from an account -- typically a frozen one.
    *
    * @param from   - Stellar account address to claw back from.
    * @param amount - Amount to claw back (in stroops).
@@ -241,41 +199,76 @@ export class AdminModule {
   // -------------------------------------------------------------------------
 
   /**
-   * Cancels an event by refunding all associated escrow IDs.
-   * Requires admin Keypair.
+   * Cancels an event by force-refunding all specified escrow IDs in chunks.
+   * Guards that the caller holds the admin Keypair.
+   *
+   * Escrow IDs are processed in batches of 50. Each batch is submitted as a
+   * separate "cancel_event" transaction. Partial failures are collected and
+   * returned without aborting remaining batches.
    *
    * @param escrowIds - Array of escrow IDs to cancel and refund.
-   * @returns A {@link BatchSettlementResult} with settled/failed counts and tx hashes.
+   * @returns A {@link BatchSettlementResult} with settled/failed counts and hashes.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if no admin Keypair provided.
+   * @throws Error if the escrowIds array is empty.
+   *
+   * @example
+   * ```ts
+   * const result = await client.admin.cancelEvent([1n, 2n, 3n]);
+   * console.log(`Cancelled ${result.settled}, failed: ${result.failed.length}`);
+   * ```
    */
-  async cancelEvent(_escrowIds: bigint[]): Promise<BatchSettlementResult> {
-    // TODO: implement
-    throw new Error('AdminModule.cancelEvent: not implemented');
+  async cancelEvent(escrowIds: bigint[]): Promise<BatchSettlementResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.AdminUnauthorized,
+        'Admin Keypair is required to cancel an event.',
+      );
+    }
+    if (escrowIds.length === 0) throw new Error('AdminModule.cancelEvent: escrowIds array must not be empty');
+
+    const CHUNK = 50;
+    const result: BatchSettlementResult = { settled: 0, failed: [], txHashes: [] };
+
+    for (let i = 0; i < escrowIds.length; i += CHUNK) {
+      const chunk = escrowIds.slice(i, i + CHUNK);
+      const idsScVal = xdr.ScVal.scvVec(chunk.map((id) => bigintToScVal(id, 'u64')));
+      try {
+        const txResult = await this.writeCall('cancel_event', [idsScVal]);
+        result.settled += chunk.length;
+        result.txHashes.push(txResult.hash);
+      } catch {
+        result.failed.push(...chunk);
+      }
+    }
+
+    return result;
   }
 
   /**
-   * Forces a manual refund for an escrow — for use when automated settlement fails.
+   * Forces a manual refund for a single escrow -- for use when automated
+   * settlement cannot proceed (e.g. organizer dispute, technical failure).
    *
    * @param escrowId - The escrow ID to force-refund.
-   * @param reason   - A human-readable reason string (encoded as on-chain bytes).
+   * @param reason   - Human-readable reason string (encoded as on-chain bytes).
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.manualRefund(42n, 'Organizer failed to deliver');
+   * ```
    */
-  async manualRefund(_escrowId: bigint, _reason: string): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('AdminModule.manualRefund: not implemented');
+  async manualRefund(escrowId: bigint, reason: string): Promise<TransactionResult> {
+    return this.writeCall('force_refund_escrow', [
+      bigintToScVal(escrowId, 'u64'),
+      stringToScVal(reason),
+    ]);
   }
 
   // -------------------------------------------------------------------------
   // Contract pause / unpause
   // -------------------------------------------------------------------------
 
-  async pause(): Promise<TransactionResult> {
-    throw new Error('AdminModule.pause: not implemented');
-  }
-
-  async unpause(): Promise<TransactionResult> {
-    throw new Error('AdminModule.unpause: not implemented');
   /**
    * Pauses the entire contract, blocking all non-admin transactions.
    * Use in emergencies (e.g. discovered vulnerability).

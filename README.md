@@ -11,6 +11,7 @@ The SDK wraps every contract entry-point in a typed, promise-based API so you ca
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
+- [Read-only Mode](#read-only-mode)
 - [Module Reference](#module-reference)
   - [token](#token)
   - [escrow](#escrow)
@@ -20,6 +21,7 @@ The SDK wraps every contract entry-point in a typed, promise-based API so you ca
   - [admin](#admin)
   - [batch](#batch)
 - [Error Handling](#error-handling)
+- [API Reference](#api-reference)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -43,7 +45,6 @@ import {
   VeriTixClient,
   getTestnetConfig,
   VeriTixError,
-  VeriTixErrorCode,
 } from '@veritix/contract-sdk';
 
 // 1. Build network config
@@ -56,13 +57,13 @@ const keypair = Keypair.fromSecret(process.env.STELLAR_SECRET_KEY!);
 const client = new VeriTixClient(config, keypair);
 await client.connect();
 
-// 4. Create an escrow
+// 4. Create a ticket escrow
 try {
   const result = await client.escrow.createEscrow({
     beneficiary: 'GABC…',
     amount: 10_000_000n,   // 1 XLM in stroops
     expiryLedger: 1_500_000,
-    memos: ['Order #42'],
+    memos: ['Ticket #42'],
   });
   console.log('Escrow created, tx hash:', result.hash);
 } catch (err) {
@@ -98,6 +99,26 @@ const custom: NetworkConfig = {
   rpcUrl: 'https://my-rpc-node.example.com',
   networkPassphrase: 'Test SDF Network ; September 2015',
 };
+```
+
+---
+
+## Read-only Mode
+
+Omit the `Keypair` to create a read-only client. All read operations work normally; write operations throw `VeriTixError` with code `READ_ONLY_CLIENT`.
+
+```ts
+// No keypair — read-only
+const client = new VeriTixClient(getTestnetConfig(process.env.CONTRACT_ID!));
+await client.connect();
+
+console.log(client.isReadOnly()); // true
+
+// Read operations work fine
+const escrow = await client.escrow.getEscrow(1n);
+
+// Write operations throw
+await client.escrow.releaseEscrow(1n); // ✗ throws VeriTixError READ_ONLY_CLIENT
 ```
 
 ---
@@ -154,6 +175,7 @@ Implements the SEP-41 token interface.
 | `execute(id)` | Executes a due charge |
 | `cancel(id)` | Cancels an active recurring payment |
 | `getRecurring(id)` | Fetches a `RecurringRecord` by ID |
+| `executeAllDue(payer)` | Executes all due payments for a payer, returns `{ executed, skipped, failed }` |
 
 ### admin
 
@@ -202,6 +224,20 @@ try {
 ```
 
 You can also call `parseSorobanError(rawError)` directly if you're working with the Stellar SDK at a lower level.
+
+---
+
+## API Reference
+
+Full TypeDoc-generated API documentation is published at:
+
+> **https://veritix.github.io/contract-sdk/**
+
+To generate docs locally:
+
+```bash
+npm run docs:generate
+```
 
 ---
 
