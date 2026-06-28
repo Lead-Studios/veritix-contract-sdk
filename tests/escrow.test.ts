@@ -934,3 +934,59 @@ describe('parseSorobanError', () => {
     expect(err.code).toBe(VeriTixErrorCode.ContractPaused);
   });
 });
+
+describe('EscrowModule.createEscrow — pre-flight VeriTixError validation', () => {
+  it('throws VeriTixError with INVALID_AMOUNT when amount is 0', async () => {
+    const { client } = makeConnectedClient(Keypair.random(), 100);
+    await expect(
+      client.escrow.createEscrow({ beneficiary: FAKE_ADDRESS, amount: 0n, expiryLedger: 101 }),
+    ).rejects.toMatchObject({ code: VeriTixErrorCode.InvalidAmount });
+  });
+
+  it('throws a VeriTixError instance (not generic Error) for amount = 0', async () => {
+    const { client } = makeConnectedClient(Keypair.random(), 100);
+    const err = await client.escrow
+      .createEscrow({ beneficiary: FAKE_ADDRESS, amount: 0n, expiryLedger: 101 })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(VeriTixError);
+  });
+
+  it('throws VeriTixError with INVALID_EXPIRY_LEDGER when expiryLedger <= currentLedger', async () => {
+    const { client } = makeConnectedClient(Keypair.random(), 100);
+    await expect(
+      client.escrow.createEscrow({ beneficiary: FAKE_ADDRESS, amount: 1_000_000n, expiryLedger: 100 }),
+    ).rejects.toMatchObject({ code: VeriTixErrorCode.InvalidExpiryLedger });
+  });
+
+  it('throws VeriTixError with INVALID_ADDRESS when beneficiary is malformed', async () => {
+    const { client } = makeConnectedClient(Keypair.random(), 100);
+    await expect(
+      client.escrow.createEscrow({ beneficiary: 'not-a-stellar-address', amount: 1_000_000n, expiryLedger: 101 }),
+    ).rejects.toMatchObject({ code: VeriTixErrorCode.InvalidAddress });
+  });
+
+  it('throws VeriTixError with INVALID_BENEFICIARY when beneficiary equals caller', async () => {
+    const keypair = Keypair.random();
+    const { client } = makeConnectedClient(keypair, 100);
+    await expect(
+      client.escrow.createEscrow({ beneficiary: keypair.publicKey(), amount: 1_000_000n, expiryLedger: 101 }),
+    ).rejects.toMatchObject({ code: VeriTixErrorCode.InvalidBeneficiary });
+  });
+
+  it('all pre-flight errors are VeriTixError instances, not generic Error', async () => {
+    const keypair = Keypair.random();
+    const { client } = makeConnectedClient(keypair, 100);
+
+    const cases: Array<Parameters<typeof client.escrow.createEscrow>[0]> = [
+      { beneficiary: FAKE_ADDRESS, amount: 0n, expiryLedger: 101 },
+      { beneficiary: FAKE_ADDRESS, amount: 1_000_000n, expiryLedger: 50 },
+      { beneficiary: 'bad-address', amount: 1_000_000n, expiryLedger: 101 },
+      { beneficiary: keypair.publicKey(), amount: 1_000_000n, expiryLedger: 101 },
+    ];
+
+    for (const params of cases) {
+      const err = await client.escrow.createEscrow(params).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(VeriTixError);
+    }
+  });
+});
