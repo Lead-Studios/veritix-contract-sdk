@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @module modules/batch
  * Batch operations exposed by the VeriTix Soroban contract.
  *
@@ -8,19 +8,19 @@
 
 import { SorobanRpc, Keypair, Account, xdr, nativeToScVal } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
-import { addressToScVal } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
-import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { addressToScVal, stringToScVal } from '../utils/scval';
 
+const BATCH_MAX = 50;
 const MINT_BATCH_MAX = 50;
+const FREEZE_BATCH_MAX = 50;
 
 /**
  * A single mint instruction within a batch.
  */
 export interface BatchMintEntry {
-  /** Recipient Stellar account address */
   to: string;
-  /** Amount to mint (in stroops) */
   amount: bigint;
 }
 
@@ -28,29 +28,69 @@ export interface BatchMintEntry {
  * A single transfer instruction within a batch.
  */
 export interface BatchTransferEntry {
-  /** Sender Stellar account address */
   from: string;
-  /** Recipient Stellar account address */
   to: string;
-  /** Amount to transfer (in stroops) */
   amount: bigint;
 }
 
 /**
- * Handles all batch-operation interactions with the VeriTix contract.
- *
- * Obtain an instance via {@link VeriTixClient.batch}.
+ * A single recipient in a {@link BatchModule.transferBatch} call.
  */
+export interface BatchTransferRecipient {
+  address: string;
+  amount: bigint;
+}
+
+/**
+ * A single recipient in a {@link BatchModule.transferBatchWithMemo} call.
+ */
+export interface BatchTransferWithMemoRecipient {
+  address: string;
+  amount: bigint;
+  memo: string;
+}
+
 export class BatchModule {
   private readonly config: NetworkConfig;
   private readonly server: SorobanRpc.Server;
   private readonly keypair: Keypair | undefined;
 
-  /** @internal */
   constructor(config: NetworkConfig, server: SorobanRpc.Server, keypair?: Keypair) {
     this.config = config;
     this.server = server;
     this.keypair = keypair;
+  }
+
+  // -------------------------------------------------------------------------
+  // Internal helpers
+  // -------------------------------------------------------------------------
+
+  private async writeCall(method: string, args: xdr.ScVal[]): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.AdminUnauthorized,
+        'A Keypair is required for this operation.',
+      );
+    }
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
+
+    const { transaction } = await simulateTransaction(this.server, tx);
+
+    try {
+      return await submitTransaction(this.server, transaction, this.keypair);
+    } catch (err) {
+      throw parseSorobanError(err);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -59,22 +99,6 @@ export class BatchModule {
 
   /**
    * Mints tokens to multiple recipients in a single contract invocation.
-   * Caller must be the contract admin.
-   *
-   * @param entries - Array of {@link BatchMintEntry} instructions (max 50).
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
-   * @throws {VeriTixError} With code `BATCH_TOO_LARGE` if more than 50 entries are provided.
-   * @throws {VeriTixError} With code `INVALID_AMOUNT` if any amount is <= 0n.
-   * @throws {Error} If duplicate recipient addresses are detected.
-   *
-   * @example
-   * ```ts
-   * await client.batch.mintBatch([
-   *   { to: 'GABC...', amount: 1_000_000n },
-   *   { to: 'GXYZ...', amount: 2_000_000n },
-   * ]);
-   * ```
    */
   async mintBatch(entries: BatchMintEntry[]): Promise<TransactionResult> {
     if (!this.keypair) {
@@ -136,42 +160,100 @@ export class BatchModule {
     );
 
     const { transaction } = await simulateTransaction(this.server, tx);
-    const result = await submitTransaction(this.server, transaction, this.keypair);
 
-    return result;
+    try {
+      return await submitTransaction(this.server, transaction, this.keypair);
+    } catch (err) {
+      throw parseSorobanError(err);
+    }
   }
 
   /**
-   * Executes multiple token transfers in a single contract invocation.
-   * Each transfer is independently authorised; if any fails the entire
-   * batch reverts.
-   *
-   * @param entries - Array of {@link BatchTransferEntry} instructions.
-   * @returns A {@link TransactionResult} on success.
-   *
-   * @example
-   * ```ts
-   * await client.batch.transferBatch([
-   *   { from: 'GABC...', to: 'G111...', amount: 500_000n },
-   *   { from: 'GABC...', to: 'G222...', amount: 500_000n },
-   * ]);
-   * ```
+   * Distributes tokens to multiple recipients.
    */
-  async transferBatch(_entries: BatchTransferEntry[]): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('BatchModule.transferBatch: not implemented');
+  async transferBatch(recipients: BatchTransferRecipient[]): Promise<TransactionResult> {
+    if (recipients.length === 0) {
+      throw new Error('BatchModule.transferBatch: recipients array must not be empty');
+    }
+
+    if (recipients.length > BATCH_MAX) {
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `transferBatch supports at most ${BATCH_MAX} recipients.`,
+      );
+    }
+
+    for (const r of recipients) {
+      if (r.amount <= 0n) {
+        throw new VeriTixError(
+          VeriTixErrorCode.InvalidAmount,
+          'Each transfer amount must be greater than zero.',
+        );
+      }
+    }
+
+    const entries = xdr.ScVal.scvVec(
+      recipients.map((r) =>
+        xdr.ScVal.scvVec([
+          addressToScVal(r.address),
+          nativeToScVal(r.amount, { type: 'i128' }),
+        ]),
+      ),
+    );
+
+    return this.writeCall('transfer_batch', [entries]);
+  }
+
+  /**
+   * Distributes tokens with individual memos.
+   */
+  async transferBatchWithMemo(
+    recipients: BatchTransferWithMemoRecipient[],
+  ): Promise<TransactionResult> {
+    if (recipients.length === 0) {
+      throw new Error('BatchModule.transferBatchWithMemo: recipients array must not be empty');
+    }
+
+    if (recipients.length > BATCH_MAX) {
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `transferBatchWithMemo supports at most ${BATCH_MAX} recipients.`,
+      );
+    }
+
+    for (const r of recipients) {
+      if (r.amount <= 0n) {
+        throw new VeriTixError(
+          VeriTixErrorCode.InvalidAmount,
+          'Each transfer amount must be greater than zero.',
+        );
+      }
+
+      const memoBytes = Buffer.byteLength(r.memo, 'utf8');
+      if (memoBytes > 64) {
+        throw new Error(
+          `BatchModule.transferBatchWithMemo: memo exceeds 64 bytes for ${r.address} (${memoBytes} bytes).`,
+        );
+      }
+    }
+
+    const entries = xdr.ScVal.scvVec(
+      recipients.map((r) =>
+        xdr.ScVal.scvVec([
+          addressToScVal(r.address),
+          nativeToScVal(r.amount, { type: 'i128' }),
+          stringToScVal(r.memo),
+        ]),
+      ),
+    );
+
+    return this.writeCall('transfer_batch_with_memo', [entries]);
   }
 
   /**
    * Freezes multiple accounts in a single contract invocation.
-   * Caller must be the contract admin.
-   *
-   * @param addresses - Array of Stellar account addresses to freeze.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
    */
   async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
-    // TODO: implement
     throw new Error('BatchModule.freezeBatch: not implemented');
   }
 }
