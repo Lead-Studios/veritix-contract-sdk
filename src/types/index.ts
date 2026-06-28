@@ -176,6 +176,21 @@ export interface DisputeRecord {
   openedAt: number;
 }
 
+/**
+ * On-chain record for a single recurring payment execution.
+ * Mirrors the `RecurringExecutionEntry` struct in the VeriTix contract.
+ */
+export interface RecurringExecutionEntry {
+  /** Numeric recurring-payment identifier */
+  recurringId: bigint;
+  /** Ledger sequence when this execution was triggered */
+  executedAtLedger: number;
+  /** Amount that was transferred (in stroops) */
+  amount: bigint;
+  /** Whether the execution was successful */
+  success: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Recurring payment
 // ---------------------------------------------------------------------------

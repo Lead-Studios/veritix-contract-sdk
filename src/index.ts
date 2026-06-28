@@ -32,6 +32,7 @@ export type {
   SplitRecipient,
   DisputeRecord,
   RecurringRecord,
+  RecurringExecutionEntry,
   TransactionResult,
   WatchOptions,
 } from './types/index';
