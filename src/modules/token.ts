@@ -266,6 +266,67 @@ export class TokenModule {
   }
 
   /**
+   * Returns the total number of token holders tracked on-chain.
+   *
+   * @returns Total number of holders (>= 0).
+   *
+   * @example
+   * ```ts
+   * const count = await client.token.totalHolders();
+   * console.log('Total holders:', count.toString());
+   * ```
+   */
+  async totalHolders(): Promise<bigint> {
+    const result = await this.simulateRead('total_holders', []);
+    if (result === null || result === undefined) return 0n;
+    return BigInt(result as bigint);
+  }
+
+  /**
+   * Returns a paginated slice of token holder addresses (0-indexed).
+   *
+   * @param offset - Zero-based index of the first holder to return (>= 0).
+   * @param limit  - Maximum number of holders to return (1 <= limit <= 100).
+   * @returns Array of Stellar account addresses, in ascending order.
+   *          Empty array when there are no holders in the requested range.
+   * @throws {VeriTixError} With code `InvalidAmount` if `offset` or `limit`
+   *         are not positive integers, or `BatchTooLarge` if `limit > 100`.
+   *
+   * @example
+   * ```ts
+   * // first 50 holders
+   * const page = await client.token.getHolders(0, 50);
+   * page.forEach((addr, i) => console.log(i, addr));
+   * ```
+   */
+  async getHolders(offset: number, limit: number): Promise<string[]> {
+    if (!Number.isInteger(offset) || offset < 0) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        `TokenModule.getHolders: offset must be a non-negative integer (got ${offset})`,
+      );
+    }
+    if (!Number.isInteger(limit) || limit <= 0) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        `TokenModule.getHolders: limit must be a positive integer (got ${limit})`,
+      );
+    }
+    if (limit > 100) {
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `TokenModule.getHolders: limit must be <= 100, got ${limit}`,
+      );
+    }
+    const result = await this.simulateRead('get_holders', [
+      nativeToScVal(BigInt(offset), { type: 'u32' }),
+      nativeToScVal(BigInt(limit), { type: 'u32' }),
+    ]);
+    if (!Array.isArray(result)) return [];
+    return (result as unknown[]).map((item) => String(item));
+  }
+
+  /**
    * Returns whether an account has been frozen by an admin.
    *
    * @param address - Stellar account address to check.
