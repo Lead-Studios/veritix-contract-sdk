@@ -100,6 +100,11 @@ export class AdminModule {
    *
    * @param newAdmin - Stellar account address of the proposed incoming admin.
    * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.freeze('GBAD…');
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not current admin.
    *
    * @example
@@ -117,6 +122,11 @@ export class AdminModule {
    * After this call the caller becomes the new contract admin.
    *
    * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.unfreeze('GBAD…');
    * @throws {VeriTixError} If no admin rotation is pending or caller is not the proposed admin.
    *
    * @example
@@ -174,6 +184,11 @@ export class AdminModule {
    * @param amount - Amount to claw back (in stroops).
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.clawback('GBAD…', 5_000_000n);
+   * ```
    */
   async clawback(_from: string, _amount: bigint): Promise<TransactionResult> {
     throw new Error('AdminModule.clawback: not implemented');
@@ -260,6 +275,11 @@ export class AdminModule {
    *
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.pause();
+   * ```
    * @throws {VeriTixError} With code `CONTRACT_ALREADY_PAUSED` if the contract is already paused.
    */
   async pause(): Promise<TransactionResult> {
@@ -271,6 +291,11 @@ export class AdminModule {
    *
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.unpause();
+   * ```
    * @throws {VeriTixError} With code `CONTRACT_NOT_PAUSED` if the contract is not currently paused.
    */
   async unpause(): Promise<TransactionResult> {

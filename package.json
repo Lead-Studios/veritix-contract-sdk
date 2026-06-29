@@ -17,6 +17,9 @@
     "README.md",
     "CONTRIBUTING.md"
   ],
+  "workspaces": [
+    "packages/*"
+  ],
   "publishConfig": {
     "access": "public"
   },

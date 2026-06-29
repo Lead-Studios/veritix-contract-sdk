@@ -33,6 +33,18 @@ const TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
 const MAINNET_HORIZON_URL = 'https://horizon.stellar.org';
 
 // ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+function assertContractId(contractId: unknown): asserts contractId is string {
+  if (typeof contractId !== 'string' || contractId.trim().length === 0) {
+    throw new TypeError(
+      `contractId must be a non-empty string, got: ${JSON.stringify(contractId)}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Config factories
 // ---------------------------------------------------------------------------
 
@@ -49,6 +61,7 @@ const MAINNET_HORIZON_URL = 'https://horizon.stellar.org';
  * ```
  */
 export function getTestnetConfig(contractId: string): NetworkConfig {
+  assertContractId(contractId);
   return {
     network: 'testnet',
     contractId,
@@ -70,6 +83,7 @@ export function getTestnetConfig(contractId: string): NetworkConfig {
  * ```
  */
 export function getMainnetConfig(contractId: string): NetworkConfig {
+  assertContractId(contractId);
   return {
     network: 'mainnet',
     contractId,
@@ -99,6 +113,68 @@ export function getHorizonUrl(network: StellarNetwork): string {
 }
 
 // ---------------------------------------------------------------------------
+// Ledger math helpers
+// ---------------------------------------------------------------------------
+
+/** Approximate seconds per Stellar ledger (target close time). */
+export const LEDGER_CLOSE_SECONDS = 5;
+
+/**
+ * Returns the ledger sequence number that will be reached approximately
+ * `seconds` from now, given the current ledger.
+ *
+ * @param seconds       - Number of seconds in the future.
+ * @param currentLedger - Current ledger sequence number.
+ * @returns Estimated future ledger sequence.
+ *
+ * @example
+ * ```ts
+ * const expiry = ledgersFromNow(3600, currentLedger); // ~1 hour from now
+ * await client.escrow.createEscrow({ ..., expiryLedger: expiry });
+ * ```
+ */
+export function ledgersFromNow(seconds: number, currentLedger: number): number {
+  return currentLedger + Math.ceil(seconds / LEDGER_CLOSE_SECONDS);
+}
+
+/**
+ * Converts a future `Date` to an approximate ledger sequence number.
+ *
+ * @param date          - The target future date.
+ * @param currentLedger - Current ledger sequence number.
+ * @param currentDate   - Reference date to measure from (defaults to `new Date()`).
+ * @returns Estimated ledger sequence for that date.
+ *
+ * @example
+ * ```ts
+ * const eventDate = new Date('2025-12-31T00:00:00Z');
+ * const expiryLedger = ledgersFromDate(eventDate, currentLedger);
+ * ```
+ */
+export function ledgersFromDate(date: Date, currentLedger: number, currentDate?: Date): number {
+  const now = currentDate ?? new Date();
+  const seconds = (date.getTime() - now.getTime()) / 1000;
+  return currentLedger + Math.ceil(seconds / LEDGER_CLOSE_SECONDS);
+}
+
+/**
+ * Converts a future ledger sequence number to an approximate `Date`.
+ *
+ * @param ledger        - The target ledger sequence number.
+ * @param currentLedger - Current ledger sequence number.
+ * @param currentDate   - Reference date to measure from (defaults to `new Date()`).
+ * @returns Approximate `Date` for that ledger.
+ *
+ * @example
+ * ```ts
+ * const approxDate = ledgerToApproxDate(expiryLedger, currentLedger);
+ * console.log('Escrow expires around:', approxDate.toISOString());
+ * ```
+ */
+export function ledgerToApproxDate(ledger: number, currentLedger: number, currentDate?: Date): Date {
+  const now = currentDate ?? new Date();
+  const secondsDiff = (ledger - currentLedger) * LEDGER_CLOSE_SECONDS;
+  return new Date(now.getTime() + secondsDiff * 1000);
 // Address validation
 // ---------------------------------------------------------------------------
 

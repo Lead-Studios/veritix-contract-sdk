@@ -36,6 +36,18 @@ export class SplitterModule {
     this.keypair = keypair;
   }
 
+  /**
+   * Fetches the on-chain record for an existing split.
+   *
+   * @param _id - Numeric split identifier.
+   * @returns The {@link SplitRecord}, or `null` if it does not exist.
+   *
+   * @example
+   * ```ts
+   * const split = await client.splitter.getSplit(2n);
+   * console.log('Distributed:', split?.distributed);
+   * ```
+   */
   async getSplit(_id: bigint): Promise<SplitRecord | null> {
     // TODO: implement
     void this.config;
@@ -43,10 +55,33 @@ export class SplitterModule {
     throw new Error('SplitterModule.getSplit: not implemented');
   }
 
+  /**
+   * Returns all split IDs created by a given sender address.
+   *
+   * @param _sender - Stellar account address of the sender.
+   * @returns Array of split IDs.
+   *
+   * @example
+   * ```ts
+   * const ids = await client.splitter.getSplitsBySender('GABC…');
+   * console.log('Splits created:', ids.length);
+   * ```
+   */
   async getSplitsBySender(_sender: string): Promise<bigint[]> {
     return [];
   }
 
+  /**
+   * Returns all split IDs in which `address` is a recipient.
+   *
+   * @param address - Stellar account address of the recipient.
+   * @returns Array of split IDs.
+   *
+   * @example
+   * ```ts
+   * const ids = await client.splitter.getSplitsForRecipient('GABC…');
+   * ```
+   */
   async getSplitsForRecipient(address: string): Promise<bigint[]> {
     const sourceAccount = new Account(Keypair.random().publicKey(), '0');
     const tx = await buildContractCall(
@@ -67,6 +102,23 @@ export class SplitterModule {
     return vec.map((v) => scValToBigint(v));
   }
 
+  /**
+   * Validates a list of recipients without submitting a transaction.
+   * Checks for duplicate addresses, non-positive shares, >20 recipients, and
+   * total bps != 10 000.
+   *
+   * @param recipients - Array of {@link SplitRecipient} to validate.
+   * @returns `{ valid, errors }`.
+   *
+   * @example
+   * ```ts
+   * const { valid, errors } = client.splitter.validateRecipients([
+   *   { address: 'GABC…', shareBps: 5000 },
+   *   { address: 'GXYZ…', shareBps: 5000 },
+   * ]);
+   * if (!valid) console.error(errors);
+   * ```
+   */
   validateRecipients(recipients: SplitRecipient[]): ValidationResult {
     const errors: string[] = [];
     recipients.forEach((r, i) => {
@@ -84,6 +136,24 @@ export class SplitterModule {
     return { valid: errors.length === 0, errors };
   }
 
+  /**
+   * Creates a new payment split instruction on-chain.
+   * Recipient `shareBps` values must sum to exactly 10 000.
+   *
+   * @param params - `{ recipients, totalAmount }`.
+   * @returns A {@link TransactionResult} on success.
+   *
+   * @example
+   * ```ts
+   * await client.splitter.createSplit({
+   *   recipients: [
+   *     { address: 'GABC…', shareBps: 7000 },
+   *     { address: 'GXYZ…', shareBps: 3000 },
+   *   ],
+   *   totalAmount: 10_000_000n,
+   * });
+   * ```
+   */
   async createSplit(params: CreateSplitParams): Promise<TransactionResult> {
     if (!this.keypair) {
       throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'A Keypair is required for write operations.');
@@ -98,6 +168,24 @@ export class SplitterModule {
     throw new Error('SplitterModule.createSplit: not implemented');
   }
 
+  /**
+   * Convenience wrapper that creates a three-way revenue split between
+   * organizer, artist, and platform.
+   * The platform's share is `10 000 - organizerBps - artistBps`.
+   *
+   * @param params - {@link RevenueSplitParams}
+   * @returns A {@link TransactionResult} on success.
+   *
+   * @example
+   * ```ts
+   * await client.splitter.createRevenueSplit({
+   *   organizer: 'GORG…', organizerBps: 6000,
+   *   artist:    'GART…', artistBps:    3000,
+   *   platform:  'GPLT…',
+   *   totalAmount: 20_000_000n,
+   * });
+   * ```
+   */
   async createRevenueSplit(params: RevenueSplitParams): Promise<TransactionResult> {
     const { organizer, organizerBps, artist, artistBps, platform, totalAmount } = params;
     const totalBps = organizerBps + artistBps;
@@ -112,6 +200,18 @@ export class SplitterModule {
     return this.createSplit({ recipients, totalAmount });
   }
 
+  /**
+   * Distributes the split funds to all recipients on-chain.
+   *
+   * @param _id - Numeric split identifier.
+   * @returns A {@link TransactionResult} on success.
+   *
+   * @example
+   * ```ts
+   * const result = await client.splitter.distribute(2n);
+   * console.log('Distributed in tx:', result.hash);
+   * ```
+   */
   async distribute(_id: bigint): Promise<TransactionResult> {
     throw new Error('SplitterModule.distribute: not implemented');
   }

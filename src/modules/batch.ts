@@ -264,6 +264,16 @@ export class BatchModule {
 
   /**
    * Freezes multiple accounts in a single contract invocation.
+   * Caller must be the contract admin.
+   *
+   * @param addresses - Array of Stellar account addresses to freeze.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.batch.freezeBatch(['GABC…', 'GXYZ…', 'GDEF…']);
+   * ```
    */
   async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
     throw new Error('BatchModule.freezeBatch: not implemented');
