@@ -266,6 +266,49 @@ export class TokenModule {
   }
 
   /**
+   * Returns the maximum supply cap configured on the token contract, in stroops.
+   * Returns `null` when no cap has been configured (unbounded supply).
+   *
+   * @example
+   * ```ts
+   * const cap = await client.token.maxSupply();
+   * if (cap === null) {
+   *   console.log('Token has no supply cap');
+   * } else {
+   *   console.log('Cap:', cap.toString(), 'stroops');
+   * }
+   * ```
+   */
+  async maxSupply(): Promise<bigint | null> {
+    try {
+      const result = await this.simulateRead('max_supply', []);
+      if (result === null || result === undefined) return null;
+      return BigInt(result as bigint);
+    } catch {
+      // Contract may not expose `max_supply` if the cap was never set;
+      // treat absence as "no cap" rather than an error to callers.
+      return null;
+    }
+  }
+
+  /**
+   * Returns whether the current `totalSupply` has reached or exceeded `maxSupply`.
+   * Returns `false` when no supply cap is configured.
+   *
+   * @example
+   * ```ts
+   * const reached = await client.token.isMaxSupplyReached();
+   * if (reached) console.warn('Cap reached — further mints will be rejected');
+   * ```
+   */
+  async isMaxSupplyReached(): Promise<boolean> {
+    const cap = await this.maxSupply();
+    if (cap === null) return false;
+    const supply = await this.totalSupply();
+    return supply >= cap;
+  }
+
+  /**
    * Returns whether an account has been frozen by an admin.
    *
    * @param address - Stellar account address to check.
