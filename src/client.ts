@@ -38,7 +38,7 @@ import type {
   EscrowRecord,
 } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
-import { getMainnetConfig, getTestnetConfig } from './utils/network';
+import { DUMMY_PUBLIC_KEY, getMainnetConfig, getTestnetConfig } from './utils/network';
 import { EventEmitter } from 'events';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
 import { TokenModule } from './modules/token';
@@ -344,8 +344,7 @@ export class VeriTixClient extends EventEmitter {
     try {
       // Use a throwaway source account (simulation does not require a real funded account)
       const { Account } = await import('@stellar/stellar-sdk');
-      const dummyKeypair = Keypair.random();
-      const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+      const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
       const tx = await buildContractCall(
         this.server,
