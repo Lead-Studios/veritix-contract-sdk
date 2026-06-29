@@ -7,6 +7,7 @@ import { SorobanRpc, Keypair, Account } from '@stellar/stellar-sdk';
 import { addressToScVal, scValToBigint } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { DUMMY_PUBLIC_KEY } from '../utils/network';
 import type {
   NetworkConfig,
   SplitRecord,
@@ -83,7 +84,7 @@ export class SplitterModule {
    * ```
    */
   async getSplitsForRecipient(address: string): Promise<bigint[]> {
-    const sourceAccount = new Account(Keypair.random().publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
     const tx = await buildContractCall(
       this.server,
       sourceAccount,

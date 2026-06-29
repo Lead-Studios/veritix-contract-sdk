@@ -149,8 +149,7 @@ export async function estimateFee(
   args: xdr.ScVal[],
 ): Promise<FeeEstimate> {
   // Use a throwaway keypair — simulation does not require a funded account
-  const dummyKeypair = Keypair.random();
-  const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+  const result = await server.simulateTransaction(tx);
 
   const tx = await buildContractCall(
     server,

@@ -17,6 +17,7 @@ import { addressToScVal, bigintToScVal, boolToScVal, scValToBoolean } from '../u
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseDisputeRecord } from '../utils/parsers';
+import { DUMMY_PUBLIC_KEY } from '../utils/network';
 
 /**
  * Parameters required to open a new dispute against an escrow.
@@ -77,8 +78,7 @@ export class DisputeModule {
    * ```
    */
   async getDispute(id: bigint): Promise<DisputeRecord | null> {
-    const dummyKeypair = Keypair.random();
-    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
     const tx = await buildContractCall(
       this.server,
@@ -121,8 +121,7 @@ export class DisputeModule {
    * ```
    */
   async isDisputeOpen(escrowId: bigint): Promise<boolean> {
-    const dummyKeypair = Keypair.random();
-    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
     const tx = await buildContractCall(
       this.server,
@@ -162,8 +161,7 @@ export class DisputeModule {
    * ```
    */
   async getOpenDisputes(): Promise<bigint[]> {
-    const dummyKeypair = Keypair.random();
-    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
     const tx = await buildContractCall(
       this.server,
@@ -213,8 +211,7 @@ export class DisputeModule {
    * ```
    */
   async getDisputesByResolver(resolver: string): Promise<bigint[]> {
-    const dummyKeypair = Keypair.random();
-    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
     const tx = await buildContractCall(
       this.server,
@@ -272,8 +269,7 @@ export class DisputeModule {
    * ```
    */
   async getDisputeHistory(escrowId: bigint): Promise<bigint[]> {
-    const dummyKeypair = Keypair.random();
-    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
     const tx = await buildContractCall(
       this.server,
