@@ -20,6 +20,7 @@ import {
   submitTransaction,
 } from '../utils/transaction';
 import { VeriTixError, VeriTixErrorCode, parseSorobanError } from '../utils/errors';
+import { DUMMY_PUBLIC_KEY } from '../utils/network';
 
 /** @internal Convert a Stellar address to ScVal. */
 function addressToScVal(address: string): xdr.ScVal {
@@ -67,7 +68,7 @@ export class TokenModule {
   // -------------------------------------------------------------------------
 
   private async simulateRead(method: string, args: xdr.ScVal[]): Promise<unknown> {
-    const sourceAccount = new Account(Keypair.random().publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
     const tx = await buildContractCall(
       this.server,
       sourceAccount,
@@ -167,8 +168,7 @@ export class TokenModule {
    * ```
    */
   async allowance(owner: string, spender: string): Promise<bigint> {
-    const dummyKeypair = Keypair.random();
-    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
     const args = [
       nativeToScVal(Address.fromString(owner),   { type: 'address' }),
@@ -266,46 +266,64 @@ export class TokenModule {
   }
 
   /**
-   * Returns the maximum supply cap configured on the token contract, in stroops.
-   * Returns `null` when no cap has been configured (unbounded supply).
+   * Returns the total number of token holders tracked on-chain.
+   *
+   * @returns Total number of holders (>= 0).
    *
    * @example
    * ```ts
-   * const cap = await client.token.maxSupply();
-   * if (cap === null) {
-   *   console.log('Token has no supply cap');
-   * } else {
-   *   console.log('Cap:', cap.toString(), 'stroops');
-   * }
+   * const count = await client.token.totalHolders();
+   * console.log('Total holders:', count.toString());
    * ```
    */
-  async maxSupply(): Promise<bigint | null> {
-    try {
-      const result = await this.simulateRead('max_supply', []);
-      if (result === null || result === undefined) return null;
-      return BigInt(result as bigint);
-    } catch {
-      // Contract may not expose `max_supply` if the cap was never set;
-      // treat absence as "no cap" rather than an error to callers.
-      return null;
-    }
+  async totalHolders(): Promise<bigint> {
+    const result = await this.simulateRead('total_holders', []);
+    if (result === null || result === undefined) return 0n;
+    return BigInt(result as bigint);
   }
 
   /**
-   * Returns whether the current `totalSupply` has reached or exceeded `maxSupply`.
-   * Returns `false` when no supply cap is configured.
+   * Returns a paginated slice of token holder addresses (0-indexed).
+   *
+   * @param offset - Zero-based index of the first holder to return (>= 0).
+   * @param limit  - Maximum number of holders to return (1 <= limit <= 100).
+   * @returns Array of Stellar account addresses, in ascending order.
+   *          Empty array when there are no holders in the requested range.
+   * @throws {VeriTixError} With code `InvalidAmount` if `offset` or `limit`
+   *         are not positive integers, or `BatchTooLarge` if `limit > 100`.
    *
    * @example
    * ```ts
-   * const reached = await client.token.isMaxSupplyReached();
-   * if (reached) console.warn('Cap reached — further mints will be rejected');
+   * // first 50 holders
+   * const page = await client.token.getHolders(0, 50);
+   * page.forEach((addr, i) => console.log(i, addr));
    * ```
    */
-  async isMaxSupplyReached(): Promise<boolean> {
-    const cap = await this.maxSupply();
-    if (cap === null) return false;
-    const supply = await this.totalSupply();
-    return supply >= cap;
+  async getHolders(offset: number, limit: number): Promise<string[]> {
+    if (!Number.isInteger(offset) || offset < 0) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        `TokenModule.getHolders: offset must be a non-negative integer (got ${offset})`,
+      );
+    }
+    if (!Number.isInteger(limit) || limit <= 0) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        `TokenModule.getHolders: limit must be a positive integer (got ${limit})`,
+      );
+    }
+    if (limit > 100) {
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `TokenModule.getHolders: limit must be <= 100, got ${limit}`,
+      );
+    }
+    const result = await this.simulateRead('get_holders', [
+      nativeToScVal(BigInt(offset), { type: 'u32' }),
+      nativeToScVal(BigInt(limit), { type: 'u32' }),
+    ]);
+    if (!Array.isArray(result)) return [];
+    return (result as unknown[]).map((item) => String(item));
   }
 
   /**
@@ -321,6 +339,14 @@ export class TokenModule {
    * ```
    */
   async isFrozen(address: string): Promise<boolean> {
+    // Pre-flight (issue #209): the contract address itself is never
+    // subject to per-account freezes — return false immediately without
+    // an RPC round-trip so callers asking "is the contract frozen?" are
+    // not charged a ledger read.
+    if (address === this.config.contractId) {
+      return false;
+    }
+
     try {
       const result = await this.simulateRead('is_frozen', [
         nativeToScVal(Address.fromString(address), { type: 'address' }),

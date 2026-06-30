@@ -53,4 +53,20 @@ describe('parseSorobanError', () => {
     expect(err).toBeInstanceOf(VeriTixError);
     expect(err.constructor.name).toBe('VeriTixError');
   });
+
+  // Issue #203: ContractPaused has been removed; both "contract paused" and
+  // "contract is already paused" map to ContractAlreadyPaused.
+  it('maps "contract is already paused" → CONTRACT_ALREADY_PAUSED', () => {
+    const err = parseSorobanError('contract is already paused');
+    expect(err.code).toBe(VeriTixErrorCode.ContractAlreadyPaused);
+  });
+
+  it('maps the older "contract paused" panic → CONTRACT_ALREADY_PAUSED (canonical)', () => {
+    const err = parseSorobanError('the contract paused operations today');
+    expect(err.code).toBe(VeriTixErrorCode.ContractAlreadyPaused);
+  });
+
+  it('ContractPaused enum member is no longer exported', () => {
+    expect((VeriTixErrorCode as unknown as Record<string, unknown>).ContractPaused).toBeUndefined();
+  });
 });

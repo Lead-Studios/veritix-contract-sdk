@@ -931,7 +931,7 @@ describe('parseSorobanError', () => {
 
   it('accepts an Error object as input', () => {
     const err = parseSorobanError(new Error('contract paused'));
-    expect(err.code).toBe(VeriTixErrorCode.ContractPaused);
+    expect(err.code).toBe(VeriTixErrorCode.ContractAlreadyPaused);
   });
 });
 

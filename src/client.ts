@@ -28,9 +28,17 @@
 
 import { SorobanRpc, Keypair, xdr } from '@stellar/stellar-sdk';
 
-import type { NetworkConfig, SimulationResult, ContractMetadata, TransactionResult } from './types/index';
-import type { NetworkConfig, SimulationResult, ContractMetadata, WatchOptions, EscrowRecord } from './types/index';
+import type {
+  NetworkConfig,
+  SimulationResult,
+  ContractMetadata,
+  TransactionResult,
+  StellarNetwork,
+  WatchOptions,
+  EscrowRecord,
+} from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
+import { DUMMY_PUBLIC_KEY, getMainnetConfig, getTestnetConfig } from './utils/network';
 import { EventEmitter } from 'events';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
 import { TokenModule } from './modules/token';
@@ -121,6 +129,97 @@ export class VeriTixClient extends EventEmitter {
     this.recurring = new RecurringModule(config, lazyServer, keypair);
     this.admin = new AdminModule(config, lazyServer, keypair);
     this.batch = new BatchModule(config, lazyServer, keypair);
+  }
+
+  // -------------------------------------------------------------------------
+  // Static factories
+  // -------------------------------------------------------------------------
+
+  /**
+   * Builds a {@link VeriTixClient} from environment variables.  Intended for
+   * server-side / worker use where {@link NetworkConfig} values are loaded
+   * from `process.env` rather than constructed in code.
+   *
+   * Recognised variables (case-sensitive, all optional except as noted):
+   * - `VERITIX_CONTRACT_ID`        (required) — Soroban contract ID.
+   * - `STELLAR_NETWORK`            (default `'testnet'`) — `'testnet'` | `'mainnet'`.
+   * - `VERITIX_RPC_URL`            (optional) — overrides the network default.
+   * - `VERITIX_NETWORK_PASSPHRASE` (optional) — overrides the network default.
+   * - `VERITIX_SECRET_KEY`         (optional) — Stellar secret key.  When
+   *   present the returned client can sign write transactions; otherwise it
+   *   is read-only.
+   *
+   * Accepts an env-shaped object so callers can inject test values without
+   * mutating global `process.env`.
+   *
+   * @param env - Optional env-like object. Defaults to `process.env`.
+   * @returns A new `VeriTixClient` (caller must still call `connect()`).
+   * @throws {VeriTixError} `InvalidAddress` if `VERITIX_CONTRACT_ID` is missing
+   *   or if `STELLAR_NETWORK` / `VERITIX_SECRET_KEY` are present but malformed.
+   *
+   * @example
+   * ```ts
+   * // Server entry-point
+   * const client = VeriTixClient.fromEnvironment();
+   * await client.connect();
+   * ```
+   */
+  static fromEnvironment(env: NodeJS.ProcessEnv = process.env): VeriTixClient {
+    const source: NodeJS.ProcessEnv = env ?? {};
+
+    // VERITIX_CONTRACT_ID — required.
+    const rawContractId = source.VERITIX_CONTRACT_ID;
+    if (typeof rawContractId !== 'string' || rawContractId.trim().length === 0) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        'VeriTixClient.fromEnvironment: VERITIX_CONTRACT_ID is required and must be a non-empty string',
+      );
+    }
+    const contractId = rawContractId.trim();
+
+    // STELLAR_NETWORK — default 'testnet'; must be 'testnet' or 'mainnet'.
+    const networkRaw = (source.STELLAR_NETWORK ?? 'testnet').toString().trim().toLowerCase();
+    if (networkRaw !== 'testnet' && networkRaw !== 'mainnet') {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        `VeriTixClient.fromEnvironment: STELLAR_NETWORK must be 'testnet' or 'mainnet', got ${JSON.stringify(
+          source.STELLAR_NETWORK,
+        )}`,
+      );
+    }
+    const network: StellarNetwork = networkRaw;
+
+    // Build base config from the network helper, then layer optional overrides.
+    const baseConfig: NetworkConfig =
+      network === 'mainnet' ? getMainnetConfig(contractId) : getTestnetConfig(contractId);
+    const rpcOverride = source.VERITIX_RPC_URL;
+    const passphraseOverride = source.VERITIX_NETWORK_PASSPHRASE;
+    const config: NetworkConfig = {
+      ...baseConfig,
+      rpcUrl:
+        typeof rpcOverride === 'string' && rpcOverride.length > 0 ? rpcOverride : baseConfig.rpcUrl,
+      networkPassphrase:
+        typeof passphraseOverride === 'string' && passphraseOverride.length > 0
+          ? passphraseOverride
+          : baseConfig.networkPassphrase,
+    };
+
+    // VERITIX_SECRET_KEY — optional; attaches a Keypair for write operations.
+    let keypair: Keypair | undefined;
+    const secret = source.VERITIX_SECRET_KEY;
+    if (typeof secret === 'string' && secret.length > 0) {
+      try {
+        keypair = Keypair.fromSecret(secret);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new VeriTixError(
+          VeriTixErrorCode.InvalidAddress,
+          `VeriTixClient.fromEnvironment: VERITIX_SECRET_KEY is malformed: ${reason}`,
+        );
+      }
+    }
+
+    return new VeriTixClient(config, keypair);
   }
 
   // -------------------------------------------------------------------------
@@ -245,8 +344,7 @@ export class VeriTixClient extends EventEmitter {
     try {
       // Use a throwaway source account (simulation does not require a real funded account)
       const { Account } = await import('@stellar/stellar-sdk');
-      const dummyKeypair = Keypair.random();
-      const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+      const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
       const tx = await buildContractCall(
         this.server,
