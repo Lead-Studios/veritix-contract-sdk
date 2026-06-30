@@ -255,7 +255,10 @@ export class EscrowModule {
     params: CreateEscrowParams,
   ): Promise<TransactionResult & { escrowId: bigint }> {
     if (!this.keypair) {
-      throw new Error('EscrowModule.createEscrow: signing keypair required');
+      throw new VeriTixError(
+        VeriTixErrorCode.ReadOnlyClient,
+        'EscrowModule.createEscrow: signing keypair required',
+      );
     }
 
     if (params.amount <= 0n) {
