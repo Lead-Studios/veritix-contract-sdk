@@ -278,6 +278,14 @@ export class TokenModule {
    * ```
    */
   async isFrozen(address: string): Promise<boolean> {
+    // Pre-flight (issue #209): the contract address itself is never
+    // subject to per-account freezes — return false immediately without
+    // an RPC round-trip so callers asking "is the contract frozen?" are
+    // not charged a ledger read.
+    if (address === this.config.contractId) {
+      return false;
+    }
+
     try {
       const result = await this.simulateRead('is_frozen', [
         nativeToScVal(Address.fromString(address), { type: 'address' }),
