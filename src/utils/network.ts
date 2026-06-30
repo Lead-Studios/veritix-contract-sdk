@@ -20,6 +20,16 @@ const TESTNET_RPC_URL = 'https://soroban-testnet.stellar.org';
 /** Soroban RPC URL for Stellar Mainnet */
 const MAINNET_RPC_URL = 'https://mainnet.stellar.validationcloud.io/v1/soroban/rpc';
 
+/**
+ * A deterministic Stellar public key used as the source account for read-only
+ * contract simulations.  Simulations don't require an actual funded account
+ * on-chain, so we always use this static key instead of generating a fresh
+ * {@link Keypair} per call (which would burn CPU on every read).
+ *
+ * @internal
+ */
+export const DUMMY_PUBLIC_KEY = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+
 /** Network passphrase for Stellar Testnet */
 export const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
 

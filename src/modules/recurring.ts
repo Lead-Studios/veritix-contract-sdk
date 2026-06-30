@@ -12,6 +12,7 @@ import { bigintToScVal } from '../utils/scval';
 import { buildContractCall } from '../utils/transaction';
 import { parseSorobanError } from '../utils/errors';
 import { parseRecurringExecutionEntry } from '../utils/parsers';
+import { DUMMY_PUBLIC_KEY } from '../utils/network';
 
 /**
  * Parameters required to set up a new recurring payment.
@@ -134,8 +135,7 @@ export class RecurringModule {
    * ```
    */
   async getRecurringHistory(id: bigint): Promise<RecurringExecutionEntry[]> {
-    const dummyKeypair = Keypair.random();
-    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
     const tx = await buildContractCall(
       this.server,

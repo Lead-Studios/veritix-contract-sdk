@@ -20,6 +20,7 @@ import {
   submitTransaction,
 } from '../utils/transaction';
 import { VeriTixError, VeriTixErrorCode, parseSorobanError } from '../utils/errors';
+import { DUMMY_PUBLIC_KEY } from '../utils/network';
 
 /** @internal Convert a Stellar address to ScVal. */
 function addressToScVal(address: string): xdr.ScVal {
@@ -67,7 +68,7 @@ export class TokenModule {
   // -------------------------------------------------------------------------
 
   private async simulateRead(method: string, args: xdr.ScVal[]): Promise<unknown> {
-    const sourceAccount = new Account(Keypair.random().publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
     const tx = await buildContractCall(
       this.server,
       sourceAccount,
@@ -167,8 +168,7 @@ export class TokenModule {
    * ```
    */
   async allowance(owner: string, spender: string): Promise<bigint> {
-    const dummyKeypair = Keypair.random();
-    const sourceAccount = new Account(dummyKeypair.publicKey(), '0');
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
     const args = [
       nativeToScVal(Address.fromString(owner),   { type: 'address' }),
