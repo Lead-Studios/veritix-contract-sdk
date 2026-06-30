@@ -343,12 +343,18 @@ export class DisputeModule {
 
     const claimant = this.keypair.publicKey();
     if (resolver === claimant) {
-      throw new Error('DisputeModule.openDispute: resolver cannot be the caller');
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        'DisputeModule.openDispute: resolver cannot be the claimant',
+      );
     }
 
     const evidenceBytes = new TextEncoder().encode(evidence ?? '');
     if (evidenceBytes.length > 128) {
-      throw new Error('DisputeModule.openDispute: evidence must be 128 bytes or less');
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        'DisputeModule.openDispute: evidence must be 128 bytes or less',
+      );
     }
 
     const tx = await buildContractCall(
