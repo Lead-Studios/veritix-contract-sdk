@@ -185,6 +185,9 @@ export function ledgerToApproxDate(ledger: number, currentLedger: number, curren
   const now = currentDate ?? new Date();
   const secondsDiff = (ledger - currentLedger) * LEDGER_CLOSE_SECONDS;
   return new Date(now.getTime() + secondsDiff * 1000);
+}
+
+// ---------------------------------------------------------------------------
 // Address validation
 // ---------------------------------------------------------------------------
 

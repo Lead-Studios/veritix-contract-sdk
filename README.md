@@ -2,7 +2,12 @@
 
 > A TypeScript/JavaScript client SDK for the **VeriTix Soroban smart contract** deployed on the [Stellar](https://stellar.org) network.
 
+[![npm provenance](https://img.shields.io/badge/npm-provenance-blue?logo=npm)](https://www.npmjs.com/package/@veritix/contract-sdk)
+[![type-coverage](https://img.shields.io/badge/type--coverage-%E2%89%A595%25-brightgreen)](https://github.com/nicolo-ribaudo/type-coverage)
+
 The SDK wraps every contract entry-point in a typed, promise-based API so you can integrate VeriTix escrow, payment splitting, dispute resolution, and recurring payments into your application without writing Soroban XDR by hand.
+
+> **Supply-chain security:** This package is published to npm with [provenance attestations](https://docs.npmjs.com/generating-provenance-statements), enabling consumers to verify that each release was built directly from this repository's source code (SLSA Level 3).
 
 ---
 
@@ -231,12 +236,20 @@ You can also call `parseSorobanError(rawError)` directly if you're working with 
 
 Full TypeDoc-generated API documentation is published at:
 
-> **https://veritix.github.io/contract-sdk/**
+> **https://lead-studios.github.io/veritix-contract-sdk/**
+
+The docs are automatically rebuilt and deployed to GitHub Pages on every release via the `Deploy Docs` workflow.
 
 To generate docs locally:
 
 ```bash
 npm run docs:generate
+```
+
+To preview docs locally on http://localhost:8080:
+
+```bash
+npm run docs:serve
 ```
 
 ---

@@ -18,7 +18,7 @@
 // Client
 // ---------------------------------------------------------------------------
 export { VeriTixClient } from './client';
-export type { WatchOptions } from './client';
+export type { VeriTixClientEvents } from './client';
 
 // ---------------------------------------------------------------------------
 // Types
