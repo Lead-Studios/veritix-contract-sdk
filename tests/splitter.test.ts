@@ -1,6 +1,6 @@
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
-import { Keypair } from '@stellar/stellar-sdk';
+import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
 
 const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
@@ -114,5 +114,12 @@ describe('SplitterModule.createRevenueSplit (validation)', () => {
         totalAmount: 1_000_000n,
       })
     ).rejects.toMatchObject({ code: VeriTixErrorCode.SplitInvalidShares });
+  });
+});
+
+describe('SplitterModule.replaceRecipient', () => {
+  it('throws when no signing keypair', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    await expect(client.splitter.replaceRecipient(1n, 'GOLD', 'NEW')).rejects.toThrow('signing keypair required');
   });
 });
