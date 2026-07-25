@@ -13,7 +13,7 @@ import {
   NetworkConfig,
   TransactionResult,
 } from '../types/index';
-import { addressToScVal, bigintToScVal, boolToScVal, scValToBoolean } from '../utils/scval';
+import { addressToScVal, bigintToScVal, boolToScVal, scValToBigint, scValToBoolean, scValToNumber } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseDisputeRecord } from '../utils/parsers';
