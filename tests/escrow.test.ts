@@ -346,6 +346,100 @@ describe('EscrowModule (stubs)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// transferBeneficiary tests
+// ---------------------------------------------------------------------------
+
+describe('EscrowModule.transferBeneficiary', () => {
+  it('rejects when no signing keypair is provided', async () => {
+    const { client } = makeConnectedClient();
+    await expect(client.escrow.transferBeneficiary(1n, FAKE_ADDRESS)).rejects.toThrow(
+      'signing keypair required',
+    );
+  });
+
+  it('throws INVALID_ADDRESS when newBeneficiary is malformed', async () => {
+    const { client } = makeConnectedClient(Keypair.random());
+    await expect(client.escrow.transferBeneficiary(1n, 'not-a-valid-address')).rejects.toMatchObject({
+      code: VeriTixErrorCode.InvalidAddress,
+    });
+  });
+
+  it('throws ESCROW_NOT_FOUND when escrow does not exist', async () => {
+    const { client } = makeConnectedClient(Keypair.random());
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(null);
+    await expect(client.escrow.transferBeneficiary(1n, FAKE_ADDRESS)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowNotFound,
+    });
+  });
+
+  it('throws ESCROW_ALREADY_SETTLED when escrow is released', async () => {
+    const { client } = makeConnectedClient(Keypair.random());
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: true, refunded: false, expiryLedger: 1_005_000, memos: [],
+    });
+    await expect(client.escrow.transferBeneficiary(1n, FAKE_ADDRESS)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowAlreadySettled,
+    });
+  });
+
+  it('throws ESCROW_UNAUTHORIZED when caller is not the depositor', async () => {
+    const keypair = Keypair.random();
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: false, refunded: false, expiryLedger: 1_005_000, memos: [],
+    });
+    await expect(client.escrow.transferBeneficiary(1n, FAKE_ADDRESS)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowUnauthorized,
+    });
+  });
+
+  it('throws INVALID_BENEFICIARY when newBeneficiary equals the depositor', async () => {
+    const keypair = Keypair.random();
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: keypair.publicKey(), beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: false, refunded: false, expiryLedger: 1_005_000, memos: [],
+    });
+    await expect(client.escrow.transferBeneficiary(1n, keypair.publicKey())).rejects.toMatchObject({
+      code: VeriTixErrorCode.InvalidBeneficiary,
+    });
+  });
+
+  it('submits the transfer_beneficiary transaction successfully', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const fakeTx = { id: 'unsigned' } as never;
+    const fakeAssembledTx = { id: 'assembled' } as never;
+
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: keypair.publicKey(), beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: false, refunded: false, expiryLedger: 1_005_000, memos: [],
+    });
+    jest.spyOn(transactionUtils, 'buildContractCall').mockResolvedValue(fakeTx);
+    jest.spyOn(SorobanRpc, 'assembleTransaction').mockReturnValue({
+      build: () => fakeAssembledTx,
+    } as never);
+    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
+      hash: 'transfer-hash', ledger: 200, successful: true,
+    });
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS', result: { retval: xdr.ScVal.scvVoid() },
+    });
+
+    const newBeneficiary = Keypair.random().publicKey();
+    const result = await client.escrow.transferBeneficiary(1n, newBeneficiary);
+
+    expect(result).toMatchObject({ hash: 'transfer-hash', ledger: 200, successful: true });
+    expect(transactionUtils.buildContractCall).toHaveBeenCalledWith(
+      mockServer, expect.anything(), FAKE_CONTRACT, 'transfer_beneficiary',
+      expect.any(Array), getTestnetConfig(FAKE_CONTRACT).networkPassphrase,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getEscrowsBatch validation tests
 // ---------------------------------------------------------------------------
 
