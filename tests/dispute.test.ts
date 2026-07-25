@@ -386,40 +386,48 @@ describe('DisputeModule', () => {
   });
 });
 
-describe('DisputeModule.appealDispute', () => {
-  it('throws when no signing keypair', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
-    await expect(client.dispute.appealDispute(1n)).rejects.toThrow('signing keypair required');
+describe('DisputeModule.isDisputeExpired', () => {
+  it('returns true when dispute is expired', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvBool(true) },
+    });
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(true);
   });
 
-  it('throws DISPUTE_NOT_FOUND when dispute does not exist', async () => {
+  it('returns false when dispute is not expired', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvBool(false) },
+    });
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(false);
+  });
+
+  it('returns false when no result', async () => {
     const keypair = Keypair.random();
     const { client, mockServer } = makeConnectedClient(keypair);
     mockServer.simulateTransaction.mockResolvedValue({
       status: 'SUCCESS',
       result: { retval: undefined },
     });
-    await expect(client.dispute.appealDispute(999n)).rejects.toMatchObject({
-      code: VeriTixErrorCode.DisputeNotFound,
-    });
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(false);
   });
 
-  it('throws when dispute is still open', async () => {
+  it('throws on simulation error', async () => {
     const keypair = Keypair.random();
     const { client, mockServer } = makeConnectedClient(keypair);
-    const mockRecord = xdr.ScVal.scvMap([
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('id'), val: xdr.ScVal.scvU64(xdr.Uint64.fromString('1')) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('escrow_id'), val: xdr.ScVal.scvU64(xdr.Uint64.fromString('100')) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('claimant'), val: xdr.ScVal.scvString(keypair.publicKey()) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('resolver'), val: xdr.ScVal.scvString(Keypair.random().publicKey()) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('status'), val: xdr.ScVal.scvSymbol('Open') }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('opened_at'), val: xdr.ScVal.scvU64(xdr.Uint64.fromString('500')) }),
-    ]);
     mockServer.simulateTransaction.mockResolvedValue({
-      status: 'SUCCESS',
-      result: { retval: mockRecord },
+      status: 'ERROR',
+      error: 'contract panic',
     });
-    await expect(client.dispute.appealDispute(1n)).rejects.toThrow();
+    await expect(client.dispute.isDisputeExpired(1n)).rejects.toThrow();
   });
 });
 
