@@ -990,3 +990,45 @@ describe('EscrowModule.createEscrow — pre-flight VeriTixError validation', () 
     }
   });
 });
+
+describe('EscrowModule.getEscrowStats', () => {
+  it('throws when simulation returns error', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    mockServer.simulateTransaction.mockResolvedValue({ status: 'ERROR', error: 'contract panic' });
+    await expect(client.escrow.getEscrowStats()).rejects.toThrow();
+  });
+
+  it('throws when simulation returns void', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvVoid() },
+    });
+    await expect(client.escrow.getEscrowStats()).rejects.toMatchObject({
+      code: VeriTixErrorCode.Unknown,
+    });
+  });
+
+  it('parses a valid stats map', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    const mapVal = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total'), val: nativeToScVal(100, { type: 'u32' }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('active'), val: nativeToScVal(42, { type: 'u32' }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('released'), val: nativeToScVal(35, { type: 'u32' }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('refunded'), val: nativeToScVal(23, { type: 'u32' }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total_value'), val: nativeToScVal(5000000n, { type: 'i128' }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('avg_value'), val: nativeToScVal(50000n, { type: 'i128' }) }),
+    ]);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: mapVal },
+    });
+    const stats = await client.escrow.getEscrowStats();
+    expect(stats.total).toBe(100);
+    expect(stats.active).toBe(42);
+    expect(stats.released).toBe(35);
+    expect(stats.refunded).toBe(23);
+    expect(stats.totalValue).toBe(5000000n);
+    expect(stats.avgValue).toBe(50000n);
+  });
+});

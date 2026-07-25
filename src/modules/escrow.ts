@@ -14,7 +14,7 @@ import type {
   TransactionResult,
   BatchSettlementResult,
 } from '../types/index';
-import { addressToScVal, bigintToScVal, scValToBigint, stringToScVal } from '../utils/scval';
+import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseEscrowRecord } from '../utils/parsers';
@@ -93,6 +93,78 @@ export class EscrowModule {
     }
 
     return parseEscrowRecord(returnValue);
+  }
+
+  /**
+   * Returns aggregate escrow statistics.
+   *
+   * @returns Object with `total`, `active`, `released`, `refunded`, `totalValue`, and `avgValue`.
+   * @throws {VeriTixError} If the contract returns no data or an unexpected format.
+   *
+   * @example
+   * ```ts
+   * const stats = await client.escrow.getEscrowStats();
+   * console.log('Active escrows:', stats.active);
+   * ```
+   */
+  async getEscrowStats(): Promise<{
+    total: number;
+    active: number;
+    released: number;
+    refunded: number;
+    totalValue: bigint;
+    avgValue: bigint;
+  }> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_escrow_stats',
+      [],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getEscrowStats: no data returned');
+    }
+
+    if (returnValue.switch() !== xdr.ScValType.scvMap()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getEscrowStats: expected ScMap result');
+    }
+
+    const map = returnValue.map() ?? [];
+    const get = (key: string): xdr.ScVal | undefined =>
+      map.find((e) => e.key().sym() === key)?.val();
+
+    const totalVal = get('total');
+    const activeVal = get('active');
+    const releasedVal = get('released');
+    const refundedVal = get('refunded');
+    const totalValueVal = get('total_value');
+    const avgValueVal = get('avg_value');
+
+    if (!totalVal || !activeVal || !releasedVal || !refundedVal || !totalValueVal || !avgValueVal) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getEscrowStats: incomplete stats map');
+    }
+
+    return {
+      total: scValToNumber(totalVal),
+      active: scValToNumber(activeVal),
+      released: scValToNumber(releasedVal),
+      refunded: scValToNumber(refundedVal),
+      totalValue: scValToBigint(totalValueVal),
+      avgValue: scValToBigint(avgValueVal),
+    };
   }
 
   /**
