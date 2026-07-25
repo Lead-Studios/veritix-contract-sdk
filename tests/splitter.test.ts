@@ -116,3 +116,29 @@ describe('SplitterModule.createRevenueSplit (validation)', () => {
     ).rejects.toMatchObject({ code: VeriTixErrorCode.SplitInvalidShares });
   });
 });
+
+describe('SplitterModule.bulkDistribute', () => {
+  it('throws when no signing keypair', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    await expect(client.splitter.bulkDistribute([1n, 2n])).rejects.toThrow();
+  });
+
+  it('returns distributed/failed summary', async () => {
+    const kp = Keypair.random();
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
+    const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).server = mockServer;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).connected = true;
+
+    jest.spyOn(client.splitter as any, 'distribute').mockImplementation(async (id: bigint) => {
+      if (id === 2n) throw new Error('not found');
+      return { hash: 'h', ledger: 1, successful: true };
+    });
+
+    const result = await client.splitter.bulkDistribute([1n, 2n, 3n]);
+    expect(result.distributed).toEqual([1n, 3n]);
+    expect(result.failed).toEqual([2n]);
+  });
+});
