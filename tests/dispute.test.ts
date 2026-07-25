@@ -386,42 +386,48 @@ describe('DisputeModule', () => {
   });
 });
 
-describe('DisputeModule.getResolverStats', () => {
-  it('throws when simulation returns error', async () => {
-    const keypair = Keypair.random();
-    const { client, mockServer } = makeConnectedClient(keypair);
-    mockServer.simulateTransaction.mockResolvedValue({ status: 'ERROR', error: 'contract panic' });
-    await expect(client.dispute.getResolverStats()).rejects.toThrow();
-  });
-
-  it('throws when simulation returns void', async () => {
+describe('DisputeModule.isDisputeExpired', () => {
+  it('returns true when dispute is expired', async () => {
     const keypair = Keypair.random();
     const { client, mockServer } = makeConnectedClient(keypair);
     mockServer.simulateTransaction.mockResolvedValue({
       status: 'SUCCESS',
-      result: { retval: xdr.ScVal.scvVoid() },
+      result: { retval: xdr.ScVal.scvBool(true) },
     });
-    await expect(client.dispute.getResolverStats()).rejects.toMatchObject({
-      code: VeriTixErrorCode.Unknown,
-    });
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(true);
   });
 
-  it('parses a valid resolver stats map', async () => {
+  it('returns false when dispute is not expired', async () => {
     const keypair = Keypair.random();
     const { client, mockServer } = makeConnectedClient(keypair);
-    const mapVal = xdr.ScVal.scvMap([
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total_resolved'), val: xdr.ScVal.scvU32(50) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('resolved_for_beneficiary'), val: xdr.ScVal.scvU32(30) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('resolved_for_depositor'), val: xdr.ScVal.scvU32(20) }),
-    ]);
     mockServer.simulateTransaction.mockResolvedValue({
       status: 'SUCCESS',
-      result: { retval: mapVal },
+      result: { retval: xdr.ScVal.scvBool(false) },
     });
-    const stats = await client.dispute.getResolverStats();
-    expect(stats.totalResolved).toBe(50);
-    expect(stats.resolvedForBeneficiary).toBe(30);
-    expect(stats.resolvedForDepositor).toBe(20);
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(false);
+  });
+
+  it('returns false when no result', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: undefined },
+    });
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(false);
+  });
+
+  it('throws on simulation error', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'ERROR',
+      error: 'contract panic',
+    });
+    await expect(client.dispute.isDisputeExpired(1n)).rejects.toThrow();
   });
 });
 
