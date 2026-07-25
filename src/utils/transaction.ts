@@ -21,6 +21,7 @@ import {
 
 import type { TransactionResult, FeeEstimate } from '../types/index';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from './errors';
+import { DUMMY_PUBLIC_KEY } from './network';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,10 +38,36 @@ export interface PreparedTransaction {
   simulatedFee: string;
 }
 
+/**
+ * Options for controlling retry behaviour in {@link submitTransaction}.
+ */
+export interface SubmitTransactionOptions {
+  /**
+   * Maximum number of polling attempts before throwing a TIMEOUT error.
+   * @default 20
+   */
+  maxAttempts?: number;
+  /**
+   * Maximum number of retry attempts on `RATE_LIMIT_EXCEEDED` (HTTP 429).
+   * @default 3
+   */
+  maxRetries?: number;
+  /**
+   * Base delay in milliseconds between retry attempts. Each retry applies
+   * ±20 % random jitter to spread concurrent submissions.
+   * @default 1000
+   */
+  retryDelayMs?: number;
+}
+
 /** Maximum number of polling attempts before throwing a TIMEOUT error. */
 const MAX_POLL_ATTEMPTS = 20;
 /** Milliseconds between each polling attempt. */
 const POLL_INTERVAL_MS = 2_000;
+/** Default maximum retries on rate-limit / transient errors. */
+const DEFAULT_MAX_RETRIES = 3;
+/** Default base retry delay in milliseconds. */
+const DEFAULT_RETRY_DELAY_MS = 1_000;
 
 // ---------------------------------------------------------------------------
 // Build  (#78)
@@ -148,8 +175,8 @@ export async function estimateFee(
   method: string,
   args: xdr.ScVal[],
 ): Promise<FeeEstimate> {
-  // Use a throwaway keypair — simulation does not require a funded account
-  const result = await server.simulateTransaction(tx);
+  // Use a throwaway source account — simulation does not require a funded account
+  const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
   const tx = await buildContractCall(
     server,
@@ -178,26 +205,40 @@ export async function estimateFee(
 }
 
 // ---------------------------------------------------------------------------
-// Submit  (#80)
+// Submit  (#80, #281)
 // ---------------------------------------------------------------------------
 
 /**
  * Signs a prepared transaction with the given `Keypair`, submits it to the
  * Soroban RPC, and polls until it is included in a ledger.
  *
+ * Retries on `RATE_LIMIT_EXCEEDED` (HTTP 429) with configurable exponential
+ * backoff plus ±20 % random jitter, so that multiple concurrent submissions
+ * are spread out and do not collide on the same retry interval.
+ *
  * @param server  - An initialised `SorobanRpc.Server` instance.
  * @param tx      - A transaction that has already been through
  *                  {@link simulateTransaction} (assembled & fee-bumped).
  * @param keypair - The `Keypair` used to sign the transaction envelope.
- * @param maxAttempts - Maximum poll attempts before throwing TIMEOUT (default 20).
+ * @param maxAttemptsOrOptions - Legacy numeric `maxAttempts` **or** a full
+ *   {@link SubmitTransactionOptions} object.  When a number is passed it is
+ *   treated as `maxAttempts` only (backwards-compatible).
  * @returns A {@link TransactionResult} with the hash and final ledger.
  * @throws {VeriTixError} If submission or polling returns an error.
+ *
+ * @example
+ * ```ts
+ * const result = await submitTransaction(server, preparedTx, keypair, {
+ *   maxRetries: 5,
+ *   retryDelayMs: 500,
+ * });
+ * ```
  */
 export async function submitTransaction(
   server: SorobanRpc.Server,
   tx: Transaction,
   keypair: Keypair | undefined,
-  maxAttempts: number = MAX_POLL_ATTEMPTS,
+  maxAttemptsOrOptions: number | SubmitTransactionOptions = MAX_POLL_ATTEMPTS,
 ): Promise<TransactionResult> {
   if (!keypair) {
     throw new VeriTixError(
@@ -206,16 +247,64 @@ export async function submitTransaction(
     );
   }
 
+  // Normalise options — support legacy numeric argument
+  const opts: SubmitTransactionOptions =
+    typeof maxAttemptsOrOptions === 'number'
+      ? { maxAttempts: maxAttemptsOrOptions }
+      : maxAttemptsOrOptions;
+
+  const maxAttempts = opts.maxAttempts ?? MAX_POLL_ATTEMPTS;
+  const maxRetries = opts.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const retryDelayMs = opts.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+
   // 1. Sign
   tx.sign(keypair);
 
-  // 2. Submit
-  const sendResponse = await server.sendTransaction(tx);
+  // 2. Submit with retry + jitter on rate-limit errors
+  let sendResponse: Awaited<ReturnType<typeof server.sendTransaction>>;
+  let lastSubmitError: unknown;
 
-  if (sendResponse.status === 'ERROR') {
-    throw parseSorobanError(
-      sendResponse.errorResult?.toXDR('base64') ?? 'Transaction submission failed',
-    );
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      sendResponse = await server.sendTransaction(tx);
+
+      if (sendResponse.status === 'ERROR') {
+        // Determine whether this is a rate-limit error worth retrying
+        const errXdr = sendResponse.errorResult?.toXDR('base64') ?? '';
+        const isRateLimit =
+          errXdr.toLowerCase().includes('rate') ||
+          errXdr.toLowerCase().includes('429');
+
+        if (isRateLimit && attempt < maxRetries) {
+          const delay = retryDelayMs * Math.pow(2, attempt);
+          const jitter = delay * 0.2 * (Math.random() * 2 - 1);
+          await sleep(delay + jitter);
+          continue;
+        }
+
+        throw parseSorobanError(errXdr || 'Transaction submission failed');
+      }
+
+      // Successful send (PENDING / DUPLICATE / etc.)
+      break;
+    } catch (err) {
+      lastSubmitError = err;
+
+      // Re-throw immediately if it is a VeriTixError (already parsed)
+      if (err instanceof VeriTixError) throw err;
+
+      if (attempt < maxRetries) {
+        const delay = retryDelayMs * Math.pow(2, attempt);
+        const jitter = delay * 0.2 * (Math.random() * 2 - 1);
+        await sleep(delay + jitter);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (!sendResponse!) {
+    throw lastSubmitError ?? new VeriTixError(VeriTixErrorCode.Unknown, 'Transaction submission failed after retries');
   }
 
   const hash = sendResponse.hash;

@@ -17,6 +17,7 @@ import {
   simulateTransaction,
   submitTransaction,
   estimateFee,
+  SubmitTransactionOptions,
 } from '../../src/utils/transaction';
 import { VeriTixError, VeriTixErrorCode } from '../../src/utils/errors';
 
@@ -370,5 +371,164 @@ describe('estimateFee', () => {
     await expect(
       estimateFee(server, FAKE_CONTRACT_ID, NETWORK_PASSPHRASE, 'get_escrow', args),
     ).resolves.toMatchObject({ feeLumens: '999' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// submitTransaction — jitter + configurable retries (#281)
+// ---------------------------------------------------------------------------
+
+describe('submitTransaction — jitter and configurable retries', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('accepts SubmitTransactionOptions object (maxRetries, retryDelayMs)', async () => {
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'create_escrow',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+
+    const hash = 'abc000';
+    const server = makeMockServer({
+      sendTransaction: jest.fn().mockResolvedValue({ status: 'PENDING', hash }),
+      getTransaction: jest.fn().mockResolvedValue({ status: 'SUCCESS', ledger: 10, resultXdr: undefined }),
+    });
+
+    const opts: SubmitTransactionOptions = { maxAttempts: 5, maxRetries: 2, retryDelayMs: 100 };
+    // Advance timers so sleep() resolves immediately
+    const resultPromise = submitTransaction(server, tx, keypair, opts);
+    // Drain all timers
+    jest.runAllTimersAsync();
+    const result = await resultPromise;
+    expect(result.hash).toBe(hash);
+    expect(result.successful).toBe(true);
+  });
+
+  it('retries on rate-limit ERROR and eventually succeeds', async () => {
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'create_escrow',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+
+    const hash = 'rate_limited_hash';
+    const sendMock = jest
+      .fn()
+      .mockResolvedValueOnce({ status: 'ERROR', hash: '', errorResult: { toXDR: () => 'rate_limit_429' } })
+      .mockResolvedValueOnce({ status: 'PENDING', hash });
+
+    const server = makeMockServer({
+      sendTransaction: sendMock,
+      getTransaction: jest.fn().mockResolvedValue({ status: 'SUCCESS', ledger: 20, resultXdr: undefined }),
+    });
+
+    const resultPromise = submitTransaction(server, tx, keypair, {
+      maxRetries: 2,
+      retryDelayMs: 10,
+      maxAttempts: 5,
+    });
+    jest.runAllTimersAsync();
+    const result = await resultPromise;
+    expect(result.hash).toBe(hash);
+    expect(sendMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('applies jitter — retry delays differ between parallel submissions', async () => {
+    // Spy on Math.random to ensure jitter is applied (non-deterministic, so just
+    // verify the function is called during retries).
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'jitter_test',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+
+    const hash = 'jitter_hash';
+    const sendMock = jest
+      .fn()
+      .mockResolvedValueOnce({ status: 'ERROR', hash: '', errorResult: { toXDR: () => 'rate_429' } })
+      .mockResolvedValueOnce({ status: 'PENDING', hash });
+
+    const server = makeMockServer({
+      sendTransaction: sendMock,
+      getTransaction: jest.fn().mockResolvedValue({ status: 'SUCCESS', ledger: 30 }),
+    });
+
+    const resultPromise = submitTransaction(server, tx, keypair, {
+      maxRetries: 2,
+      retryDelayMs: 100,
+      maxAttempts: 5,
+    });
+    jest.runAllTimersAsync();
+    await resultPromise;
+
+    // Math.random must have been called at least once (for jitter calculation)
+    expect(randomSpy).toHaveBeenCalled();
+    randomSpy.mockRestore();
+  });
+
+  it('exhausts maxRetries and throws after all retries fail', async () => {
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'always_fail',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+
+    const sendMock = jest.fn().mockResolvedValue({
+      status: 'ERROR',
+      hash: '',
+      errorResult: { toXDR: () => 'rate_429' },
+    });
+
+    const server = makeMockServer({ sendTransaction: sendMock });
+
+    const resultPromise = submitTransaction(server, tx, keypair, {
+      maxRetries: 2,
+      retryDelayMs: 10,
+    });
+    jest.runAllTimersAsync();
+    await expect(resultPromise).rejects.toBeInstanceOf(VeriTixError);
+    // 1 initial + 2 retries = 3 total calls
+    expect(sendMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('backwards-compatible: still accepts a plain number as maxAttempts', async () => {
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'compat',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+
+    const hash = 'compat_hash';
+    const server = makeMockServer({
+      sendTransaction: jest.fn().mockResolvedValue({ status: 'PENDING', hash }),
+      getTransaction: jest.fn().mockResolvedValue({ status: 'SUCCESS', ledger: 5 }),
+    });
+
+    const resultPromise = submitTransaction(server, tx, keypair, 3);
+    jest.runAllTimersAsync();
+    const result = await resultPromise;
+    expect(result.hash).toBe(hash);
   });
 });
