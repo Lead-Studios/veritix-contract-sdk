@@ -34,7 +34,6 @@ import type {
   ContractMetadata,
   TransactionResult,
   StellarNetwork,
-  WatchOptions,
   EscrowRecord,
 } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
@@ -478,6 +477,38 @@ export class VeriTixClient extends EventEmitter {
       contractId: this.config.contractId,
       network: this.config.network,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // batchRead  (#285)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Executes multiple read operations in parallel and returns their results
+   * as a strongly-typed tuple.
+   *
+   * All operations run concurrently via `Promise.all`.  If **any** operation
+   * throws, the entire batch rejects with the first error.
+   *
+   * @typeParam T - Tuple type inferred from the provided operation callbacks.
+   * @param operations - A tuple of zero-argument async callbacks, each
+   *   returning a value of its corresponding type.
+   * @returns A `Promise` that resolves to a tuple where each element is the
+   *   resolved value of the matching operation.
+   *
+   * @example
+   * ```ts
+   * const [balance, escrow, tokenName] = await client.batchRead([
+   *   () => client.token.balance('GABC…'),
+   *   () => client.escrow.getEscrow(1n),
+   *   () => client.token.name(),
+   * ] as const);
+   * ```
+   */
+  async batchRead<T extends readonly unknown[]>(
+    operations: readonly [...{ (): Promise<T[number]> }[]],
+  ): Promise<T> {
+    return Promise.all(operations.map((op) => op())) as unknown as Promise<T>;
   }
 
   // -------------------------------------------------------------------------

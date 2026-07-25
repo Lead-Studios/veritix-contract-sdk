@@ -224,3 +224,109 @@ describe('VeriTixClient', () => {
     });
   });
 });
+
+// -------------------------------------------------------------------------
+// batchRead()  (#285)
+// -------------------------------------------------------------------------
+
+describe('batchRead() (#285)', () => {
+  it('executes all operations in parallel and returns a typed tuple', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.token, 'name').mockResolvedValue('VeriTix Token');
+    jest.spyOn(client.token, 'symbol').mockResolvedValue('VTX');
+    jest.spyOn(client.token, 'decimals').mockResolvedValue(7);
+
+    const [name, symbol, decimal] = await client.batchRead<[string, string, number]>([
+      () => client.token.name(),
+      () => client.token.symbol(),
+      () => client.token.decimals(),
+    ]);
+
+    expect(name).toBe('VeriTix Token');
+    expect(symbol).toBe('VTX');
+    expect(decimal).toBe(7);
+  });
+
+  it('rejects with the first error if any operation throws', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.token, 'name').mockResolvedValue('ok');
+    jest.spyOn(client.token, 'symbol').mockRejectedValue(
+      new VeriTixError(VeriTixErrorCode.Unknown, 'symbol RPC failed'),
+    );
+
+    await expect(
+      client.batchRead([
+        () => client.token.name(),
+        () => client.token.symbol(),
+      ]),
+    ).rejects.toMatchObject({ code: VeriTixErrorCode.Unknown });
+  });
+
+  it('returns an empty array for an empty operations list', async () => {
+    const { client } = makeConnectedClient();
+    const result = await client.batchRead([]);
+    expect(result).toEqual([]);
+  });
+
+  it('runs operations concurrently — slower op resolves after faster op', async () => {
+    const { client } = makeConnectedClient();
+    const order: string[] = [];
+
+    const op1 = jest.fn().mockImplementation(async () => {
+      await new Promise<void>((r) => setTimeout(r, 20));
+      order.push('op1');
+      return 'a';
+    });
+    const op2 = jest.fn().mockImplementation(async () => {
+      order.push('op2');
+      return 'b';
+    });
+
+    const [a, b] = await client.batchRead<[string, string]>([op1, op2]);
+
+    expect(a).toBe('a');
+    expect(b).toBe('b');
+    // op2 resolved first because op1 has a delay
+    expect(order[0]).toBe('op2');
+    expect(order[1]).toBe('op1');
+  });
+
+  it('works with a single operation', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.token, 'name').mockResolvedValue('Solo');
+
+    const [name] = await client.batchRead<[string]>([() => client.token.name()]);
+    expect(name).toBe('Solo');
+  });
+
+  it('handles mixed return types — string, number, bigint', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.token, 'name').mockResolvedValue('VeriTix');
+    jest.spyOn(client.token, 'decimals').mockResolvedValue(7);
+    jest.spyOn(client.token, 'totalSupply').mockResolvedValue(999n);
+
+    const [name, decimals, supply] = await client.batchRead<[string, number, bigint]>([
+      () => client.token.name(),
+      () => client.token.decimals(),
+      () => client.token.totalSupply(),
+    ]);
+
+    expect(name).toBe('VeriTix');
+    expect(decimals).toBe(7);
+    expect(supply).toBe(999n);
+  });
+
+  it('calls each operation exactly once', async () => {
+    const { client } = makeConnectedClient();
+    const nameMock = jest.spyOn(client.token, 'name').mockResolvedValue('once');
+    const symbolMock = jest.spyOn(client.token, 'symbol').mockResolvedValue('O');
+
+    await client.batchRead([
+      () => client.token.name(),
+      () => client.token.symbol(),
+    ]);
+
+    expect(nameMock).toHaveBeenCalledTimes(1);
+    expect(symbolMock).toHaveBeenCalledTimes(1);
+  });
+});
