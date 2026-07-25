@@ -277,6 +277,29 @@ export interface SimulationResult {
 }
 
 // ---------------------------------------------------------------------------
+// Health check
+// ---------------------------------------------------------------------------
+
+/**
+ * Result returned by {@link VeriTixClient.healthCheck}.
+ *
+ * The method never throws — any connectivity or contract lookup errors are
+ * captured inside `errors` so callers can inspect them without try/catch.
+ */
+export interface HealthStatus {
+  /** `true` if `server.getLatestLedger()` succeeded */
+  rpcReachable: boolean;
+  /** `true` if the contract data entry was found on-chain */
+  contractFound: boolean;
+  /** Round-trip latency in milliseconds for the RPC call */
+  latencyMs: number;
+  /** The latest ledger sequence number returned by the RPC (0 if unreachable) */
+  latestLedger: number;
+  /** Array of human-readable error strings for any checks that failed */
+  errors: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Fee estimation
 // ---------------------------------------------------------------------------
 

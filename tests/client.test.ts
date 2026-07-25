@@ -224,3 +224,87 @@ describe('VeriTixClient', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// healthCheck()  (#282)
+// ---------------------------------------------------------------------------
+
+describe('healthCheck()', () => {
+  function makeClientForHealth(overrides: {
+    getLatestLedger?: jest.Mock;
+    getLedgerEntries?: jest.Mock;
+  }) {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+    const mockServer = {
+      getLatestLedger:
+        overrides.getLatestLedger ??
+        jest.fn().mockResolvedValue({ sequence: 1_000_000 }),
+      getLedgerEntries:
+        overrides.getLedgerEntries ??
+        jest.fn().mockResolvedValue({ entries: [{ key: 'mock' }] }),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).server = mockServer;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).connected = true;
+    return { client, mockServer };
+  }
+
+  it('returns rpcReachable=true and contractFound=true when both checks pass', async () => {
+    const { client } = makeClientForHealth({});
+    const status = await client.healthCheck();
+    expect(status.rpcReachable).toBe(true);
+    expect(status.contractFound).toBe(true);
+    expect(status.errors).toHaveLength(0);
+    expect(status.latestLedger).toBe(1_000_000);
+    expect(status.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('returns rpcReachable=false when getLatestLedger throws', async () => {
+    const { client } = makeClientForHealth({
+      getLatestLedger: jest.fn().mockRejectedValue(new Error('network timeout')),
+    });
+    const status = await client.healthCheck();
+    expect(status.rpcReachable).toBe(false);
+    expect(status.contractFound).toBe(false);
+    expect(status.errors.length).toBeGreaterThan(0);
+    expect(status.errors[0]).toMatch(/network timeout/i);
+  });
+
+  it('returns contractFound=false when getLedgerEntries returns empty entries', async () => {
+    const { client } = makeClientForHealth({
+      getLedgerEntries: jest.fn().mockResolvedValue({ entries: [] }),
+    });
+    const status = await client.healthCheck();
+    expect(status.rpcReachable).toBe(true);
+    expect(status.contractFound).toBe(false);
+    expect(status.errors.length).toBeGreaterThan(0);
+    expect(status.errors[0]).toMatch(/contract not found/i);
+  });
+
+  it('captures contract lookup error in errors[] without throwing', async () => {
+    const { client } = makeClientForHealth({
+      getLedgerEntries: jest.fn().mockRejectedValue(new Error('entry not found')),
+    });
+    const status = await client.healthCheck();
+    expect(status.rpcReachable).toBe(true);
+    expect(status.contractFound).toBe(false);
+    expect(status.errors.length).toBeGreaterThan(0);
+    expect(status.errors[0]).toMatch(/entry not found/i);
+  });
+
+  it('never throws even when server is null (not connected)', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+    // server is not set (not connected)
+    const status = await client.healthCheck();
+    expect(status.rpcReachable).toBe(false);
+    expect(status.errors.length).toBeGreaterThan(0);
+  });
+
+  it('records a non-negative latencyMs', async () => {
+    const { client } = makeClientForHealth({});
+    const status = await client.healthCheck();
+    expect(typeof status.latencyMs).toBe('number');
+    expect(status.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+});
