@@ -629,6 +629,69 @@ describe('EscrowModule.isExpired', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// escrowBetween tests
+// ---------------------------------------------------------------------------
+
+describe('EscrowModule.escrowBetween', () => {
+  it('throws INVALID_ADDRESS for bad addr1', async () => {
+    const { client } = makeConnectedClient();
+    await expect(client.escrow.escrowBetween('bad', FAKE_ADDRESS)).rejects.toMatchObject({
+      code: VeriTixErrorCode.InvalidAddress,
+    });
+  });
+
+  it('throws INVALID_ADDRESS for bad addr2', async () => {
+    const { client } = makeConnectedClient();
+    const validAddr = Keypair.random().publicKey();
+    await expect(client.escrow.escrowBetween(validAddr, 'bad')).rejects.toMatchObject({
+      code: VeriTixErrorCode.InvalidAddress,
+    });
+  });
+
+  it('returns empty array when no matching escrows', async () => {
+    const { client } = makeConnectedClient();
+    const addr1 = Keypair.random().publicKey();
+    const addr2 = Keypair.random().publicKey();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([]);
+    jest.spyOn(client.escrow, 'getEscrowsByBeneficiary').mockResolvedValue([]);
+    const result = await client.escrow.escrowBetween(addr1, addr2);
+    expect(result).toEqual([]);
+  });
+
+  it('returns escrows where addr1 is depositor and addr2 is beneficiary', async () => {
+    const { client } = makeConnectedClient();
+    const addr1 = Keypair.random().publicKey();
+    const addr2 = Keypair.random().publicKey();
+    const mockRecord: EscrowRecord = {
+      id: 1n, depositor: addr1, beneficiary: addr2, amount: 1_000_000n,
+      released: false, refunded: false, expiryLedger: 1_000_000, memos: [],
+    };
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockImplementation(async (a) => a === addr1 ? [1n] : []);
+    jest.spyOn(client.escrow, 'getEscrowsByBeneficiary').mockImplementation(async (a) => a === addr2 ? [1n] : []);
+    jest.spyOn(client.escrow, 'getEscrowsBatch').mockResolvedValue([mockRecord]);
+    const result = await client.escrow.escrowBetween(addr1, addr2);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(1n);
+  });
+
+  it('returns escrows where addr2 is depositor and addr1 is beneficiary', async () => {
+    const { client } = makeConnectedClient();
+    const addr1 = Keypair.random().publicKey();
+    const addr2 = Keypair.random().publicKey();
+    const mockRecord: EscrowRecord = {
+      id: 2n, depositor: addr2, beneficiary: addr1, amount: 500_000n,
+      released: false, refunded: false, expiryLedger: 1_000_000, memos: [],
+    };
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockImplementation(async (a) => a === addr2 ? [2n] : []);
+    jest.spyOn(client.escrow, 'getEscrowsByBeneficiary').mockImplementation(async (a) => a === addr1 ? [2n] : []);
+    jest.spyOn(client.escrow, 'getEscrowsBatch').mockResolvedValue([mockRecord]);
+    const result = await client.escrow.escrowBetween(addr1, addr2);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(2n);
+  });
+});
+
 describe('EscrowModule.settleEvent', () => {
   const keypair = Keypair.random();
 
