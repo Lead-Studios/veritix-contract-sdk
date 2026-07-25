@@ -116,6 +116,51 @@ export class RecurringModule {
     throw new Error('RecurringModule.cancel: not implemented');
   }
 
+  /**
+   * Cancels multiple recurring payments at once. Must be called by the payer.
+   * Collects failures without throwing — returns summary of results.
+   *
+   * @param ids - Array of numeric recurring-payment identifiers.
+   * @returns Summary with cancelled and failed payment IDs.
+   */
+  async cancelBatch(
+    _ids: bigint[],
+  ): Promise<{ cancelled: bigint[]; failed: bigint[] }> {
+    if (!this.keypair) {
+      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.cancelBatch: signing keypair required');
+    }
+
+    const payer = this.keypair.publicKey();
+    const cancelled: bigint[] = [];
+    const failed: bigint[] = [];
+
+    for (const id of _ids) {
+      try {
+        const tx = await buildContractCall(
+          this.server,
+          new Account(payer, '0'),
+          this.config.contractId,
+          'cancel_recurring',
+          [bigintToScVal(id, 'u64')],
+          this.config.networkPassphrase,
+        );
+
+        const raw = await this.server.simulateTransaction(tx);
+        if (SorobanRpc.Api.isSimulationError(raw)) {
+          throw parseSorobanError(raw.error);
+        }
+
+        const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+        await submitTransaction(this.server, assembled, this.keypair);
+        cancelled.push(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+
+    return { cancelled, failed };
+  }
+
   // -------------------------------------------------------------------------
   // History
   // -------------------------------------------------------------------------

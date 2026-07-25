@@ -5,6 +5,8 @@
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
 import { RecurringModule } from '../src/modules/recurring';
+import { Keypair } from '@stellar/stellar-sdk';
+import { VeriTixErrorCode } from '../src/utils/errors';
 
 const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
 const FAKE_PAYER    = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
@@ -106,6 +108,37 @@ describe('RecurringModule', () => {
       expect(result.executed).toEqual([20n]);
       expect(result.skipped).toEqual([21n]);
       expect(result.failed).toEqual([]);
+    });
+  });
+
+  describe('cancelBatch()', () => {
+    it('throws ReadOnlyClient when no keypair', async () => {
+      await expect(recurring.cancelBatch([1n, 2n])).rejects.toThrow('signing keypair required');
+    });
+
+    it('returns cancelled/failed summary', async () => {
+      const kp = Keypair.random();
+      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
+      const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).server = mockServer;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).connected = true;
+
+      let callCount = 0;
+      mockServer.simulateTransaction.mockImplementation(async () => {
+        callCount++;
+        if (callCount === 2) {
+          return { status: 'ERROR', error: 'recurring not found' };
+        }
+        return { status: 'SUCCESS', result: { retval: undefined } };
+      });
+      mockServer.sendTransaction.mockResolvedValue({ hash: 'batch-hash', status: 'PENDING' });
+      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 60 });
+
+      const result = await c.recurring.cancelBatch([10n, 11n, 12n]);
+      expect(result.cancelled).toEqual([10n, 12n]);
+      expect(result.failed).toEqual([11n]);
     });
   });
 });
