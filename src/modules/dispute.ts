@@ -468,4 +468,71 @@ export class DisputeModule {
       returnValue,
     };
   }
+
+  /**
+   * Force-expires an expired dispute. Must be called by the contract admin.
+   *
+   * @param disputeId - The dispute ID to expire.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   * @throws {VeriTixError} With code `DISPUTE_NOT_FOUND` if dispute does not exist.
+   * @throws {VeriTixError} With code `DISPUTE_ALREADY_RESOLVED` if already resolved.
+   *
+   * @example
+   * ```ts
+   * await client.dispute.expireDispute(3n);
+   * ```
+   */
+  async expireDispute(disputeId: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('DisputeModule.expireDispute: signing keypair required');
+    }
+
+    const dispute = await this.getDispute(disputeId);
+    if (!dispute) {
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeNotFound,
+        'Dispute not found',
+      );
+    }
+
+    if (dispute.status !== DisputeStatus.Open) {
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeAlreadyResolved,
+        'Dispute already resolved',
+      );
+    }
+
+    const admin = this.keypair.publicKey();
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(admin, '0'),
+      this.config.contractId,
+      'expire_dispute',
+      [
+        addressToScVal(admin),
+        bigintToScVal(disputeId, 'u64'),
+      ],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
+  }
 }
