@@ -148,8 +148,11 @@ export async function estimateFee(
   method: string,
   args: xdr.ScVal[],
 ): Promise<FeeEstimate> {
-  // Use a throwaway keypair — simulation does not require a funded account
-  const result = await server.simulateTransaction(tx);
+  // Use a throwaway source account — simulation does not require a funded account
+  const sourceAccount = new Account(
+    'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
+    '0',
+  );
 
   const tx = await buildContractCall(
     server,
@@ -182,22 +185,60 @@ export async function estimateFee(
 // ---------------------------------------------------------------------------
 
 /**
+ * Options for {@link submitTransaction} retry behaviour.
+ */
+export interface SubmitTransactionOptions {
+  /**
+   * Maximum number of times to retry submission on a retriable failure
+   * (e.g. `RATE_LIMIT_EXCEEDED`).  Default `3`.
+   */
+  maxRetries?: number;
+  /**
+   * Base delay in milliseconds between retry attempts.  Each retry applies
+   * ±20 % random jitter to spread concurrent submissions.  Default `1000`.
+   */
+  retryDelayMs?: number;
+  /**
+   * Maximum number of poll attempts before declaring a TIMEOUT.
+   * Default `20`.
+   */
+  maxPollAttempts?: number;
+}
+
+/**
  * Signs a prepared transaction with the given `Keypair`, submits it to the
  * Soroban RPC, and polls until it is included in a ledger.
+ *
+ * Retries the submission on transient failures (e.g. `RATE_LIMIT_EXCEEDED`)
+ * with configurable delay and ±20 % random jitter to avoid thundering-herd
+ * collisions when multiple clients retry simultaneously.
  *
  * @param server  - An initialised `SorobanRpc.Server` instance.
  * @param tx      - A transaction that has already been through
  *                  {@link simulateTransaction} (assembled & fee-bumped).
  * @param keypair - The `Keypair` used to sign the transaction envelope.
- * @param maxAttempts - Maximum poll attempts before throwing TIMEOUT (default 20).
+ * @param options - Optional {@link SubmitTransactionOptions}: `maxRetries`
+ *                  (default 3), `retryDelayMs` (default 1000), and
+ *                  `maxPollAttempts` (default 20).
+ *
+ *                  For backwards compatibility a bare `number` is still
+ *                  accepted as `maxPollAttempts`.
  * @returns A {@link TransactionResult} with the hash and final ledger.
  * @throws {VeriTixError} If submission or polling returns an error.
+ *
+ * @example
+ * ```ts
+ * const result = await submitTransaction(server, tx, keypair, {
+ *   maxRetries: 5,
+ *   retryDelayMs: 500,
+ * });
+ * ```
  */
 export async function submitTransaction(
   server: SorobanRpc.Server,
   tx: Transaction,
   keypair: Keypair | undefined,
-  maxAttempts: number = MAX_POLL_ATTEMPTS,
+  options: SubmitTransactionOptions | number = {},
 ): Promise<TransactionResult> {
   if (!keypair) {
     throw new VeriTixError(
@@ -206,22 +247,58 @@ export async function submitTransaction(
     );
   }
 
+  // Backwards-compat: plain number was the old `maxAttempts` parameter
+  const opts: SubmitTransactionOptions =
+    typeof options === 'number' ? { maxPollAttempts: options } : options;
+
+  const maxRetries = opts.maxRetries ?? 3;
+  const retryDelayMs = opts.retryDelayMs ?? 1_000;
+  const maxPollAttempts = opts.maxPollAttempts ?? MAX_POLL_ATTEMPTS;
+
   // 1. Sign
   tx.sign(keypair);
 
-  // 2. Submit
-  const sendResponse = await server.sendTransaction(tx);
+  // 2. Submit with retry + jitter on RATE_LIMIT_EXCEEDED
+  let sendResponse: Awaited<ReturnType<typeof server.sendTransaction>> | undefined;
+  let lastSubmitError: unknown;
 
-  if (sendResponse.status === 'ERROR') {
-    throw parseSorobanError(
-      sendResponse.errorResult?.toXDR('base64') ?? 'Transaction submission failed',
-    );
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      sendResponse = await server.sendTransaction(tx);
+
+      if (sendResponse.status !== 'ERROR') {
+        // Submitted successfully (PENDING or duplicate)
+        break;
+      }
+
+      const errXdr = sendResponse.errorResult?.toXDR('base64') ?? '';
+      const isRateLimit =
+        errXdr.includes('RATE_LIMIT') ||
+        errXdr.toLowerCase().includes('too many requests');
+
+      if (!isRateLimit || attempt === maxRetries) {
+        throw parseSorobanError(errXdr || 'Transaction submission failed');
+      }
+    } catch (err) {
+      lastSubmitError = err;
+      if (attempt === maxRetries) throw err;
+    }
+
+    // Jitter: ±20 % of retryDelayMs
+    const jitter = retryDelayMs * 0.2 * (Math.random() * 2 - 1);
+    await sleep(retryDelayMs + jitter);
+  }
+
+  if (!sendResponse || sendResponse.status === 'ERROR') {
+    throw lastSubmitError instanceof VeriTixError
+      ? lastSubmitError
+      : parseSorobanError('Transaction submission failed');
   }
 
   const hash = sendResponse.hash;
 
   // 3. Poll until confirmed
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  for (let attempt = 0; attempt < maxPollAttempts; attempt++) {
     await sleep(POLL_INTERVAL_MS);
 
     const response = await server.getTransaction(hash);
@@ -249,7 +326,7 @@ export async function submitTransaction(
 
   throw new VeriTixError(
     VeriTixErrorCode.Unknown,
-    `Transaction ${hash} not confirmed after ${maxAttempts} polling attempts (TIMEOUT)`,
+    `Transaction ${hash} not confirmed after ${maxPollAttempts} polling attempts (TIMEOUT)`,
   );
 }
 
