@@ -301,4 +301,27 @@ export class AdminModule {
   async unpause(): Promise<TransactionResult> {
     return this.writeCall('unpause', []);
   }
+
+  // -------------------------------------------------------------------------
+  // Dividend distribution
+  // -------------------------------------------------------------------------
+
+  /**
+   * Distributes profits (dividends) to token holders proportionally.
+   * Must be called by admin.
+   *
+   * @param totalAmount - Total dividend amount to distribute (in stroops).
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.dividendDistribute(1_000_000n);
+   * ```
+   */
+  async dividendDistribute(totalAmount: bigint): Promise<TransactionResult> {
+    return this.writeCall('dividend_distribute', [
+      bigintToScVal(totalAmount, 'i128'),
+    ]);
+  }
 }

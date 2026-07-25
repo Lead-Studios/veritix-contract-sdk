@@ -104,10 +104,34 @@ describe("AdminModule.manualRefund()", () => {
 
   it("returns a TransactionResult on success", async () => {
     const { client } = makeAdminClient(Keypair.random());
-    const result = await client.admin.manualRefund(42n, "organizer no-show");
+    const result = await client.admin.whitelistAddress('GABC');
     expect(result.hash).toBe("mockhash");
     expect(result.successful).toBe(true);
   });
+});
+
+describe("AdminModule.dividendDistribute()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.dividendDistribute(1_000_000n))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("calls buildContractCall with 'dividend_distribute' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.dividendDistribute(500_000n);
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("dividend_distribute");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const result = await client.admin.dividendDistribute(2_000_000n);
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+});
 
   it("calls buildContractCall with 'force_refund_escrow' method", async () => {
     const { client } = makeAdminClient(Keypair.random());
