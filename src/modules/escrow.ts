@@ -365,6 +365,96 @@ export class EscrowModule {
     return this.settleEscrow('refund_escrow', id);
   }
 
+  /**
+   * Transfers the beneficiary role of an escrow to a new address.
+   * Must be called by the depositor. The new beneficiary must be a valid
+   * Stellar address and must differ from the depositor.
+   *
+   * @param escrowId      - Numeric escrow identifier.
+   * @param newBeneficiary - Stellar account address of the new beneficiary.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ESCROW_NOT_FOUND` if the escrow does not exist.
+   * @throws {VeriTixError} With code `ESCROW_ALREADY_SETTLED` if already settled.
+   * @throws {VeriTixError} With code `ESCROW_UNAUTHORIZED` if caller is not the depositor.
+   * @throws {VeriTixError} With code `INVALID_ADDRESS` if newBeneficiary is malformed.
+   * @throws {VeriTixError} With code `INVALID_BENEFICIARY` if newBeneficiary equals the depositor.
+   *
+   * @example
+   * ```ts
+   * const result = await client.escrow.transferBeneficiary(1n, 'GNEW…');
+   * console.log('Beneficiary transferred in tx:', result.hash);
+   * ```
+   */
+  async transferBeneficiary(escrowId: bigint, newBeneficiary: string): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.ReadOnlyClient,
+        'EscrowModule.transferBeneficiary: signing keypair required',
+      );
+    }
+
+    try {
+      new Address(newBeneficiary);
+    } catch {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        'EscrowModule.transferBeneficiary: newBeneficiary must be a valid Stellar address',
+      );
+    }
+
+    const escrow = await this.getEscrow(escrowId);
+    if (!escrow) {
+      throw new VeriTixError(VeriTixErrorCode.EscrowNotFound, 'Escrow not found');
+    }
+
+    if (escrow.released || escrow.refunded) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowAlreadySettled,
+        'Escrow has already been released or refunded',
+      );
+    }
+
+    const caller = this.keypair.publicKey();
+    if (caller !== escrow.depositor) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowUnauthorized,
+        'EscrowModule.transferBeneficiary: caller is not the depositor',
+      );
+    }
+
+    if (newBeneficiary === caller) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidBeneficiary,
+        'EscrowModule.transferBeneficiary: newBeneficiary must not be the same as the depositor',
+      );
+    }
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(caller, '0'),
+      this.config.contractId,
+      'transfer_beneficiary',
+      [bigintToScVal(escrowId, 'u64'), addressToScVal(newBeneficiary)],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
+  }
+
   private async getEscrowIdsByAddress(
     method: 'escrows_by_depositor' | 'escrows_by_beneficiary',
     address: string,
