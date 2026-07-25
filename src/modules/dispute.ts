@@ -13,7 +13,7 @@ import {
   NetworkConfig,
   TransactionResult,
 } from '../types/index';
-import { addressToScVal, bigintToScVal, boolToScVal, scValToBoolean } from '../utils/scval';
+import { addressToScVal, bigintToScVal, boolToScVal, scValToBigint, scValToBoolean, scValToNumber } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseDisputeRecord } from '../utils/parsers';
@@ -246,6 +246,69 @@ export class DisputeModule {
       if (typeof id === 'number') return BigInt(id);
       throw new Error(`Unexpected type in disputes array: ${typeof id}`);
     });
+  }
+
+  /**
+   * Returns aggregate resolver statistics.
+   *
+   * @returns Object with `totalResolved`, `resolvedForBeneficiary`, and `resolvedForDepositor`.
+   * @throws {VeriTixError} If the contract returns no data or an unexpected format.
+   *
+   * @example
+   * ```ts
+   * const stats = await client.dispute.getResolverStats();
+   * console.log('Total resolved:', stats.totalResolved);
+   * ```
+   */
+  async getResolverStats(): Promise<{
+    totalResolved: number;
+    resolvedForBeneficiary: number;
+    resolvedForDepositor: number;
+  }> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_resolver_stats',
+      [],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'DisputeModule.getResolverStats: no data returned');
+    }
+
+    if (returnValue.switch() !== xdr.ScValType.scvMap()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'DisputeModule.getResolverStats: expected ScMap result');
+    }
+
+    const map = returnValue.map() ?? [];
+    const get = (key: string): xdr.ScVal | undefined =>
+      map.find((e) => e.key().sym() === key)?.val();
+
+    const totalResolvedVal = get('total_resolved');
+    const resolvedForBeneficiaryVal = get('resolved_for_beneficiary');
+    const resolvedForDepositorVal = get('resolved_for_depositor');
+
+    if (!totalResolvedVal || !resolvedForBeneficiaryVal || !resolvedForDepositorVal) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'DisputeModule.getResolverStats: incomplete stats map');
+    }
+
+    return {
+      totalResolved: scValToNumber(totalResolvedVal),
+      resolvedForBeneficiary: scValToNumber(resolvedForBeneficiaryVal),
+      resolvedForDepositor: scValToNumber(resolvedForDepositorVal),
+    };
   }
 
   // -------------------------------------------------------------------------

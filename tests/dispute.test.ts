@@ -386,3 +386,42 @@ describe('DisputeModule', () => {
   });
 });
 
+describe('DisputeModule.getResolverStats', () => {
+  it('throws when simulation returns error', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({ status: 'ERROR', error: 'contract panic' });
+    await expect(client.dispute.getResolverStats()).rejects.toThrow();
+  });
+
+  it('throws when simulation returns void', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvVoid() },
+    });
+    await expect(client.dispute.getResolverStats()).rejects.toMatchObject({
+      code: VeriTixErrorCode.Unknown,
+    });
+  });
+
+  it('parses a valid resolver stats map', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const mapVal = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total_resolved'), val: xdr.ScVal.scvU32(50) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('resolved_for_beneficiary'), val: xdr.ScVal.scvU32(30) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('resolved_for_depositor'), val: xdr.ScVal.scvU32(20) }),
+    ]);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: mapVal },
+    });
+    const stats = await client.dispute.getResolverStats();
+    expect(stats.totalResolved).toBe(50);
+    expect(stats.resolvedForBeneficiary).toBe(30);
+    expect(stats.resolvedForDepositor).toBe(20);
+  });
+});
+
