@@ -229,6 +229,42 @@ export class EscrowModule {
     return ledger >= record.expiryLedger;
   }
 
+  /**
+   * Returns the total escrowed value held across all active escrows for a given depositor.
+   *
+   * @param depositor - Stellar account address of the depositor.
+   * @returns The sum of `amount` across all active (unreleased, unrefunded) escrows.
+   * @throws {VeriTixError} With code `INVALID_ADDRESS` if the depositor address is invalid.
+   *
+   * @example
+   * ```ts
+   * const total = await client.escrow.getEscrowedValueForDepositor('GABC…');
+   * console.log('Total escrowed:', total);
+   * ```
+   */
+  async getEscrowedValueForDepositor(depositor: string): Promise<bigint> {
+    try {
+      new Address(depositor);
+    } catch {
+      throw new VeriTixError(VeriTixErrorCode.InvalidAddress, 'EscrowModule.getEscrowedValueForDepositor: invalid depositor address');
+    }
+
+    const escrowIds = await this.getEscrowsByDepositor(depositor);
+
+    if (escrowIds.length === 0) {
+      return 0n;
+    }
+
+    const escrows = await this.getEscrowsBatch(escrowIds);
+
+    return escrows.reduce((sum, escrow) => {
+      if (escrow && !escrow.released && !escrow.refunded) {
+        return sum + escrow.amount;
+      }
+      return sum;
+    }, 0n);
+  }
+
   // -------------------------------------------------------------------------
   // Write operations
   // -------------------------------------------------------------------------
