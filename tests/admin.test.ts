@@ -288,3 +288,111 @@ describe("AdminModule.unpause()", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// #267 — AdminModule.dividendDistribute and forceRefundEscrow
+// ---------------------------------------------------------------------------
+
+describe("AdminModule.dividendDistribute()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(
+      client.admin.dividendDistribute(["GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN"], 1_000_000n),
+    ).rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("throws when totalAmount is 0n", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await expect(
+      client.admin.dividendDistribute(["GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN"], 0n),
+    ).rejects.toThrow("totalAmount must be greater than zero");
+  });
+
+  it("throws when totalAmount is negative", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await expect(
+      client.admin.dividendDistribute(["GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN"], -1n),
+    ).rejects.toThrow("totalAmount must be greater than zero");
+  });
+
+  it("calls buildContractCall with 'dividend_distribute' method on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const recipients = [
+      "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN",
+      Keypair.random().publicKey(),
+    ];
+    await client.admin.dividendDistribute(recipients, 10_000_000n);
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("dividend_distribute");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const result = await client.admin.dividendDistribute(
+      ["GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN"],
+      5_000_000n,
+    );
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+
+  it("requires admin keypair to call", async () => {
+    const { client } = makeAdminClient();
+    const result = client.admin.dividendDistribute(
+      ["GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN"],
+      1_000n,
+    );
+    await expect(result).rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+});
+
+describe("AdminModule.forceRefundEscrow()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided (non-admin)", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.forceRefundEscrow(1n)).rejects.toMatchObject({
+      code: VeriTixErrorCode.AdminUnauthorized,
+    });
+  });
+
+  it("calls buildContractCall with 'force_refund_escrow' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.forceRefundEscrow(42n);
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("force_refund_escrow");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const result = await client.admin.forceRefundEscrow(42n);
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+
+  it("propagates ESCROW_ALREADY_SETTLED error from contract", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    (txUtils.simulateTransaction as jest.Mock).mockRejectedValueOnce(
+      new VeriTixError(VeriTixErrorCode.EscrowAlreadySettled, "Escrow already settled"),
+    );
+    await expect(client.admin.forceRefundEscrow(1n)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowAlreadySettled,
+    });
+  });
+
+  it("propagates error when escrow has not yet expired", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    (txUtils.simulateTransaction as jest.Mock).mockRejectedValueOnce(
+      new Error("escrow has not yet expired"),
+    );
+    await expect(client.admin.forceRefundEscrow(99n)).rejects.toThrow(
+      "escrow has not yet expired",
+    );
+  });
+
+  it("invokes simulateTransaction once", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.forceRefundEscrow(5n);
+    expect(txUtils.simulateTransaction as jest.Mock).toHaveBeenCalledTimes(1);
+  });
+});

@@ -21,6 +21,7 @@ import {
 
 import type { TransactionResult, FeeEstimate } from '../types/index';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from './errors';
+import { DUMMY_PUBLIC_KEY } from './network';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -149,7 +150,7 @@ export async function estimateFee(
   args: xdr.ScVal[],
 ): Promise<FeeEstimate> {
   // Use a throwaway keypair — simulation does not require a funded account
-  const result = await server.simulateTransaction(tx);
+  const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
   const tx = await buildContractCall(
     server,
@@ -159,6 +160,9 @@ export async function estimateFee(
     args,
     networkPassphrase,
   );
+
+  const result = await server.simulateTransaction(tx);
+  void result; // raw simulation result (unused — fee is extracted via simulateTransaction)
 
   const { simulatedFee } = await simulateTransaction(server, tx);
 

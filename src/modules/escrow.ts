@@ -116,6 +116,60 @@ export class EscrowModule {
   }
 
   /**
+   * Finds the active escrow between a specific depositor and beneficiary.
+   *
+   * Searches all escrows created by `depositor` and returns the ID of the
+   * first active (not released and not refunded) one whose beneficiary matches.
+   *
+   * @param depositor   - Stellar account address of the depositor.
+   * @param beneficiary - Stellar account address of the beneficiary.
+   * @returns The escrow ID if an active escrow is found, or `null` otherwise.
+   *
+   * @example
+   * ```ts
+   * const id = await client.escrow.escrowBetween(depositorAddr, beneficiaryAddr);
+   * if (id) console.log('Active escrow:', id);
+   * ```
+   */
+  async escrowBetween(depositor: string, beneficiary: string): Promise<bigint | null> {
+    const ids = await this.getEscrowsByDepositor(depositor);
+    for (const id of ids) {
+      const record = await this.getEscrow(id);
+      if (record && record.beneficiary === beneficiary && !record.released && !record.refunded) {
+        return id;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Returns the total amount currently escrowed (not yet settled) by a depositor.
+   *
+   * Fetches all escrows for the depositor and sums the `amount` field for every
+   * escrow that has neither been released nor refunded.
+   *
+   * @param depositor - Stellar account address of the depositor.
+   * @returns Total active escrowed amount in stroops (`0n` when none).
+   *
+   * @example
+   * ```ts
+   * const total = await client.escrow.getEscrowedValueForDepositor(depositorAddr);
+   * console.log('Total escrowed:', total);
+   * ```
+   */
+  async getEscrowedValueForDepositor(depositor: string): Promise<bigint> {
+    const ids = await this.getEscrowsByDepositor(depositor);
+    let total = 0n;
+    for (const id of ids) {
+      const record = await this.getEscrow(id);
+      if (record && !record.released && !record.refunded) {
+        total += record.amount;
+      }
+    }
+    return total;
+  }
+
+  /**
    * Fetches on-chain records for multiple escrows in a single batch call.
    *
    * @param ids - Array of numeric escrow identifiers (max 50).

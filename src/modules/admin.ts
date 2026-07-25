@@ -265,6 +265,54 @@ export class AdminModule {
     ]);
   }
 
+  /**
+   * Forces a refund for a single escrow without requiring the normal expiry
+   * condition. This is a direct admin override intended for emergency use.
+   *
+   * Alias for the `force_refund_escrow` contract method, exposed as a
+   * standalone method for clarity.
+   *
+   * @param escrowId - The escrow ID to force-refund.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   * @throws {VeriTixError} If the escrow is already settled (released or refunded).
+   * @throws {VeriTixError} If the escrow has not yet expired (unless admin override).
+   *
+   * @example
+   * ```ts
+   * await client.admin.forceRefundEscrow(42n);
+   * ```
+   */
+  async forceRefundEscrow(escrowId: bigint): Promise<TransactionResult> {
+    return this.writeCall('force_refund_escrow', [bigintToScVal(escrowId, 'u64'), stringToScVal('admin force refund')]);
+  }
+
+  /**
+   * Distributes a dividend (arbitrary token amount) to a list of recipients
+   * proportionally or as a flat amount per address.
+   *
+   * @param recipients  - Array of Stellar account addresses to receive the dividend.
+   * @param totalAmount - Total amount to distribute (in stroops). Must be > 0.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   * @throws {Error} If `totalAmount` is zero or negative.
+   *
+   * @example
+   * ```ts
+   * await client.admin.dividendDistribute(['GABC…', 'GDEF…'], 10_000_000n);
+   * ```
+   */
+  async dividendDistribute(recipients: string[], totalAmount: bigint): Promise<TransactionResult> {
+    if (totalAmount <= 0n) {
+      throw new Error('AdminModule.dividendDistribute: totalAmount must be greater than zero');
+    }
+    const recipientsScVal = xdr.ScVal.scvVec(recipients.map((r) => addressToScVal(r)));
+    return this.writeCall('dividend_distribute', [
+      recipientsScVal,
+      bigintToScVal(totalAmount, 'i128'),
+    ]);
+  }
+
   // -------------------------------------------------------------------------
   // Contract pause / unpause
   // -------------------------------------------------------------------------

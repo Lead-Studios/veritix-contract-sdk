@@ -8,8 +8,8 @@
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, RecurringRecord, RecurringExecutionEntry, TransactionResult } from '../types/index';
-import { bigintToScVal } from '../utils/scval';
-import { buildContractCall } from '../utils/transaction';
+import { addressToScVal, bigintToScVal } from '../utils/scval';
+import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError } from '../utils/errors';
 import { parseRecurringExecutionEntry } from '../utils/parsers';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
@@ -114,6 +114,103 @@ export class RecurringModule {
   async cancel(_id: bigint): Promise<TransactionResult> {
     // TODO: implement
     throw new Error('RecurringModule.cancel: not implemented');
+  }
+
+  /**
+   * Amends an existing recurring payment's amount and/or interval.
+   * Must be called by the payer. At least one of `amount` or `interval` must be provided.
+   *
+   * @param id       - Numeric recurring-payment identifier.
+   * @param params   - Object with optional `amount` and/or `interval` fields to update.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If neither `amount` nor `interval` is provided.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not the payer.
+   *
+   * @example
+   * ```ts
+   * await client.recurring.amendRecurring(1n, { amount: 750_000n });
+   * ```
+   */
+  async amendRecurring(
+    id: bigint,
+    params: { amount?: bigint; interval?: number },
+  ): Promise<TransactionResult> {
+    if (params.amount === undefined && params.interval === undefined) {
+      throw new Error('RecurringModule.amendRecurring: at least one of amount or interval must be provided');
+    }
+    if (!this.keypair) {
+      throw new Error('RecurringModule.amendRecurring: signing keypair required');
+    }
+
+    const args = [bigintToScVal(id, 'u64')];
+    if (params.amount !== undefined) {
+      args.push(bigintToScVal(params.amount, 'i128'));
+    }
+    if (params.interval !== undefined) {
+      args.push(bigintToScVal(BigInt(params.interval), 'u64'));
+    }
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'amend_recurring',
+      args,
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
+  }
+
+  /**
+   * Transfers the payer role of a recurring payment to a new payer.
+   * Requires authorisation from both the current payer and the new payer.
+   *
+   * @param id       - Numeric recurring-payment identifier.
+   * @param newPayer - Stellar account address of the incoming payer.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If `newPayer` is the same as the current payer's address.
+   * @throws {Error} If the recurring payment is inactive.
+   * @throws {Error} If no signing keypair is provided.
+   *
+   * @example
+   * ```ts
+   * await client.recurring.transferPayer(1n, 'GNEW…');
+   * ```
+   */
+  async transferPayer(id: bigint, newPayer: string): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.transferPayer: signing keypair required');
+    }
+    if (newPayer === this.keypair.publicKey()) {
+      throw new Error('RecurringModule.transferPayer: new payer must differ from the current payer');
+    }
+
+    const record = await this.getRecurring(id);
+    if (record && !record.active) {
+      throw new Error('RecurringModule.transferPayer: recurring payment is inactive');
+    }
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'transfer_payer',
+      [bigintToScVal(id, 'u64'), addressToScVal(newPayer)],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
   }
 
   // -------------------------------------------------------------------------
