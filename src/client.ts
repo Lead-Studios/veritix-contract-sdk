@@ -57,14 +57,6 @@ export interface VeriTixClientEvents {
   retry: (data: { attempt: number; delayMs: number }) => void;
 }
 
-/** Options for {@link VeriTixClient.watchTransaction} */
-export interface WatchOptions {
-  /** Polling interval in milliseconds (default: 2000) */
-  intervalMs?: number;
-  /** Maximum wait time in milliseconds before rejecting (default: 60000) */
-  timeoutMs?: number;
-}
-
 /**
  * The primary SDK class.  One instance per contract / network pair.
  *
