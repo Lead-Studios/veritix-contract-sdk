@@ -150,6 +150,49 @@ export class DisputeModule {
   }
 
   /**
+   * Checks if a dispute has expired.
+   *
+   * @param disputeId - Numeric dispute identifier.
+   * @returns `true` if the dispute has expired, `false` otherwise.
+   *
+   * @example
+   * ```ts
+   * const expired = await client.dispute.isDisputeExpired(3n);
+   * if (expired) {
+   *   console.log('Dispute has expired');
+   * }
+   * ```
+   */
+  async isDisputeExpired(disputeId: bigint): Promise<boolean> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'is_dispute_expired',
+      [bigintToScVal(disputeId, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    if (!returnValue) {
+      return false;
+    }
+
+    return scValToBoolean(returnValue);
+  }
+
+  /**
    * Fetches all open dispute IDs across the contract.
    *
    * @returns Array of open dispute IDs.
@@ -249,32 +292,26 @@ export class DisputeModule {
   }
 
   /**
-   * Returns aggregate dispute statistics.
+   * Fetches all dispute IDs raised by a specific claimant.
    *
-   * @returns Object with `total`, `open`, `resolvedForBeneficiary`, `resolvedForDepositor`, and `expired`.
-   * @throws {VeriTixError} If the contract returns no data or an unexpected format.
+   * @param claimant - Stellar account address of the claimant.
+   * @returns Array of dispute IDs for the claimant.
    *
    * @example
    * ```ts
-   * const stats = await client.dispute.getDisputeStats();
-   * console.log('Open disputes:', stats.open);
+   * const disputes = await client.dispute.getDisputesByClaimant('GABC…');
+   * console.log('My disputes:', disputes);
    * ```
    */
-  async getDisputeStats(): Promise<{
-    total: number;
-    open: number;
-    resolvedForBeneficiary: number;
-    resolvedForDepositor: number;
-    expired: number;
-  }> {
+  async getDisputesByClaimant(claimant: string): Promise<bigint[]> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
     const tx = await buildContractCall(
       this.server,
       sourceAccount,
       this.config.contractId,
-      'get_dispute_stats',
-      [],
+      'get_disputes_by_claimant',
+      [addressToScVal(claimant)],
       this.config.networkPassphrase,
     );
 
@@ -284,37 +321,24 @@ export class DisputeModule {
     }
 
     const returnValue =
-      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
 
-    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
-      throw new VeriTixError(VeriTixErrorCode.Unknown, 'DisputeModule.getDisputeStats: no data returned');
+    if (!returnValue) {
+      return [];
     }
 
-    if (returnValue.switch() !== xdr.ScValType.scvMap()) {
-      throw new VeriTixError(VeriTixErrorCode.Unknown, 'DisputeModule.getDisputeStats: expected ScMap result');
+    const native = scValToNative(returnValue);
+    if (!Array.isArray(native)) {
+      throw new Error('Expected array from get_disputes_by_claimant');
     }
 
-    const map = returnValue.map() ?? [];
-    const get = (key: string): xdr.ScVal | undefined =>
-      map.find((e) => e.key().sym() === key)?.val();
-
-    const totalVal = get('total');
-    const openVal = get('open');
-    const resolvedForBeneficiaryVal = get('resolved_for_beneficiary');
-    const resolvedForDepositorVal = get('resolved_for_depositor');
-    const expiredVal = get('expired');
-
-    if (!totalVal || !openVal || !resolvedForBeneficiaryVal || !resolvedForDepositorVal || !expiredVal) {
-      throw new VeriTixError(VeriTixErrorCode.Unknown, 'DisputeModule.getDisputeStats: incomplete stats map');
-    }
-
-    return {
-      total: scValToNumber(totalVal),
-      open: scValToNumber(openVal),
-      resolvedForBeneficiary: scValToNumber(resolvedForBeneficiaryVal),
-      resolvedForDepositor: scValToNumber(resolvedForDepositorVal),
-      expired: scValToNumber(expiredVal),
-    };
+    return native.map((id) => {
+      if (typeof id === 'bigint') return id;
+      if (typeof id === 'number') return BigInt(id);
+      throw new Error(`Unexpected type in disputes array: ${typeof id}`);
+    });
   }
 
   // -------------------------------------------------------------------------
