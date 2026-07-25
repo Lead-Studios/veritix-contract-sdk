@@ -188,6 +188,66 @@ export class EscrowModule {
   }
 
   /**
+   * Returns escrows where one address is the depositor and the other is the beneficiary.
+   *
+   * @param addr1 - First Stellar account address.
+   * @param addr2 - Second Stellar account address.
+   * @returns Array of {@link EscrowRecord} matching the relationship.
+   * @throws {VeriTixError} With code `INVALID_ADDRESS` if either address is invalid.
+   *
+   * @example
+   * ```ts
+   * const escrows = await client.escrow.escrowBetween('GABC…', 'GXYZ…');
+   * ```
+   */
+  async escrowBetween(addr1: string, addr2: string): Promise<EscrowRecord[]> {
+    try {
+      new Address(addr1);
+    } catch {
+      throw new VeriTixError(VeriTixErrorCode.InvalidAddress, 'EscrowModule.escrowBetween: addr1 is not a valid Stellar address');
+    }
+    try {
+      new Address(addr2);
+    } catch {
+      throw new VeriTixError(VeriTixErrorCode.InvalidAddress, 'EscrowModule.escrowBetween: addr2 is not a valid Stellar address');
+    }
+
+    const [depositor1, beneficiary1, depositor2, beneficiary2] = await Promise.all([
+      this.getEscrowsByDepositor(addr1),
+      this.getEscrowsByBeneficiary(addr1),
+      this.getEscrowsByDepositor(addr2),
+      this.getEscrowsByBeneficiary(addr2),
+    ]);
+
+    const asDepositor1 = new Set(depositor1.map(String));
+    const asBeneficiary2 = new Set(beneficiary2.map(String));
+    const asDepositor2 = new Set(depositor2.map(String));
+    const asBeneficiary1 = new Set(beneficiary1.map(String));
+
+    const matchingIds: bigint[] = [];
+
+    for (const id of depositor1) {
+      const sid = String(id);
+      if (asBeneficiary2.has(sid)) {
+        matchingIds.push(id);
+      }
+    }
+    for (const id of depositor2) {
+      const sid = String(id);
+      if (asBeneficiary1.has(sid)) {
+        matchingIds.push(id);
+      }
+    }
+
+    if (matchingIds.length === 0) {
+      return [];
+    }
+
+    const records = await this.getEscrowsBatch(matchingIds);
+    return records.filter((r): r is EscrowRecord => r !== null);
+  }
+
+  /**
    * Fetches on-chain records for multiple escrows in a single batch call.
    *
    * @param ids - Array of numeric escrow identifiers (max 50).
