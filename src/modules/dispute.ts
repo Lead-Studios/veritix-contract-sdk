@@ -561,4 +561,71 @@ export class DisputeModule {
       returnValue,
     };
   }
+
+  /**
+   * Appeals a resolved dispute. Must be called by the original claimant.
+   *
+   * @param disputeId - The dispute ID to appeal.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   * @throws {VeriTixError} With code `DISPUTE_NOT_FOUND` if dispute does not exist.
+   * @throws {VeriTixError} With code `DISPUTE_INVALID_STATE` if dispute is still open.
+   *
+   * @example
+   * ```ts
+   * await client.dispute.appealDispute(3n);
+   * ```
+   */
+  async appealDispute(disputeId: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('DisputeModule.appealDispute: signing keypair required');
+    }
+
+    const dispute = await this.getDispute(disputeId);
+    if (!dispute) {
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeNotFound,
+        'Dispute not found',
+      );
+    }
+
+    if (dispute.status === DisputeStatus.Open) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        'DisputeModule.appealDispute: dispute is still open, cannot appeal',
+      );
+    }
+
+    const claimant = this.keypair.publicKey();
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(claimant, '0'),
+      this.config.contractId,
+      'appeal_dispute',
+      [
+        addressToScVal(claimant),
+        bigintToScVal(disputeId, 'u64'),
+      ],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
+  }
 }
