@@ -301,4 +301,28 @@ export class AdminModule {
   async unpause(): Promise<TransactionResult> {
     return this.writeCall('unpause', []);
   }
+
+  // -------------------------------------------------------------------------
+  // Emergency refund
+  // -------------------------------------------------------------------------
+
+  /**
+   * Emergency force-refund for a single escrow. Must be called by admin.
+   * Unlike {@link manualRefund}, this method does not require a reason string
+   * and is intended for immediate emergency use.
+   *
+   * @param escrowId - The escrow ID to force-refund.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.forceRefundEscrow(42n);
+   * ```
+   */
+  async forceRefundEscrow(escrowId: bigint): Promise<TransactionResult> {
+    return this.writeCall('force_refund_escrow', [
+      bigintToScVal(escrowId, 'u64'),
+    ]);
+  }
 }
