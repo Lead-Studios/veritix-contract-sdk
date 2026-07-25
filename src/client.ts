@@ -36,6 +36,7 @@ import type {
   StellarNetwork,
   WatchOptions,
   EscrowRecord,
+  HealthStatus,
 } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { DUMMY_PUBLIC_KEY, getMainnetConfig, getTestnetConfig } from './utils/network';
@@ -55,14 +56,6 @@ export interface VeriTixClientEvents {
   disconnected: () => void;
   error: (err: VeriTixError) => void;
   retry: (data: { attempt: number; delayMs: number }) => void;
-}
-
-/** Options for {@link VeriTixClient.watchTransaction} */
-export interface WatchOptions {
-  /** Polling interval in milliseconds (default: 2000) */
-  intervalMs?: number;
-  /** Maximum wait time in milliseconds before rejecting (default: 60000) */
-  timeoutMs?: number;
 }
 
 /**
@@ -478,6 +471,95 @@ export class VeriTixClient extends EventEmitter {
       contractId: this.config.contractId,
       network: this.config.network,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // healthCheck  (#282)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Verifies RPC connectivity and confirms the contract exists on-chain.
+   *
+   * Performs two checks in sequence:
+   * 1. Calls `server.getLatestLedger()` to confirm the RPC is reachable and
+   *    records the round-trip latency.
+   * 2. Calls `server.getContractData(contractId, ...)` to confirm the contract
+   *    is deployed.
+   *
+   * The method **never throws** — any failures are captured in `errors[]`.
+   * This makes it safe to call during server start-up or health-endpoint
+   * handlers without a try/catch.
+   *
+   * @returns A {@link HealthStatus} object with the results of both checks.
+   *
+   * @example
+   * ```ts
+   * const status = await client.healthCheck();
+   * if (!status.rpcReachable) {
+   *   console.error('RPC is down:', status.errors);
+   * } else if (!status.contractFound) {
+   *   console.warn('Contract not found — wrong contractId?');
+   * } else {
+   *   console.log(`Healthy — ledger ${status.latestLedger}, latency ${status.latencyMs}ms`);
+   * }
+   * ```
+   */
+  async healthCheck(): Promise<HealthStatus> {
+    const status: HealthStatus = {
+      rpcReachable: false,
+      contractFound: false,
+      latencyMs: 0,
+      latestLedger: 0,
+      errors: [],
+    };
+
+    if (!this.server) {
+      status.errors.push('VeriTixClient: call connect() before healthCheck()');
+      return status;
+    }
+
+    // --- Check 1: RPC reachability + latency --------------------------------
+    const t0 = Date.now();
+    try {
+      const ledger = await this.server.getLatestLedger();
+      status.latencyMs = Date.now() - t0;
+      status.latestLedger = ledger.sequence;
+      status.rpcReachable = true;
+    } catch (err) {
+      status.latencyMs = Date.now() - t0;
+      status.errors.push(
+        `RPC unreachable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return status;
+    }
+
+    // --- Check 2: contract existence ----------------------------------------
+    try {
+      // getContractData throws / returns NOT_FOUND when the contract doesn't exist
+      const { xdr: xdrNs } = await import('@stellar/stellar-sdk');
+      const contractKey = xdrNs.LedgerKey.contractData(
+        new xdrNs.LedgerKeyContractData({
+          contract: new (await import('@stellar/stellar-sdk')).Address(
+            this.config.contractId,
+          ).toScAddress(),
+          key: xdrNs.ScVal.scvLedgerKeyContractInstance(),
+          durability: xdrNs.ContractDataDurability.persistent(),
+        }),
+      );
+      const result = await this.server.getLedgerEntries(contractKey);
+      status.contractFound = result.entries.length > 0;
+      if (!status.contractFound) {
+        status.errors.push(
+          `Contract not found on-chain: ${this.config.contractId}`,
+        );
+      }
+    } catch (err) {
+      status.errors.push(
+        `Contract lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    return status;
   }
 
   // -------------------------------------------------------------------------

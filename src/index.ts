@@ -36,6 +36,7 @@ export type {
   RecurringExecutionEntry,
   TransactionResult,
   WatchOptions,
+  HealthStatus,
 } from './types/index';
 
 export { DisputeStatus } from './types/index';
@@ -89,7 +90,7 @@ export { stroopsToXLM, xlmToStroops, formatXLM } from './utils/format';
 // ---------------------------------------------------------------------------
 // Transaction helpers (for advanced / custom use)
 // ---------------------------------------------------------------------------
-export type { PreparedTransaction } from './utils/transaction';
+export type { PreparedTransaction, SubmitTransactionOptions } from './utils/transaction';
 export {
   buildContractCall,
   simulateTransaction,
