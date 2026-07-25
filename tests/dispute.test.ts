@@ -386,44 +386,48 @@ describe('DisputeModule', () => {
   });
 });
 
-describe('DisputeModule.getDisputesByClaimant', () => {
-  it('returns dispute IDs for a claimant', async () => {
+describe('DisputeModule.isDisputeExpired', () => {
+  it('returns true when dispute is expired', async () => {
     const keypair = Keypair.random();
     const { client, mockServer } = makeConnectedClient(keypair);
-    const claimant = Keypair.random().publicKey();
     mockServer.simulateTransaction.mockResolvedValue({
       status: 'SUCCESS',
-      result: {
-        retval: xdr.ScVal.scvVec([
-          xdr.ScVal.scvU64(xdr.Uint64.fromString('1')),
-          xdr.ScVal.scvU64(xdr.Uint64.fromString('5')),
-        ]),
-      },
+      result: { retval: xdr.ScVal.scvBool(true) },
     });
-    const disputes = await client.dispute.getDisputesByClaimant(claimant);
-    expect(disputes).toEqual([1n, 5n]);
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(true);
   });
 
-  it('returns empty array when no disputes', async () => {
+  it('returns false when dispute is not expired', async () => {
     const keypair = Keypair.random();
     const { client, mockServer } = makeConnectedClient(keypair);
-    const claimant = Keypair.random().publicKey();
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvBool(false) },
+    });
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(false);
+  });
+
+  it('returns false when no result', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
     mockServer.simulateTransaction.mockResolvedValue({
       status: 'SUCCESS',
       result: { retval: undefined },
     });
-    const disputes = await client.dispute.getDisputesByClaimant(claimant);
-    expect(disputes).toEqual([]);
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(false);
   });
 
-  it('throws error on simulation failure', async () => {
+  it('throws on simulation error', async () => {
     const keypair = Keypair.random();
     const { client, mockServer } = makeConnectedClient(keypair);
     mockServer.simulateTransaction.mockResolvedValue({
       status: 'ERROR',
       error: 'contract panic',
     });
-    await expect(client.dispute.getDisputesByClaimant(Keypair.random().publicKey())).rejects.toThrow();
+    await expect(client.dispute.isDisputeExpired(1n)).rejects.toThrow();
   });
 });
 

@@ -150,6 +150,49 @@ export class DisputeModule {
   }
 
   /**
+   * Checks if a dispute has expired.
+   *
+   * @param disputeId - Numeric dispute identifier.
+   * @returns `true` if the dispute has expired, `false` otherwise.
+   *
+   * @example
+   * ```ts
+   * const expired = await client.dispute.isDisputeExpired(3n);
+   * if (expired) {
+   *   console.log('Dispute has expired');
+   * }
+   * ```
+   */
+  async isDisputeExpired(disputeId: bigint): Promise<boolean> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'is_dispute_expired',
+      [bigintToScVal(disputeId, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    if (!returnValue) {
+      return false;
+    }
+
+    return scValToBoolean(returnValue);
+  }
+
+  /**
    * Fetches all open dispute IDs across the contract.
    *
    * @returns Array of open dispute IDs.
