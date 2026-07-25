@@ -301,4 +301,41 @@ export class AdminModule {
   async unpause(): Promise<TransactionResult> {
     return this.writeCall('unpause', []);
   }
+
+  // -------------------------------------------------------------------------
+  // Whitelist management
+  // -------------------------------------------------------------------------
+
+  /**
+   * Enables the whitelist feature on the contract. Must be called by admin.
+   * When enabled, only whitelisted addresses can interact with the contract.
+   *
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.enableWhitelist();
+   * ```
+   */
+  async enableWhitelist(): Promise<TransactionResult> {
+    return this.writeCall('enable_whitelist', []);
+  }
+
+  /**
+   * Adds an address to the whitelist. Must be called by admin.
+   * The contract must have whitelist enabled for this to succeed.
+   *
+   * @param address - Stellar account address to whitelist.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.whitelistAddress('GABC…');
+   * ```
+   */
+  async whitelistAddress(address: string): Promise<TransactionResult> {
+    return this.writeCall('whitelist_address', [addressToScVal(address)]);
+  }
 }
