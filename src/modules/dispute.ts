@@ -13,7 +13,7 @@ import {
   NetworkConfig,
   TransactionResult,
 } from '../types/index';
-import { addressToScVal, bigintToScVal, boolToScVal, scValToBoolean } from '../utils/scval';
+import { addressToScVal, bigintToScVal, boolToScVal, scValToBigint, scValToBoolean, scValToNumber } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseDisputeRecord } from '../utils/parsers';
@@ -246,6 +246,75 @@ export class DisputeModule {
       if (typeof id === 'number') return BigInt(id);
       throw new Error(`Unexpected type in disputes array: ${typeof id}`);
     });
+  }
+
+  /**
+   * Returns aggregate dispute statistics.
+   *
+   * @returns Object with `total`, `open`, `resolvedForBeneficiary`, `resolvedForDepositor`, and `expired`.
+   * @throws {VeriTixError} If the contract returns no data or an unexpected format.
+   *
+   * @example
+   * ```ts
+   * const stats = await client.dispute.getDisputeStats();
+   * console.log('Open disputes:', stats.open);
+   * ```
+   */
+  async getDisputeStats(): Promise<{
+    total: number;
+    open: number;
+    resolvedForBeneficiary: number;
+    resolvedForDepositor: number;
+    expired: number;
+  }> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_dispute_stats',
+      [],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'DisputeModule.getDisputeStats: no data returned');
+    }
+
+    if (returnValue.switch() !== xdr.ScValType.scvMap()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'DisputeModule.getDisputeStats: expected ScMap result');
+    }
+
+    const map = returnValue.map() ?? [];
+    const get = (key: string): xdr.ScVal | undefined =>
+      map.find((e) => e.key().sym() === key)?.val();
+
+    const totalVal = get('total');
+    const openVal = get('open');
+    const resolvedForBeneficiaryVal = get('resolved_for_beneficiary');
+    const resolvedForDepositorVal = get('resolved_for_depositor');
+    const expiredVal = get('expired');
+
+    if (!totalVal || !openVal || !resolvedForBeneficiaryVal || !resolvedForDepositorVal || !expiredVal) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'DisputeModule.getDisputeStats: incomplete stats map');
+    }
+
+    return {
+      total: scValToNumber(totalVal),
+      open: scValToNumber(openVal),
+      resolvedForBeneficiary: scValToNumber(resolvedForBeneficiaryVal),
+      resolvedForDepositor: scValToNumber(resolvedForDepositorVal),
+      expired: scValToNumber(expiredVal),
+    };
   }
 
   // -------------------------------------------------------------------------
