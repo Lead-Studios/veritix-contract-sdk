@@ -629,6 +629,51 @@ describe('EscrowModule.isExpired', () => {
   });
 });
 
+describe('EscrowModule.getEscrowAge', () => {
+  it('throws ESCROW_NOT_FOUND when escrow does not exist', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(null);
+    await expect(client.escrow.getEscrowAge(1n)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowNotFound,
+    });
+  });
+
+  it('returns 0 for released escrow', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: true, refunded: false, expiryLedger: 1_005_000, memos: [],
+    });
+    const age = await client.escrow.getEscrowAge(1n);
+    expect(age).toBe(0);
+  });
+
+  it('returns 0 for refunded escrow', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: false, refunded: true, expiryLedger: 1_005_000, memos: [],
+    });
+    const age = await client.escrow.getEscrowAge(1n);
+    expect(age).toBe(0);
+  });
+
+  it('calls get_escrow_age contract method for active escrow', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: false, refunded: false, expiryLedger: 1_005_000, memos: [],
+    });
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: nativeToScVal(500, { type: 'u32' }) },
+    });
+    const age = await client.escrow.getEscrowAge(1n);
+    expect(age).toBe(500);
+    expect(mockServer.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('EscrowModule.settleEvent', () => {
   const keypair = Keypair.random();
 
