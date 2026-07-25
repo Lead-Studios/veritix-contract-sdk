@@ -386,3 +386,40 @@ describe('DisputeModule', () => {
   });
 });
 
+describe('DisputeModule.appealDispute', () => {
+  it('throws when no signing keypair', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+    await expect(client.dispute.appealDispute(1n)).rejects.toThrow('signing keypair required');
+  });
+
+  it('throws DISPUTE_NOT_FOUND when dispute does not exist', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: undefined },
+    });
+    await expect(client.dispute.appealDispute(999n)).rejects.toMatchObject({
+      code: VeriTixErrorCode.DisputeNotFound,
+    });
+  });
+
+  it('throws when dispute is still open', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    const mockRecord = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('id'), val: xdr.ScVal.scvU64(xdr.Uint64.fromString('1')) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('escrow_id'), val: xdr.ScVal.scvU64(xdr.Uint64.fromString('100')) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('claimant'), val: xdr.ScVal.scvString(keypair.publicKey()) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('resolver'), val: xdr.ScVal.scvString(Keypair.random().publicKey()) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('status'), val: xdr.ScVal.scvSymbol('Open') }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('opened_at'), val: xdr.ScVal.scvU64(xdr.Uint64.fromString('500')) }),
+    ]);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: mockRecord },
+    });
+    await expect(client.dispute.appealDispute(1n)).rejects.toThrow();
+  });
+});
+
