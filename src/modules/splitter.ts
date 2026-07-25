@@ -3,8 +3,8 @@
  * Payment splitter operations exposed by the VeriTix Soroban contract.
  */
 
-import { SorobanRpc, Keypair, Account } from '@stellar/stellar-sdk';
-import { addressToScVal, scValToBigint } from '../utils/scval';
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
+import { addressToScVal, scValToBigint, scValToNumber } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
@@ -135,6 +135,72 @@ export class SplitterModule {
     const totalBps = recipients.reduce((sum, r) => sum + r.shareBps, 0);
     if (totalBps !== 10_000) errors.push(`Total basis points must equal 10 000, got ${totalBps}`);
     return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * Returns aggregate splitter statistics.
+   *
+   * @returns Object with `totalSplits`, `distributedCount`, `cancelledCount`, and `totalDistributedValue`.
+   * @throws {VeriTixError} If the contract returns no data or an unexpected format.
+   *
+   * @example
+   * ```ts
+   * const stats = await client.splitter.getSplitterStats();
+   * console.log('Total splits:', stats.totalSplits);
+   * ```
+   */
+  async getSplitterStats(): Promise<{
+    totalSplits: number;
+    distributedCount: number;
+    cancelledCount: number;
+    totalDistributedValue: bigint;
+  }> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_splitter_stats',
+      [],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'SplitterModule.getSplitterStats: no data returned');
+    }
+
+    if (returnValue.switch() !== xdr.ScValType.scvMap()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'SplitterModule.getSplitterStats: expected ScMap result');
+    }
+
+    const map = returnValue.map() ?? [];
+    const get = (key: string): xdr.ScVal | undefined =>
+      map.find((e) => e.key().sym() === key)?.val();
+
+    const totalSplitsVal = get('total_splits');
+    const distributedCountVal = get('distributed_count');
+    const cancelledCountVal = get('cancelled_count');
+    const totalDistributedValueVal = get('total_distributed_value');
+
+    if (!totalSplitsVal || !distributedCountVal || !cancelledCountVal || !totalDistributedValueVal) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'SplitterModule.getSplitterStats: incomplete stats map');
+    }
+
+    return {
+      totalSplits: scValToNumber(totalSplitsVal),
+      distributedCount: scValToNumber(distributedCountVal),
+      cancelledCount: scValToNumber(cancelledCountVal),
+      totalDistributedValue: scValToBigint(totalDistributedValueVal),
+    };
   }
 
   /**

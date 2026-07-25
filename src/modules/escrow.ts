@@ -14,7 +14,7 @@ import type {
   TransactionResult,
   BatchSettlementResult,
 } from '../types/index';
-import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, scValToString, stringToScVal } from '../utils/scval';
+import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseEscrowRecord } from '../utils/parsers';
@@ -96,21 +96,24 @@ export class EscrowModule {
   }
 
   /**
-   * Returns current protocol fee statistics.
+   * Returns aggregate escrow statistics.
    *
-   * @returns Object with `totalFeesCollected`, `feeRate`, and `feeRecipient`.
+   * @returns Object with `total`, `active`, `released`, `refunded`, `totalValue`, and `avgValue`.
    * @throws {VeriTixError} If the contract returns no data or an unexpected format.
    *
    * @example
    * ```ts
-   * const stats = await client.escrow.getProtocolFeeStats();
-   * console.log('Total fees collected:', stats.totalFeesCollected);
+   * const stats = await client.escrow.getEscrowStats();
+   * console.log('Active escrows:', stats.active);
    * ```
    */
-  async getProtocolFeeStats(): Promise<{
-    totalFeesCollected: bigint;
-    feeRate: number;
-    feeRecipient: string;
+  async getEscrowStats(): Promise<{
+    total: number;
+    active: number;
+    released: number;
+    refunded: number;
+    totalValue: bigint;
+    avgValue: bigint;
   }> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
@@ -118,7 +121,7 @@ export class EscrowModule {
       this.server,
       sourceAccount,
       this.config.contractId,
-      'get_protocol_fee_stats',
+      'get_escrow_stats',
       [],
       this.config.networkPassphrase,
     );
@@ -132,29 +135,35 @@ export class EscrowModule {
       SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
 
     if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
-      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getProtocolFeeStats: no data returned');
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getEscrowStats: no data returned');
     }
 
     if (returnValue.switch() !== xdr.ScValType.scvMap()) {
-      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getProtocolFeeStats: expected ScMap result');
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getEscrowStats: expected ScMap result');
     }
 
     const map = returnValue.map() ?? [];
     const get = (key: string): xdr.ScVal | undefined =>
       map.find((e) => e.key().sym() === key)?.val();
 
-    const totalFeesCollectedVal = get('total_fees_collected');
-    const feeRateVal = get('fee_rate');
-    const feeRecipientVal = get('fee_recipient');
+    const totalVal = get('total');
+    const activeVal = get('active');
+    const releasedVal = get('released');
+    const refundedVal = get('refunded');
+    const totalValueVal = get('total_value');
+    const avgValueVal = get('avg_value');
 
-    if (!totalFeesCollectedVal || !feeRateVal || !feeRecipientVal) {
-      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getProtocolFeeStats: incomplete fee stats map');
+    if (!totalVal || !activeVal || !releasedVal || !refundedVal || !totalValueVal || !avgValueVal) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getEscrowStats: incomplete stats map');
     }
 
     return {
-      totalFeesCollected: scValToBigint(totalFeesCollectedVal),
-      feeRate: scValToNumber(feeRateVal),
-      feeRecipient: scValToString(feeRecipientVal),
+      total: scValToNumber(totalVal),
+      active: scValToNumber(activeVal),
+      released: scValToNumber(releasedVal),
+      refunded: scValToNumber(refundedVal),
+      totalValue: scValToBigint(totalValueVal),
+      avgValue: scValToBigint(avgValueVal),
     };
   }
 
