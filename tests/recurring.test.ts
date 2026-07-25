@@ -5,6 +5,8 @@
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
 import { RecurringModule } from '../src/modules/recurring';
+import { Keypair } from '@stellar/stellar-sdk';
+import { VeriTixErrorCode } from '../src/utils/errors';
 
 const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
 const FAKE_PAYER    = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
@@ -106,6 +108,33 @@ describe('RecurringModule', () => {
       expect(result.executed).toEqual([20n]);
       expect(result.skipped).toEqual([21n]);
       expect(result.failed).toEqual([]);
+    });
+  });
+
+  describe('amendRecurring()', () => {
+    it('throws ReadOnlyClient when no keypair', async () => {
+      await expect(recurring.amendRecurring(1n, 100n, 100)).rejects.toThrow('signing keypair required');
+    });
+
+    it('returns tx result on success', async () => {
+      const kp = Keypair.random();
+      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
+      const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).server = mockServer;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).connected = true;
+
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: { retval: undefined },
+      });
+      mockServer.sendTransaction.mockResolvedValue({ hash: 'amend-hash', status: 'PENDING' });
+      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 50 });
+
+      const result = await c.recurring.amendRecurring(2n, 500n, 3600);
+      expect(result.successful).toBe(true);
+      expect(result.hash).toBe('amend-hash');
     });
   });
 });
