@@ -277,6 +277,45 @@ export interface SimulationResult {
 }
 
 // ---------------------------------------------------------------------------
+// Contract summary
+// ---------------------------------------------------------------------------
+
+/**
+ * A compound snapshot of the most important contract state, returned by
+ * {@link VeriTixClient.contractSummary}.
+ *
+ * All fields are fetched in parallel via `Promise.all` to minimise latency.
+ */
+export interface ContractSummary {
+  /** Token name (e.g. "VeriTix Token") */
+  name: string;
+  /** Token ticker symbol (e.g. "VTX") */
+  symbol: string;
+  /** Number of decimal places used by the token */
+  decimal: number;
+  /** Total token supply in the smallest denomination (stroops) */
+  totalSupply: bigint;
+  /** Maximum token supply cap (0n if uncapped or not available) */
+  maxSupply: bigint;
+  /** Total number of unique token holders */
+  totalHolders: bigint;
+  /** Total number of escrow records created (0n if not available) */
+  escrowCount: bigint;
+  /** Total number of split records created (0n if not available) */
+  splitCount: bigint;
+  /** Total number of recurring payment records (0n if not available) */
+  recurringCount: bigint;
+  /** Total number of dispute records created (0n if not available) */
+  disputeCount: bigint;
+  /** Whether the contract is currently paused */
+  isPaused: boolean;
+  /** Current admin's Stellar account address */
+  admin: string;
+  /** Contract version string (empty string if not available) */
+  version: string;
+}
+
+// ---------------------------------------------------------------------------
 // Health check
 // ---------------------------------------------------------------------------
 

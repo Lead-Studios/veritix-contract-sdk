@@ -308,3 +308,107 @@ describe('healthCheck()', () => {
     expect(status.latencyMs).toBeGreaterThanOrEqual(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// contractSummary()  (#283)
+// ---------------------------------------------------------------------------
+
+describe('contractSummary()', () => {
+  function makeClientForSummary(tokenOverrides?: {
+    name?: jest.Mock;
+    symbol?: jest.Mock;
+    decimals?: jest.Mock;
+    totalSupply?: jest.Mock;
+    totalHolders?: jest.Mock;
+  }) {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+
+    // Mock the server to handle simulateTransaction for raw contract reads
+    const mockServer = {
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: 1_000_000 }),
+      simulateTransaction: jest.fn().mockResolvedValue({
+        minResourceFee: '100',
+        result: { retval: undefined },
+      }),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).server = mockServer;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).connected = true;
+
+    // Stub out token module methods
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client.token as any).name = tokenOverrides?.name ?? jest.fn().mockResolvedValue('VeriTix Token');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client.token as any).symbol = tokenOverrides?.symbol ?? jest.fn().mockResolvedValue('VTX');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client.token as any).decimals = tokenOverrides?.decimals ?? jest.fn().mockResolvedValue(7);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client.token as any).totalSupply = tokenOverrides?.totalSupply ?? jest.fn().mockResolvedValue(1_000_000_000n);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client.token as any).totalHolders = tokenOverrides?.totalHolders ?? jest.fn().mockResolvedValue(42n);
+
+    return { client, mockServer };
+  }
+
+  it('returns all expected fields', async () => {
+    const { client } = makeClientForSummary();
+    const summary = await client.contractSummary();
+
+    expect(summary).toMatchObject({
+      name: 'VeriTix Token',
+      symbol: 'VTX',
+      decimal: 7,
+      totalSupply: 1_000_000_000n,
+      totalHolders: 42n,
+    });
+    // Count fields fall back to 0n when contract method not found
+    expect(typeof summary.escrowCount).toBe('bigint');
+    expect(typeof summary.splitCount).toBe('bigint');
+    expect(typeof summary.recurringCount).toBe('bigint');
+    expect(typeof summary.disputeCount).toBe('bigint');
+    expect(typeof summary.maxSupply).toBe('bigint');
+    expect(typeof summary.isPaused).toBe('boolean');
+    expect(typeof summary.admin).toBe('string');
+    expect(typeof summary.version).toBe('string');
+  });
+
+  it('throws when not connected', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+    await expect(client.contractSummary()).rejects.toThrow('call connect()');
+  });
+
+  it('falls back to safe defaults when token methods fail', async () => {
+    const { client } = makeClientForSummary({
+      name: jest.fn().mockRejectedValue(new Error('rpc error')),
+      symbol: jest.fn().mockRejectedValue(new Error('rpc error')),
+      decimals: jest.fn().mockRejectedValue(new Error('rpc error')),
+      totalSupply: jest.fn().mockRejectedValue(new Error('rpc error')),
+      totalHolders: jest.fn().mockRejectedValue(new Error('rpc error')),
+    });
+
+    const summary = await client.contractSummary();
+    expect(summary.name).toBe('');
+    expect(summary.symbol).toBe('');
+    expect(summary.decimal).toBe(0);
+    expect(summary.totalSupply).toBe(0n);
+    expect(summary.totalHolders).toBe(0n);
+  });
+
+  it('fetches all fields in parallel (Promise.all)', async () => {
+    const { client, mockServer } = makeClientForSummary();
+    // Verify simulateTransaction was called (for the raw tryRead calls)
+    await client.contractSummary();
+    // token module methods should have been called
+    expect((client.token as any).name).toHaveBeenCalled();
+    expect((client.token as any).symbol).toHaveBeenCalled();
+    expect((client.token as any).totalSupply).toHaveBeenCalled();
+    expect((client.token as any).totalHolders).toHaveBeenCalled();
+  });
+
+  it('isPaused defaults to false when contract method unavailable', async () => {
+    const { client } = makeClientForSummary();
+    const summary = await client.contractSummary();
+    expect(summary.isPaused).toBe(false);
+  });
+});

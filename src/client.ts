@@ -37,6 +37,7 @@ import type {
   WatchOptions,
   EscrowRecord,
   HealthStatus,
+  ContractSummary,
 } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { DUMMY_PUBLIC_KEY, getMainnetConfig, getTestnetConfig } from './utils/network';
@@ -560,6 +561,106 @@ export class VeriTixClient extends EventEmitter {
     }
 
     return status;
+  }
+
+  // -------------------------------------------------------------------------
+  // contractSummary  (#283)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Returns a single compound snapshot of all key contract state fields.
+   *
+   * All data is fetched in parallel using `Promise.all` to keep latency low.
+   * Fields that are unavailable on the contract (e.g. version, counts) fall
+   * back to safe zero-values rather than throwing, so the method is always
+   * usable for dashboards even on partially-implemented contracts.
+   *
+   * @returns A {@link ContractSummary} with token info, counts, admin, and
+   *   pause state.
+   * @throws If not connected (server is not set).
+   *
+   * @example
+   * ```ts
+   * const summary = await client.contractSummary();
+   * console.log(`${summary.name} (${summary.symbol})`);
+   * console.log(`Total supply: ${summary.totalSupply}, holders: ${summary.totalHolders}`);
+   * console.log(`Paused: ${summary.isPaused}, admin: ${summary.admin}`);
+   * ```
+   */
+  async contractSummary(): Promise<ContractSummary> {
+    if (!this.connected || !this.server) {
+      throw new Error('VeriTixClient: call connect() before contractSummary()');
+    }
+
+    // Helper: simulate a read call, return undefined on any error
+    const tryRead = async (method: string): Promise<unknown> => {
+      try {
+        const { Account, SorobanRpc, scValToNative } = await import('@stellar/stellar-sdk');
+        const { buildContractCall: build } = await import('./utils/transaction');
+        const { DUMMY_PUBLIC_KEY: dummy } = await import('./utils/network');
+        const sourceAccount = new Account(dummy, '0');
+        const tx = await build(
+          this.server,
+          sourceAccount,
+          this.config.contractId,
+          method,
+          [],
+          this.config.networkPassphrase,
+        );
+        const simResult = await this.server.simulateTransaction(tx);
+        if (SorobanRpc.Api.isSimulationError(simResult)) return undefined;
+        const retval = (simResult as SorobanRpc.Api.SimulateTransactionSuccessResponse).result?.retval;
+        return retval !== undefined ? scValToNative(retval) : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+
+    const [
+      name,
+      symbol,
+      decimal,
+      totalSupply,
+      maxSupply,
+      totalHolders,
+      escrowCount,
+      splitCount,
+      recurringCount,
+      disputeCount,
+      isPaused,
+      admin,
+      version,
+    ] = await Promise.all([
+      this.token.name().catch(() => ''),
+      this.token.symbol().catch(() => ''),
+      this.token.decimals().catch(() => 0),
+      this.token.totalSupply().catch(() => 0n),
+      tryRead('max_supply').then((v) => (v !== undefined ? BigInt(v as bigint) : 0n)),
+      this.token.totalHolders().catch(() => 0n),
+      tryRead('escrow_count').then((v) => (v !== undefined ? BigInt(v as bigint) : 0n)),
+      tryRead('split_count').then((v) => (v !== undefined ? BigInt(v as bigint) : 0n)),
+      tryRead('recurring_count').then((v) => (v !== undefined ? BigInt(v as bigint) : 0n)),
+      tryRead('dispute_count').then((v) => (v !== undefined ? BigInt(v as bigint) : 0n)),
+      tryRead('is_paused').then((v) => v === true),
+      tryRead('get_admin').then((v) => (typeof v === 'string' ? v : '')),
+      tryRead('version').then((v) => (typeof v === 'string' ? v : '')),
+    ]);
+
+    return {
+      name,
+      symbol,
+      decimal,
+      totalSupply,
+      maxSupply,
+      totalHolders,
+      escrowCount,
+      splitCount,
+      recurringCount,
+      disputeCount,
+      isPaused,
+      admin,
+      version,
+    };
   }
 
   // -------------------------------------------------------------------------

@@ -37,6 +37,7 @@ export type {
   TransactionResult,
   WatchOptions,
   HealthStatus,
+  ContractSummary,
 } from './types/index';
 
 export { DisputeStatus } from './types/index';
