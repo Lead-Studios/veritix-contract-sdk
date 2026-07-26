@@ -393,6 +393,19 @@ describe('DisputeModule.expireDispute', () => {
   });
 
   it('throws DISPUTE_NOT_FOUND when dispute does not exist', async () => {
+describe('DisputeModule.isDisputeExpired', () => {
+  it('returns true when dispute is expired', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvBool(true) },
+    });
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(true);
+  });
+
+  it('returns false when dispute is not expired', async () => {
     const keypair = Keypair.random();
     const { client, mockServer } = makeConnectedClient(keypair);
     mockServer.simulateTransaction.mockResolvedValue({
@@ -423,6 +436,31 @@ describe('DisputeModule.expireDispute', () => {
     await expect(client.dispute.expireDispute(disputeId)).rejects.toMatchObject({
       code: VeriTixErrorCode.DisputeAlreadyResolved,
     });
+      result: { retval: xdr.ScVal.scvBool(false) },
+    });
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(false);
+  });
+
+  it('returns false when no result', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: undefined },
+    });
+    const expired = await client.dispute.isDisputeExpired(1n);
+    expect(expired).toBe(false);
+  });
+
+  it('throws on simulation error', async () => {
+    const keypair = Keypair.random();
+    const { client, mockServer } = makeConnectedClient(keypair);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'ERROR',
+      error: 'contract panic',
+    });
+    await expect(client.dispute.isDisputeExpired(1n)).rejects.toThrow();
   });
 });
 

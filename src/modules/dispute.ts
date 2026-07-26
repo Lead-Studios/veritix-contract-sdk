@@ -13,7 +13,7 @@ import {
   NetworkConfig,
   TransactionResult,
 } from '../types/index';
-import { addressToScVal, bigintToScVal, boolToScVal, scValToBoolean } from '../utils/scval';
+import { addressToScVal, bigintToScVal, boolToScVal, scValToBigint, scValToBoolean, scValToNumber } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseDisputeRecord } from '../utils/parsers';
@@ -150,6 +150,49 @@ export class DisputeModule {
   }
 
   /**
+   * Checks if a dispute has expired.
+   *
+   * @param disputeId - Numeric dispute identifier.
+   * @returns `true` if the dispute has expired, `false` otherwise.
+   *
+   * @example
+   * ```ts
+   * const expired = await client.dispute.isDisputeExpired(3n);
+   * if (expired) {
+   *   console.log('Dispute has expired');
+   * }
+   * ```
+   */
+  async isDisputeExpired(disputeId: bigint): Promise<boolean> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'is_dispute_expired',
+      [bigintToScVal(disputeId, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    if (!returnValue) {
+      return false;
+    }
+
+    return scValToBoolean(returnValue);
+  }
+
+  /**
    * Fetches all open dispute IDs across the contract.
    *
    * @returns Array of open dispute IDs.
@@ -239,6 +282,56 @@ export class DisputeModule {
     const native = scValToNative(returnValue);
     if (!Array.isArray(native)) {
       throw new Error('Expected array from get_disputes_by_resolver');
+    }
+
+    return native.map((id) => {
+      if (typeof id === 'bigint') return id;
+      if (typeof id === 'number') return BigInt(id);
+      throw new Error(`Unexpected type in disputes array: ${typeof id}`);
+    });
+  }
+
+  /**
+   * Fetches all dispute IDs raised by a specific claimant.
+   *
+   * @param claimant - Stellar account address of the claimant.
+   * @returns Array of dispute IDs for the claimant.
+   *
+   * @example
+   * ```ts
+   * const disputes = await client.dispute.getDisputesByClaimant('GABC…');
+   * console.log('My disputes:', disputes);
+   * ```
+   */
+  async getDisputesByClaimant(claimant: string): Promise<bigint[]> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_disputes_by_claimant',
+      [addressToScVal(claimant)],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    if (!returnValue) {
+      return [];
+    }
+
+    const native = scValToNative(returnValue);
+    if (!Array.isArray(native)) {
+      throw new Error('Expected array from get_disputes_by_claimant');
     }
 
     return native.map((id) => {
@@ -486,6 +579,22 @@ export class DisputeModule {
   async expireDispute(disputeId: bigint): Promise<TransactionResult> {
     if (!this.keypair) {
       throw new Error('DisputeModule.expireDispute: signing keypair required');
+   * Appeals a resolved dispute. Must be called by the original claimant.
+   *
+   * @param disputeId - The dispute ID to appeal.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   * @throws {VeriTixError} With code `DISPUTE_NOT_FOUND` if dispute does not exist.
+   * @throws {VeriTixError} With code `DISPUTE_INVALID_STATE` if dispute is still open.
+   *
+   * @example
+   * ```ts
+   * await client.dispute.appealDispute(3n);
+   * ```
+   */
+  async appealDispute(disputeId: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('DisputeModule.appealDispute: signing keypair required');
     }
 
     const dispute = await this.getDispute(disputeId);
@@ -512,6 +621,22 @@ export class DisputeModule {
       'expire_dispute',
       [
         addressToScVal(admin),
+    if (dispute.status === DisputeStatus.Open) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        'DisputeModule.appealDispute: dispute is still open, cannot appeal',
+      );
+    }
+
+    const claimant = this.keypair.publicKey();
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(claimant, '0'),
+      this.config.contractId,
+      'appeal_dispute',
+      [
+        addressToScVal(claimant),
         bigintToScVal(disputeId, 'u64'),
       ],
       this.config.networkPassphrase,
