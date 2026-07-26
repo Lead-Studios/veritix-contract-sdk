@@ -321,6 +321,35 @@ export class AdminModule {
    * @param feeRateBps - New fee rate in basis points (e.g. 250 = 2.5%).
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   */
+  async setProtocolFee(feeRateBps: number): Promise<TransactionResult> {
+    return this.writeCall('set_protocol_fee', [
+      xdr.ScVal.scvU32(feeRateBps),
+    ]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Token metadata management
+  // -------------------------------------------------------------------------
+
+  /**
+   * Updates the on-chain token metadata (name, symbol, decimals). Must be called by admin.
+   *
+   * @param params - Metadata fields to update. All are optional; only provided fields are changed.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.updateTokenMetadata({ name: 'VeriTix V2', symbol: 'VTX2' });
+   * ```
+   */
+  async updateTokenMetadata(params: { name?: string; symbol?: string; decimals?: number }): Promise<TransactionResult> {
+    const args: xdr.ScVal[] = [];
+    if (params.name !== undefined) args.push(stringToScVal(params.name));
+    if (params.symbol !== undefined) args.push(stringToScVal(params.symbol));
+    if (params.decimals !== undefined) args.push(xdr.ScVal.scvU32(params.decimals));
+    return this.writeCall('update_token_metadata', args);
    *
    * @example
    * ```ts

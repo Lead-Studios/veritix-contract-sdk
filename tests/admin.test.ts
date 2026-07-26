@@ -313,6 +313,29 @@ describe("AdminModule.unpause()", () => {
   });
 });
 
+describe("AdminModule.updateTokenMetadata()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.updateTokenMetadata({ name: 'NewName' }))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("calls buildContractCall with 'update_token_metadata' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.updateTokenMetadata({ name: 'VeriTix V2' });
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("update_token_metadata");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const result = await client.admin.updateTokenMetadata({ symbol: 'VTX2' });
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+});
+
 describe("AdminModule.setProtocolFee()", () => {
   it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
     const { client } = makeAdminClient();
