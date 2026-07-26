@@ -117,6 +117,10 @@ describe('SplitterModule.createRevenueSplit (validation)', () => {
   });
 });
 
+describe('SplitterModule.replaceRecipient', () => {
+  it('throws when no signing keypair', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    await expect(client.splitter.replaceRecipient(1n, 'GOLD', 'NEW')).rejects.toThrow('signing keypair required');
 describe('SplitterModule.getSplitterStats', () => {
   function makeMockClient() {
     const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
