@@ -372,3 +372,152 @@ describe('estimateFee', () => {
     ).resolves.toMatchObject({ feeLumens: '999' });
   });
 });
+
+// ---------------------------------------------------------------------------
+// submitTransaction — retry + jitter  (#281)
+// ---------------------------------------------------------------------------
+
+describe('submitTransaction — retry with jitter (#281)', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('accepts maxRetries and retryDelayMs via options object', async () => {
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'create_escrow',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+    const hash = 'retry_hash_001';
+    const sendMock = jest.fn().mockResolvedValue({ status: 'PENDING', hash });
+    const getMock = jest.fn().mockResolvedValue({ status: 'SUCCESS', ledger: 99 });
+    const server = makeMockServer({ sendTransaction: sendMock, getTransaction: getMock });
+
+    const result = await submitTransaction(server, tx, keypair, {
+      maxRetries: 2,
+      retryDelayMs: 50,
+    });
+    expect(result.hash).toBe(hash);
+    expect(result.successful).toBe(true);
+    expect(sendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries on RATE_LIMIT_EXCEEDED up to maxRetries times', async () => {
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'rate_limit_method',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+    const hash = 'retry_hash_002';
+
+    const rateLimitResponse = {
+      status: 'ERROR',
+      hash: '',
+      errorResult: { toXDR: () => 'RATE_LIMIT exceeded' },
+    };
+    const successResponse = { status: 'PENDING', hash };
+
+    const sendMock = jest
+      .fn()
+      .mockResolvedValueOnce(rateLimitResponse)
+      .mockResolvedValueOnce(rateLimitResponse)
+      .mockResolvedValueOnce(successResponse);
+    const getMock = jest.fn().mockResolvedValue({ status: 'SUCCESS', ledger: 100 });
+
+    const server = makeMockServer({ sendTransaction: sendMock, getTransaction: getMock });
+
+    jest.spyOn(Math, 'random').mockReturnValue(0.5); // zero jitter
+
+    const result = await submitTransaction(server, tx, keypair, {
+      maxRetries: 3,
+      retryDelayMs: 1,
+    });
+
+    expect(result.hash).toBe(hash);
+    expect(sendMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('throws after exhausting maxRetries on persistent RATE_LIMIT', async () => {
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'always_rate_limited',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+
+    const rateLimitResponse = {
+      status: 'ERROR',
+      hash: '',
+      errorResult: { toXDR: () => 'RATE_LIMIT exceeded' },
+    };
+
+    const server = makeMockServer({
+      sendTransaction: jest.fn().mockResolvedValue(rateLimitResponse),
+      getTransaction: jest.fn(),
+    });
+
+    jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    await expect(
+      submitTransaction(server, tx, keypair, { maxRetries: 1, retryDelayMs: 1 }),
+    ).rejects.toBeInstanceOf(Error);
+  });
+
+  it('applies ±20% jitter to retryDelayMs (jitter stays within bounds)', () => {
+    const retryDelayMs = 1000;
+    const samples = Array.from({ length: 200 }, () => {
+      const jitter = retryDelayMs * 0.2 * (Math.random() * 2 - 1);
+      return retryDelayMs + jitter;
+    });
+
+    const min = Math.min(...samples);
+    const max = Math.max(...samples);
+
+    expect(min).toBeGreaterThanOrEqual(retryDelayMs * 0.8 - 1);
+    expect(max).toBeLessThanOrEqual(retryDelayMs * 1.2 + 1);
+  });
+
+  it('defaults maxRetries to 3 when no options supplied', async () => {
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'default_retries',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+    const hash = 'default_retries_hash';
+    const server = makeMockServer({
+      sendTransaction: jest.fn().mockResolvedValue({ status: 'PENDING', hash }),
+      getTransaction: jest.fn().mockResolvedValue({ status: 'SUCCESS', ledger: 1 }),
+    });
+
+    const result = await submitTransaction(server, tx, keypair);
+    expect(result.hash).toBe(hash);
+  });
+
+  it('throws READ_ONLY_CLIENT when no keypair is provided', async () => {
+    const tx = await buildContractCall(
+      makeMockServer(),
+      sourceAccount,
+      FAKE_CONTRACT_ID,
+      'no_keypair',
+      [],
+      NETWORK_PASSPHRASE,
+    );
+    const server = makeMockServer();
+
+    await expect(
+      submitTransaction(server, tx, undefined, { maxRetries: 0 }),
+    ).rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
+  });
+});
