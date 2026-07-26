@@ -1,67 +1,81 @@
 # Testing Guide
 
-This guide explains how to write unit tests (with mocked RPC) and integration tests (against
-Stellar Testnet) for `@veritix/contract-sdk`.  Follow these conventions when contributing new
-module methods or bug fixes.
+This guide explains how to write and run both **unit tests** (fully mocked,
+no network required) and **integration tests** (live Stellar Testnet) for the
+`@veritix/contract-sdk`.
 
 ---
 
 ## Table of Contents
 
-- [Quick Reference](#quick-reference)
-- [Unit Tests — Mocked RPC](#unit-tests--mocked-rpc)
-  - [createMockClient](#createmockclient)
-  - [createMockServer](#createmockserver)
-  - [createMockKeypair](#createmockkeypair)
-  - [Mocking Soroban RPC responses with jest.spyOn](#mocking-soroban-rpc-responses-with-jestspyon)
-  - [Testing read methods](#testing-read-methods)
-  - [Testing write methods](#testing-write-methods)
-- [Integration Tests — Testnet](#integration-tests--testnet)
+- [Test structure](#test-structure)
+- [Unit tests](#unit-tests)
+  - [Mock helpers](#mock-helpers)
+  - [Mocking Soroban RPC responses](#mocking-soroban-rpc-responses)
+  - [Mocking `buildContractCall`](#mocking-buildcontractcall)
+  - [Writing a new unit test](#writing-a-new-unit-test)
+- [Integration tests](#integration-tests)
   - [Required environment variables](#required-environment-variables)
   - [Funding test accounts with Friendbot](#funding-test-accounts-with-friendbot)
+  - [XDR fixture pattern](#xdr-fixture-pattern)
   - [Running integration tests](#running-integration-tests)
-- [XDR Fixture Pattern](#xdr-fixture-pattern)
-  - [Capturing a response](#capturing-a-response)
-  - [Replaying a fixture](#replaying-a-fixture)
-- [Coverage Thresholds](#coverage-thresholds)
-- [Checklist for New Module Methods](#checklist-for-new-module-methods)
+- [Coverage thresholds](#coverage-thresholds)
+- [Running tests](#running-tests)
 
 ---
 
-## Quick Reference
+## Test structure
 
-| Scenario | Tool to use |
-|----------|-------------|
-| Unit test a read method | `createMockClient` + `jest.spyOn` on `simulateTransaction` |
-| Unit test a write method | `createMockClient` + `createMockKeypair` + mock `sendTransaction` / `getTransaction` |
-| Integration test on testnet | `.env.test` with funded keys, run via `npm run test:integration` |
-| Replay a captured RPC response | XDR fixture in `tests/fixtures/` |
-
----
-
-## Unit Tests — Mocked RPC
-
-All unit tests live under `tests/` and run against a fully mocked Soroban RPC so they never
-touch the network.  The helpers in `tests/helpers/mocks.ts` cover the three most common needs.
-
-### createMockClient
-
-`createMockClient(overrides?)` returns a `VeriTixClient` whose internal `server` is replaced
-by a `jest.Mocked` object.  The client is already in the `connected = true` state, so you can
-call module methods directly without calling `connect()`.
-
-```ts
-import { createMockClient } from './helpers/mocks';
-
-const client = createMockClient();
-// client.connected === true (injected by the helper)
-// client.token, client.escrow, etc. all point at the mock server
+```
+tests/
+├── helpers/
+│   ├── mocks.ts          # createMockClient / createMockServer / createMockKeypair
+│   └── env.ts            # requireEnv() — safe env-var loader for integration tests
+├── fixtures/
+│   ├── escrow.xdr.ts     # Captured Soroban XDR responses for escrow tests
+│   └── dispute.xdr.ts    # Captured Soroban XDR responses for dispute tests
+├── integration/
+│   ├── dispute-flow.integration.test.ts
+│   └── ticket-purchase.integration.test.ts
+├── utils/
+│   ├── requestCache.test.ts
+│   ├── transaction.test.ts
+│   └── …
+└── *.test.ts             # Module-level unit tests (token, escrow, dispute, …)
 ```
 
-Pass `overrides` to change specific mock method implementations:
+Unit tests live alongside the source they exercise or in `tests/`.
+Integration tests live under `tests/integration/` and always have the suffix
+`.integration.test.ts`.
+
+---
+
+## Unit tests
+
+Unit tests run entirely in-process with Jest.  **No real network calls are
+made.**  All Soroban RPC interactions are replaced with `jest.fn()` mocks or
+`jest.spyOn()` intercepts.
+
+### Mock helpers
+
+`tests/helpers/mocks.ts` provides three factory functions:
 
 ```ts
-const client = createMockClient({
+import {
+  createMockClient,
+  createMockServer,
+  createMockKeypair,
+} from '../helpers/mocks';
+```
+
+#### `createMockServer(overrides?)`
+
+Returns a plain object that satisfies the `SorobanRpc.Server` interface, with
+every method pre-wired to sensible default resolved values.
+
+```ts
+const server = createMockServer({
+  // Override only the methods you care about:
   simulateTransaction: jest.fn().mockResolvedValue({
     result: { retval: nativeToScVal(42n, { type: 'i128' }) },
     latestLedger: 1000,
@@ -72,345 +86,356 @@ const client = createMockClient({
 });
 ```
 
-### createMockServer
+Default implementations provided:
 
-`createMockServer(overrides?)` returns a standalone mock server without wiring it to a client.
-Use it when you need fine-grained control over module construction.
-
-```ts
-import { createMockServer, createMockConfig } from './helpers/mocks';
-import { TokenModule } from '../src/modules/token';
-
-const server = createMockServer({
-  simulateTransaction: jest.fn().mockResolvedValue({ /* ... */ }),
-});
-const config = createMockConfig();
-const module = new TokenModule(config, server);
-```
-
-Default mock method return values:
-
-| Method | Default resolved value |
-|--------|----------------------|
+| Method | Default return value |
+|---|---|
 | `getLatestLedger` | `{ sequence: 1000 }` |
 | `simulateTransaction` | `{ result: null }` |
 | `sendTransaction` | `{ hash: 'mock-hash', status: 'PENDING' }` |
 | `getTransaction` | `{ status: 'SUCCESS', ledger: 1000 }` |
 
-### createMockKeypair
+#### `createMockClient(overrides?)`
 
-`createMockKeypair()` returns a deterministic `Keypair` derived from a fixed secret key.
-Using the same keypair across tests makes assertions on `keypair.publicKey()` reproducible.
-
-```ts
-import { createMockKeypair } from './helpers/mocks';
-
-const keypair = createMockKeypair();
-console.log(keypair.publicKey()); // always the same public key
-```
-
-### Mocking Soroban RPC responses with jest.spyOn
-
-For tests that go through the full module path (including `buildContractCall`) use
-`jest.spyOn` directly on the mock server's method:
+Wraps `createMockServer` and injects the mock server into a fully-constructed
+`VeriTixClient`.  The client is pre-marked as connected so you can call module
+methods directly without calling `client.connect()`.
 
 ```ts
-import { nativeToScVal } from '@stellar/stellar-sdk';
-import { createMockClient } from './helpers/mocks';
-
-describe('TokenModule.balance()', () => {
-  it('returns parsed bigint from RPC response', async () => {
-    const client = createMockClient();
-
-    // Spy on the mock server that was injected into the token module
-    const spy = jest.spyOn(
-      (client.token as any).server,
-      'simulateTransaction',
-    ).mockResolvedValue({
-      result: { retval: nativeToScVal(5_000_000n, { type: 'i128' }) },
-      latestLedger: 1000,
-      minResourceFee: '100',
-      transactionData: '',
-      events: [],
-    });
-
-    const balance = await client.token.balance('GABC…');
-
-    expect(balance).toBe(5_000_000n);
-    expect(spy).toHaveBeenCalledTimes(1);
-  });
+const client = createMockClient({
+  simulateTransaction: jest.fn().mockResolvedValue(/* … */),
 });
+
+const balance = await client.token.balance('GABC…');
 ```
 
-Alternatively, replace the server reference directly on the module (the pattern used in
-`tests/token.test.ts`):
+#### `createMockKeypair()`
+
+Returns a deterministic `Keypair` (same secret key every time) so tests can
+assert on the public key without hard-coding it.
 
 ```ts
-const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-const mockSimulate = jest.fn().mockResolvedValue(/* ... */);
-(client.token as any).server = { simulateTransaction: mockSimulate };
+const keypair = createMockKeypair();
+console.log(keypair.publicKey()); // always the same Gxxx… address
 ```
 
-Both patterns are acceptable; the `(client.module as any).server` pattern is slightly less
-verbose for tests that only exercise one module.
+---
 
-### Testing read methods
+### Mocking Soroban RPC responses
 
-Every module read method calls `simulateRead` internally, which calls
-`server.simulateTransaction`.  A minimal read test looks like this:
+The key integration point between the SDK and the network is
+`server.simulateTransaction`.  Mock it with `jest.fn()` returning a
+well-shaped success or error response.
+
+#### Success response shape
 
 ```ts
 import { nativeToScVal } from '@stellar/stellar-sdk';
-import { VeriTixClient } from '../src/client';
-import { getTestnetConfig } from '../src/utils/network';
-
-const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
 
 function simSuccess(retval: ReturnType<typeof nativeToScVal>) {
   return {
     result: { retval },
-    latestLedger: 1,
+    latestLedger: 1000,
+    minResourceFee: '100',
+    transactionData: '',
+    events: [],
+  };
+}
+```
+
+#### Error response shape
+
+```ts
+function simError(errorMessage: string) {
+  return {
+    error: errorMessage,
+    latestLedger: 1000,
+    events: [],
+  };
+}
+```
+
+#### Example — assert balance returns correct value
+
+```ts
+import { nativeToScVal } from '@stellar/stellar-sdk';
+import { createMockClient } from '../helpers/mocks';
+
+describe('TokenModule.balance', () => {
+  it('returns the balance reported by the contract', async () => {
+    const mockSimulate = jest
+      .fn()
+      .mockResolvedValue(simSuccess(nativeToScVal(5_000_000n, { type: 'i128' })));
+
+    const client = createMockClient({ simulateTransaction: mockSimulate });
+
+    const balance = await client.token.balance('GABC…');
+
+    expect(balance).toBe(5_000_000n);
+    expect(mockSimulate).toHaveBeenCalledTimes(1);
+  });
+});
+```
+
+#### Example — assert error is mapped to `VeriTixError`
+
+```ts
+import { VeriTixError } from '../../src/utils/errors';
+import { createMockClient } from '../helpers/mocks';
+
+it('throws VeriTixError when simulateTransaction returns an error', async () => {
+  const mockSimulate = jest.fn().mockResolvedValue(simError('ContractError(1)'));
+
+  const client = createMockClient({ simulateTransaction: mockSimulate });
+
+  await expect(client.escrow.getEscrow(1n)).rejects.toBeInstanceOf(VeriTixError);
+});
+```
+
+---
+
+### Mocking `buildContractCall`
+
+Some tests need to prevent `buildContractCall` from touching a real account
+object.  Use `jest.mock` at the top of the test file:
+
+```ts
+jest.mock('../../src/utils/transaction', () => ({
+  ...jest.requireActual('../../src/utils/transaction'),
+  buildContractCall: jest.fn().mockResolvedValue({}),
+}));
+```
+
+This replaces only `buildContractCall` while keeping all other exports
+(e.g. `simulateTransaction`, `submitTransaction`) real.
+
+---
+
+### Writing a new unit test
+
+1. Create `tests/<module>.test.ts` (or add to an existing file).
+2. Import the factories from `tests/helpers/mocks.ts`.
+3. Mock `simulateTransaction` (and optionally `sendTransaction` /
+   `getTransaction`) to return the values your test needs.
+4. Call the SDK method under test.
+5. Assert on the return value **and** on `mockSimulate.mock.calls` to confirm
+   the correct RPC arguments were sent.
+
+```ts
+import { nativeToScVal } from '@stellar/stellar-sdk';
+import { createMockClient } from '../helpers/mocks';
+
+// Build a success response helper inline or import from a shared fixture file
+function simSuccess(retval: ReturnType<typeof nativeToScVal>) {
+  return {
+    result: { retval },
+    latestLedger: 1000,
     minResourceFee: '100',
     transactionData: '',
     events: [],
   };
 }
 
-describe('TokenModule.decimals()', () => {
-  it('returns number from RPC response', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+describe('MyNewModule.myMethod', () => {
+  it('calls the contract method with the correct args and returns the parsed result', async () => {
     const mockSimulate = jest
       .fn()
-      .mockResolvedValue(simSuccess(nativeToScVal(7, { type: 'u32' })));
-    (client.token as any).server = { simulateTransaction: mockSimulate };
+      .mockResolvedValue(simSuccess(nativeToScVal(true)));
 
-    expect(await client.token.decimals()).toBe(7);
+    const client = createMockClient({ simulateTransaction: mockSimulate });
+
+    const result = await client.myModule.myMethod('some-arg');
+
+    expect(result).toBe(true);
+    expect(mockSimulate).toHaveBeenCalledTimes(1);
   });
-});
-```
-
-Always test the error path too — the module should surface a `VeriTixError` (not a raw RPC
-error) when simulation fails:
-
-```ts
-it('throws VeriTixError on simulation failure', async () => {
-  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-  (client.token as any).server = {
-    simulateTransaction: jest.fn().mockResolvedValue({
-      error: 'contract error: escrow not found',
-    }),
-  };
-
-  await expect(client.token.balance(FAKE_ADDRESS)).rejects.toBeInstanceOf(VeriTixError);
-});
-```
-
-### Testing write methods
-
-Write methods require a `Keypair`.  Inject a mock server that returns `PENDING` from
-`sendTransaction` and then `SUCCESS` from `getTransaction`:
-
-```ts
-import { Keypair, nativeToScVal } from '@stellar/stellar-sdk';
-import { VeriTixClient } from '../src/client';
-import { getTestnetConfig } from '../src/utils/network';
-
-it('mint() submits a transaction and returns the result', async () => {
-  const keypair = Keypair.random();
-  const client  = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), keypair);
-
-  const mockServer = {
-    getAccount:           jest.fn().mockResolvedValue({ id: keypair.publicKey(), sequenceNumber: () => '0', incrementSequenceNumber: () => {} }),
-    simulateTransaction:  jest.fn().mockResolvedValue({
-      result: { retval: nativeToScVal(null) },
-      minResourceFee: '100',
-      transactionData: { /* minimal assembled footprint */ },
-      events: [],
-    }),
-    sendTransaction:      jest.fn().mockResolvedValue({ hash: 'abc123', status: 'PENDING' }),
-    getTransaction:       jest.fn().mockResolvedValue({ status: 'SUCCESS', ledger: 1001 }),
-  };
-  (client.token as any).server = mockServer;
-
-  const result = await client.token.mint({ to: keypair.publicKey(), amount: 1_000_000n });
-
-  expect(result.hash).toBe('abc123');
-  expect(result.successful).toBe(true);
-  expect(mockServer.sendTransaction).toHaveBeenCalledTimes(1);
-});
-```
-
-Always verify that write methods throw `VeriTixError(ReadOnlyClient)` when no keypair is
-supplied:
-
-```ts
-it('throws READ_ONLY_CLIENT without keypair', async () => {
-  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT)); // no keypair
-  await expect(
-    client.token.mint({ to: FAKE_ADDRESS, amount: 1_000n }),
-  ).rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
 });
 ```
 
 ---
 
-## Integration Tests — Testnet
+## Integration tests
 
-Integration tests live in `tests/integration/` and are excluded from the default `npm test`
-run.  They connect to **Stellar Testnet** and require funded accounts.
+Integration tests exercise the full SDK against a live Stellar **Testnet**
+deployment.  They require funded accounts and a deployed contract — they must
+never be run against Mainnet.
 
 ### Required environment variables
 
-Copy `.env.example` to `.env.test` and fill in the required values:
+Copy `.env.example` to `.env` and fill in all values before running:
 
 ```bash
-cp .env.example .env.test
+cp .env.example .env
 ```
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `VERITIX_CONTRACT_ID` | ✅ | Deployed Soroban contract ID on testnet |
-| `STELLAR_NETWORK` | ✅ | Must be `testnet` |
-| `VERITIX_SECRET_KEY` | ✅ | Secret key for the test admin account |
-| `VERITIX_RPC_URL` | optional | Overrides the default testnet RPC URL |
-| `VERITIX_NETWORK_PASSPHRASE` | optional | Overrides the default testnet passphrase |
+| Variable | Description |
+|---|---|
+| `CONTRACT_ID` | Bech32-encoded Soroban contract ID deployed on Testnet |
+| `STELLAR_SECRET_KEY` | Secret key (`S…`) for the buyer / claimant account |
+| `RESOLVER_SECRET_KEY` | Secret key for the designated dispute resolver |
+| `ORGANIZER_SECRET_KEY` | Secret key for the event organizer (escrow beneficiary) |
 
-> **Never commit** a `.env.test` file that contains real secret keys.  It is listed in
-> `.gitignore` but be vigilant.
+> **Security:** Never commit real secret keys to source control.  The `.gitignore` already excludes `.env`.
 
 ### Funding test accounts with Friendbot
 
-Stellar Testnet provides a free faucet called **Friendbot** that funds any account with
-10 000 XLM.  Call it once per account before running integration tests:
+Before running integration tests for the first time, fund each test account
+using the Stellar Testnet Friendbot:
+
+```bash
+# Replace GXXX… with each account's public key
+curl "https://friendbot.stellar.org?addr=GXXX…"
+```
+
+Or programmatically inside a `beforeAll`:
 
 ```ts
-// Fund an account via HTTP (used in integration test setup)
-async function fundWithFriendbot(publicKey: string): Promise<void> {
-  const url = `https://friendbot.stellar.org?addr=${encodeURIComponent(publicKey)}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Friendbot failed: ${response.status} ${await response.text()}`);
-  }
+import fetch from 'node-fetch'; // or the built-in fetch in Node 18+
+
+async function fundAccount(publicKey: string): Promise<void> {
+  const res = await fetch(`https://friendbot.stellar.org?addr=${publicKey}`);
+  if (!res.ok) throw new Error(`Friendbot failed for ${publicKey}: ${await res.text()}`);
 }
 
-// Usage in beforeAll / beforeEach
 beforeAll(async () => {
-  const keypair = Keypair.random();
-  await fundWithFriendbot(keypair.publicKey());
-  // Now the account exists on testnet and can sign transactions
+  await fundAccount(keypair.publicKey());
 });
 ```
 
-Alternatively use the Horizon SDK helper:
+Each Friendbot request gives the account **10 000 XLM** on Testnet, which is
+more than enough for a full test suite run.
+
+### XDR fixture pattern
+
+Replaying captured Soroban responses keeps unit tests fast and deterministic
+without needing a live network.  Use this pattern:
+
+**Step 1 — Capture a real response** (run once against Testnet):
 
 ```ts
-import { StellarTomlResolver, Friendbot } from '@stellar/stellar-sdk';
+const raw = await server.simulateTransaction(tx);
+console.log(JSON.stringify(raw, null, 2));
+```
 
-const server = new Horizon.Server('https://horizon-testnet.stellar.org');
-await server.friendbot(keypair.publicKey()).call();
+**Step 2 — Save it as a fixture** in `tests/fixtures/<module>.xdr.ts`:
+
+```ts
+// tests/fixtures/escrow.xdr.ts
+export const GET_ESCROW_SUCCESS = {
+  result: {
+    retval: '…base64-encoded-xdr…',
+  },
+  latestLedger: 1234567,
+  minResourceFee: '100',
+  transactionData: '…',
+  events: [],
+};
+```
+
+**Step 3 — Use the fixture in a unit test**:
+
+```ts
+import { GET_ESCROW_SUCCESS } from '../fixtures/escrow.xdr';
+
+const mockSimulate = jest.fn().mockResolvedValue(GET_ESCROW_SUCCESS);
+const client = createMockClient({ simulateTransaction: mockSimulate });
+```
+
+This approach lets the entire test suite run offline while preserving
+realistic XDR payloads.
+
+### Skipping gracefully when env vars are missing
+
+Each integration test file should skip its suite when the required env vars
+are not set, so CI passes even without a configured Testnet environment:
+
+```ts
+import { requireEnv } from '../helpers/env';
+
+function loadEnv() {
+  try {
+    return {
+      contractId: requireEnv('CONTRACT_ID'),
+      secret: requireEnv('STELLAR_SECRET_KEY'),
+    };
+  } catch {
+    return null; // env not configured — skip tests
+  }
+}
+
+describe('MyModule — integration', () => {
+  const env = loadEnv();
+
+  if (!env) {
+    it.skip('skipped — env vars not set', () => {/* empty */});
+    return;
+  }
+
+  // … your tests …
+});
 ```
 
 ### Running integration tests
 
 ```bash
-# Run all integration tests (requires .env.test to be populated)
+# Unit tests only (default CI run)
+npm test
+
+# Integration tests only (requires .env)
 npm run test:integration
-
-# Run a single integration test file
-npx jest tests/integration/ticket-purchase.integration.test.ts --config jest.integration.config.ts
 ```
 
-Integration tests use a separate Jest config (`jest.integration.config.ts`) so that they are
-never picked up by the default `npm test` run in CI.
+> Integration tests have a generous Jest timeout of **120 000 ms** (2 minutes)
+> because Testnet transactions can take several seconds to confirm.  Set
+> `jest.setTimeout(120_000)` inside the `describe` block.
 
 ---
 
-## XDR Fixture Pattern
+## Coverage thresholds
 
-Capturing a live Soroban RPC response as an XDR fixture lets you replay exact responses in
-unit tests, which is far more realistic than crafting return values by hand.
-
-### Capturing a response
-
-1. Run your integration test or a one-off script against testnet with logging enabled.
-2. Intercept the raw `SimulateTransactionResponse` from `server.simulateTransaction()`.
-3. Encode the `.result.retval` field to base64 XDR and save it to
-   `tests/fixtures/<module>.xdr.ts`:
-
-```ts
-// tests/fixtures/escrow.xdr.ts — example captured fixture
-export const GET_ESCROW_XDR =
-  'AAAAEQAAAAEAAAAGAAAADwAAAA9lc2Nyb3dfaWQ…';  // base64 ScVal XDR
-```
-
-### Replaying a fixture
-
-In a unit test, decode the fixture back to an `xdr.ScVal` and return it from the mock:
-
-```ts
-import { xdr } from '@stellar/stellar-sdk';
-import { GET_ESCROW_XDR } from '../fixtures/escrow.xdr';
-
-const retval = xdr.ScVal.fromXDR(GET_ESCROW_XDR, 'base64');
-
-(client.escrow as any).server = {
-  simulateTransaction: jest.fn().mockResolvedValue({
-    result: { retval },
-    latestLedger: 1,
-    minResourceFee: '100',
-    transactionData: '',
-    events: [],
-  }),
-};
-
-const escrow = await client.escrow.getEscrow(1n);
-expect(escrow.id).toBe(1n);
-```
-
-This pattern is used in `tests/fixtures/dispute.xdr.ts` and `tests/fixtures/escrow.xdr.ts`.
-Follow the same convention for new module fixtures.
-
----
-
-## Coverage Thresholds
-
-The project enforces minimum test coverage via Jest's `coverageThreshold` setting in
-`jest.config.ts`.  Aim for the following when contributing:
+The project targets the following Jest coverage thresholds (configured in
+`jest.config.ts`):
 
 | Metric | Target |
-|--------|--------|
+|---|---|
 | Statements | ≥ 80 % |
 | Branches | ≥ 75 % |
 | Functions | ≥ 80 % |
 | Lines | ≥ 80 % |
 
-Run coverage locally before submitting a PR:
+When adding a new module, aim to cover:
+
+- Every public method with at least one happy-path test.
+- Every thrown `VeriTixError` code with a test that triggers it.
+- Edge cases: empty arrays, `0n` amounts, read-only client writes, invalid
+  addresses.
+
+Check coverage locally:
 
 ```bash
-npm run test:coverage
+npm test -- --coverage
 ```
-
-Focus coverage on:
-- All happy-path return values from read methods.
-- The `READ_ONLY_CLIENT` guard in every write method.
-- Input validation errors (`InvalidAmount`, `BatchTooLarge`, etc.).
-- Error propagation when `simulateTransaction` returns an error response.
-
-You do not need to cover unreachable branches inside `@stellar/stellar-sdk` internals.
 
 ---
 
-## Checklist for New Module Methods
+## Running tests
 
-Before opening a PR for a new or changed module method, verify:
+```bash
+# Run all unit tests
+npm test
 
-- [ ] At least one unit test for the happy path (mock RPC returns valid data).
-- [ ] Unit test that write method throws `VeriTixError(ReadOnlyClient)` without a `Keypair`.
-- [ ] Unit test for each input validation rule (`InvalidAmount`, `BatchTooLarge`, etc.).
-- [ ] Unit test that surfaces the correct `VeriTixErrorCode` when RPC returns a contract panic.
-- [ ] Method has JSDoc with `@param`, `@returns`, and at least one `@example`.
-- [ ] `@deprecated` tag added (with replacement hint and removal version) if the method
-  supersedes an older one — see [docs/deprecated.md](./deprecated.md).
-- [ ] `npm test` passes with no regressions.
-- [ ] `npm run test:coverage` shows coverage at or above the thresholds above for the files
-  you changed.
+# Run tests matching a pattern
+npm test -- --testPathPattern=token
+
+# Run a single file
+npx jest tests/token.test.ts
+
+# Run with coverage report
+npm test -- --coverage
+
+# Run integration tests (requires .env)
+npm run test:integration
+
+# Watch mode during development
+npm test -- --watch
+```
