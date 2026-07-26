@@ -341,5 +341,15 @@ export class AdminModule {
     if (params.symbol !== undefined) args.push(stringToScVal(params.symbol));
     if (params.decimals !== undefined) args.push(xdr.ScVal.scvU32(params.decimals));
     return this.writeCall('update_token_metadata', args);
+   *
+   * @example
+   * ```ts
+   * await client.admin.setProtocolFee(250); // 2.5%
+   * ```
+   */
+  async setProtocolFee(feeRateBps: number): Promise<TransactionResult> {
+    return this.writeCall('set_protocol_fee', [
+      xdr.ScVal.scvU32(feeRateBps),
+    ]);
   }
 }

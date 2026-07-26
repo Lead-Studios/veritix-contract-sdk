@@ -7,9 +7,9 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.js"
     }
   },
   "files": [
@@ -30,11 +30,13 @@
     "test:integration": "jest --config jest.integration.config.ts --runInBand --forceExit",
     "lint": "eslint 'src/**/*.ts' 'tests/**/*.ts'",
     "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts'",
-    "prepublish": "npm run build",
+    "prepublishOnly": "npm run build",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "npm run build && changeset publish",
-    "docs:generate": "typedoc"
+    "docs:generate": "typedoc",
+    "docs:serve": "npx http-server docs/api -p 8080",
+    "type-coverage": "type-coverage --at-least 95 --strict"
   },
   "keywords": [
     "stellar",
@@ -68,6 +70,7 @@
     "ts-jest": "^29.1.5",
     "ts-node": "^10.9.2",
     "tsup": "^8.1.0",
-    "typedoc": "^0.26.3"
+    "typedoc": "^0.26.3",
+    "type-coverage": "^2.29.1"
   }
 }

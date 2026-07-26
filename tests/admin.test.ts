@@ -333,4 +333,10 @@ describe("AdminModule.setProtocolFee()", () => {
     expect(result.hash).toBe("mockhash");
     expect(result.successful).toBe(true);
   });
+
+  it("invokes simulateTransaction once", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.setProtocolFee(500);
+    expect(txUtils.simulateTransaction as jest.Mock).toHaveBeenCalledTimes(1);
+  });
 });

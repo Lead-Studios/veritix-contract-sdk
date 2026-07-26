@@ -51,6 +51,10 @@ export enum VeriTixErrorCode {
   RecurringNotFound = 'RECURRING_NOT_FOUND',
   /** The interval has not elapsed since the last charge */
   RecurringIntervalNotElapsed = 'RECURRING_INTERVAL_NOT_ELAPSED',
+  /** The recurring payment is already paused */
+  RecurringAlreadyPaused = 'RECURRING_ALREADY_PAUSED',
+  /** The recurring payment is not currently paused */
+  RecurringNotPaused = 'RECURRING_NOT_PAUSED',
 
   // — Admin -----------------------------------------------------------------
   /** Caller is not the contract admin */
@@ -161,6 +165,8 @@ const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
   // Recurring
   ['recurring not found',     VeriTixErrorCode.RecurringNotFound],
   ['interval not elapsed',    VeriTixErrorCode.RecurringIntervalNotElapsed],
+  ['already paused',          VeriTixErrorCode.RecurringAlreadyPaused],
+  ['not paused',              VeriTixErrorCode.RecurringNotPaused],
 
   // Token
   ['insufficient allowance', VeriTixErrorCode.InsufficientAllowance],
@@ -247,6 +253,8 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.SplitAlreadyDistributed]:     'Split amount has already been distributed.',
     [VeriTixErrorCode.RecurringNotFound]:           'Recurring payment record not found.',
     [VeriTixErrorCode.RecurringIntervalNotElapsed]: 'Charge interval has not yet elapsed.',
+    [VeriTixErrorCode.RecurringAlreadyPaused]:      'Recurring payment is already paused.',
+    [VeriTixErrorCode.RecurringNotPaused]:          'Recurring payment is not currently paused.',
     [VeriTixErrorCode.AdminUnauthorized]:           'Caller is not the contract administrator.',
     [VeriTixErrorCode.AccountFrozen]:               'Target account is frozen and cannot transact.',
     [VeriTixErrorCode.ContractAlreadyPaused]:       'Contract is already paused — call unpause() first.',
