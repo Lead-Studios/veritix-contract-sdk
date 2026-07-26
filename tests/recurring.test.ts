@@ -166,12 +166,12 @@ describe('RecurringModule', () => {
     });
   });
 
-  describe('cancelBatch()', () => {
+  describe('amendRecurring()', () => {
     it('throws ReadOnlyClient when no keypair', async () => {
-      await expect(recurring.cancelBatch([1n, 2n])).rejects.toThrow('signing keypair required');
+      await expect(recurring.amendRecurring(1n, 100n, 100)).rejects.toThrow('signing keypair required');
     });
 
-    it('returns cancelled/failed summary', async () => {
+    it('returns tx result on success', async () => {
       const kp = Keypair.random();
       const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
       const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
@@ -180,20 +180,16 @@ describe('RecurringModule', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (c as any).connected = true;
 
-      let callCount = 0;
-      mockServer.simulateTransaction.mockImplementation(async () => {
-        callCount++;
-        if (callCount === 2) {
-          return { status: 'ERROR', error: 'recurring not found' };
-        }
-        return { status: 'SUCCESS', result: { retval: undefined } };
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: { retval: undefined },
       });
-      mockServer.sendTransaction.mockResolvedValue({ hash: 'batch-hash', status: 'PENDING' });
-      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 60 });
+      mockServer.sendTransaction.mockResolvedValue({ hash: 'amend-hash', status: 'PENDING' });
+      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 50 });
 
-      const result = await c.recurring.cancelBatch([10n, 11n, 12n]);
-      expect(result.cancelled).toEqual([10n, 12n]);
-      expect(result.failed).toEqual([11n]);
+      const result = await c.recurring.amendRecurring(2n, 500n, 3600);
+      expect(result.successful).toBe(true);
+      expect(result.hash).toBe('amend-hash');
     });
   });
 });

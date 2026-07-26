@@ -8,6 +8,7 @@
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, RecurringRecord, RecurringExecutionEntry, TransactionResult } from '../types/index';
+import { bigintToScVal } from '../utils/scval';
 import { addressToScVal, bigintToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
@@ -117,48 +118,22 @@ export class RecurringModule {
   }
 
   /**
-   * Cancels multiple recurring payments at once. Must be called by the payer.
-   * Collects failures without throwing — returns summary of results.
+   * Updates the amount and/or interval of an existing recurring payment.
+   * Must be called by the payer.
    *
-   * @param ids - Array of numeric recurring-payment identifiers.
-   * @returns Summary with cancelled and failed payment IDs.
+   * @param id - Numeric recurring-payment identifier.
+   * @param amount - New amount per interval (in stroops). Pass `undefined` to keep current.
+   * @param interval - New charge interval in ledgers. Pass `undefined` to keep current.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
    */
-  async cancelBatch(
-    _ids: bigint[],
-  ): Promise<{ cancelled: bigint[]; failed: bigint[] }> {
+  async amendRecurring(
+    _id: bigint,
+    _amount?: bigint,
+    _interval?: number,
+  ): Promise<TransactionResult> {
     if (!this.keypair) {
-      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.cancelBatch: signing keypair required');
-    }
-
-    const payer = this.keypair.publicKey();
-    const cancelled: bigint[] = [];
-    const failed: bigint[] = [];
-
-    for (const id of _ids) {
-      try {
-        const tx = await buildContractCall(
-          this.server,
-          new Account(payer, '0'),
-          this.config.contractId,
-          'cancel_recurring',
-          [bigintToScVal(id, 'u64')],
-          this.config.networkPassphrase,
-        );
-
-        const raw = await this.server.simulateTransaction(tx);
-        if (SorobanRpc.Api.isSimulationError(raw)) {
-          throw parseSorobanError(raw.error);
-        }
-
-        const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
-        await submitTransaction(this.server, assembled, this.keypair);
-        cancelled.push(id);
-      } catch {
-        failed.push(id);
-      }
-    }
-
-    return { cancelled, failed };
+      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.amendRecurring: signing keypair required');
    * Pauses an active recurring payment. Must be called by the payer.
    * Pre-flight checks verify the record exists and is currently active.
    *
@@ -178,6 +153,12 @@ export class RecurringModule {
       this.server,
       new Account(payer, '0'),
       this.config.contractId,
+      'amend_recurring',
+      [
+        bigintToScVal(_id, 'u64'),
+        bigintToScVal(_amount ?? 0n, 'i128'),
+        xdr.ScVal.scvU32(_interval ?? 0),
+      ],
       'pause_recurring',
       [bigintToScVal(_id, 'u64')],
       this.config.networkPassphrase,
