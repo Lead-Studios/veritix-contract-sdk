@@ -285,6 +285,32 @@ export class SplitterModule {
   }
 
   /**
+   * Returns a preview of how a revenue split would distribute funds to recipients,
+   * without performing any on-chain mutation. Useful for estimating payouts before
+   * committing to a split.
+   *
+   * @param params - Revenue split parameters (organizer, artist, platform, totalAmount).
+   * @returns Array of recipient addresses with their calculated share amounts.
+   *
+   * @example
+   * ```ts
+   * const preview = await client.splitter.getRevenueSharePreview({
+   *   organizer: 'GABC…', organizerBps: 4000,
+   *   artist: 'GXYZ…', artistBps: 3500,
+   *   platform: 'GDEF…', totalAmount: 10_000_000n,
+   * });
+   * preview.forEach(r => console.log(`${r.address}: ${r.amount}`));
+   * ```
+   */
+  getRevenueSharePreview(params: RevenueSplitParams): Array<{ address: string; amount: bigint }> {
+    const { organizer, organizerBps, artist, artistBps, platform, totalAmount } = params;
+    const platformBps = 10_000 - organizerBps - artistBps;
+
+    return [
+      { address: organizer, amount: (totalAmount * BigInt(organizerBps)) / 10_000n },
+      { address: artist, amount: (totalAmount * BigInt(artistBps)) / 10_000n },
+      { address: platform, amount: (totalAmount * BigInt(platformBps)) / 10_000n },
+    ];
    * Replaces a compromised recipient address in an existing split.
    * Must be called by the split sender.
    *
