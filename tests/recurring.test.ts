@@ -21,6 +21,61 @@ describe('RecurringModule', () => {
     jest.restoreAllMocks();
   });
 
+  describe('pauseRecurring()', () => {
+    it('throws ReadOnlyClient when no keypair', async () => {
+      await expect(recurring.pauseRecurring(1n)).rejects.toThrow('signing keypair required');
+    });
+
+    it('returns tx result on success', async () => {
+      const kp = Keypair.random();
+      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
+      const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).server = mockServer;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).connected = true;
+
+      const fakeTx = { sign: jest.fn().mockReturnValue([]) };
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: { retval: undefined },
+      });
+      mockServer.sendTransaction.mockResolvedValue({ hash: 'txhash', status: 'PENDING' });
+      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 42 });
+
+      const result = await c.recurring.pauseRecurring(5n);
+      expect(result.successful).toBe(true);
+      expect(result.hash).toBe('txhash');
+    });
+  });
+
+  describe('resumeRecurring()', () => {
+    it('throws ReadOnlyClient when no keypair', async () => {
+      await expect(recurring.resumeRecurring(1n)).rejects.toThrow('signing keypair required');
+    });
+
+    it('returns tx result on success', async () => {
+      const kp = Keypair.random();
+      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
+      const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).server = mockServer;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (c as any).connected = true;
+
+      mockServer.simulateTransaction.mockResolvedValue({
+        status: 'SUCCESS',
+        result: { retval: undefined },
+      });
+      mockServer.sendTransaction.mockResolvedValue({ hash: 'txhash2', status: 'PENDING' });
+      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 43 });
+
+      const result = await c.recurring.resumeRecurring(5n);
+      expect(result.successful).toBe(true);
+      expect(result.hash).toBe('txhash2');
+    });
+  });
+
   describe('executeAllDue()', () => {
     it('returns empty arrays when no recurring payments exist', async () => {
       const result = await recurring.executeAllDue(FAKE_PAYER);

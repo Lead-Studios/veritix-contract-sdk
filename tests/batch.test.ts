@@ -177,3 +177,60 @@ describe("BatchModule.transferBatchWithMemo() — successful call", () => {
     expect(txUtils.simulateTransaction as jest.Mock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("BatchModule.burnFromBatch()", () => {
+  const FAKE_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+
+  function makeClient(keypair?: Keypair) {
+    return new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), keypair);
+  }
+
+  function addr() {
+    return Keypair.random().publicKey();
+  }
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("throws ADMIN_UNAUTHORIZED when no keypair", async () => {
+    const client = makeClient();
+    await expect(client.batch.burnFromBatch([{ from: addr(), amount: 100n }]))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("throws for empty entries array", async () => {
+    const client = makeClient(Keypair.random());
+    await expect(client.batch.burnFromBatch([]))
+      .rejects.toThrow("must not be empty");
+  });
+
+  it("throws BatchTooLarge when entries exceed max", async () => {
+    const client = makeClient(Keypair.random());
+    const entries = Array.from({ length: 51 }, () => ({ from: addr(), amount: 100n }));
+    await expect(client.batch.burnFromBatch(entries))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.BatchTooLarge });
+  });
+
+  it("throws InvalidAmount for zero amounts", async () => {
+    const client = makeClient(Keypair.random());
+    await expect(client.batch.burnFromBatch([{ from: addr(), amount: 0n }]))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.InvalidAmount });
+  });
+
+  it("calls buildContractCall with 'burn_from_batch'", async () => {
+    const client = makeClient(Keypair.random());
+    await client.batch.burnFromBatch([{ from: addr(), amount: 100n }]);
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("burn_from_batch");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const client = makeClient(Keypair.random());
+    const result = await client.batch.burnFromBatch([
+      { from: addr(), amount: 50n },
+      { from: addr(), amount: 75n },
+    ]);
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+});

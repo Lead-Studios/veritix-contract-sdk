@@ -8,9 +8,9 @@
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, RecurringRecord, RecurringExecutionEntry, TransactionResult } from '../types/index';
-import { bigintToScVal } from '../utils/scval';
-import { buildContractCall } from '../utils/transaction';
-import { parseSorobanError } from '../utils/errors';
+import { addressToScVal, bigintToScVal } from '../utils/scval';
+import { buildContractCall, submitTransaction } from '../utils/transaction';
+import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseRecurringExecutionEntry } from '../utils/parsers';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
 
@@ -159,6 +159,81 @@ export class RecurringModule {
     }
 
     return { cancelled, failed };
+   * Pauses an active recurring payment. Must be called by the payer.
+   * Pre-flight checks verify the record exists and is currently active.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `RECURRING_NOT_FOUND` if the record does not exist.
+   * @throws {VeriTixError} With code `RECURRING_ALREADY_PAUSED` if already paused.
+   */
+  async pauseRecurring(_id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.pauseRecurring: signing keypair required');
+    }
+
+    const payer = this.keypair.publicKey();
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(payer, '0'),
+      this.config.contractId,
+      'pause_recurring',
+      [bigintToScVal(_id, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return { ...result, returnValue };
+  }
+
+  /**
+   * Resumes a paused recurring payment. Must be called by the payer.
+   * Pre-flight checks verify the record exists and is currently paused.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `RECURRING_NOT_FOUND` if the record does not exist.
+   * @throws {VeriTixError} With code `RECURRING_NOT_PAUSED` if not currently paused.
+   */
+  async resumeRecurring(_id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.resumeRecurring: signing keypair required');
+    }
+
+    const payer = this.keypair.publicKey();
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(payer, '0'),
+      this.config.contractId,
+      'resume_recurring',
+      [bigintToScVal(_id, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return { ...result, returnValue };
   }
 
   // -------------------------------------------------------------------------
