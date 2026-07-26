@@ -20,6 +20,11 @@
     "react": ">=18",
     "@veritix/contract-sdk": "*"
   },
+  "peerDependenciesMeta": {
+    "@veritix/contract-sdk": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "react": "^18.3.1",
     "@types/react": "^18.3.3",
