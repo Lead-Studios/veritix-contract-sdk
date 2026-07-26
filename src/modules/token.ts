@@ -21,6 +21,7 @@ import {
 } from '../utils/transaction';
 import { VeriTixError, VeriTixErrorCode, parseSorobanError } from '../utils/errors';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
+import { RequestCache } from '../utils/requestCache';
 
 /** @internal Convert a Stellar address to ScVal. */
 function addressToScVal(address: string): xdr.ScVal {
@@ -57,6 +58,9 @@ export class TokenModule {
   private readonly server: SorobanRpc.Server;
   private readonly keypair: Keypair | undefined;
 
+  /** In-flight request cache — deduplicates concurrent identical read calls. */
+  private readonly _readCache = new RequestCache();
+
   constructor(config: NetworkConfig, server: SorobanRpc.Server, keypair?: Keypair) {
     this.config = config;
     this.server = server;
@@ -68,25 +72,38 @@ export class TokenModule {
   // -------------------------------------------------------------------------
 
   private async simulateRead(method: string, args: xdr.ScVal[]): Promise<unknown> {
+    // Build a deterministic cache key from the method name and serialised args.
+    // JSON.stringify handles xdr.ScVal by falling back to its toXDR hex string
+    // so that identical arg lists produce the same key.
+    const cacheKey = `${method}:${JSON.stringify(args.map((a) => a.toXDR('hex')))}`;
+
+    const inflight = this._readCache.get(cacheKey);
+    if (inflight !== undefined) {
+      // An identical call is already in progress — share its promise.
+      return inflight;
+    }
+
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
-    const tx = await buildContractCall(
+    const promise = buildContractCall(
       this.server,
       sourceAccount,
       this.config.contractId,
       method,
       args,
       this.config.networkPassphrase,
-    );
+    )
+      .then((tx) => this.server.simulateTransaction(tx))
+      .then((simResult) => {
+        if (SorobanRpc.Api.isSimulationError(simResult)) {
+          throw parseSorobanError(simResult.error);
+        }
+        const retval = (simResult as SorobanRpc.Api.SimulateTransactionSuccessResponse).result?.retval;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+        return retval !== undefined ? scValToNative(retval) : undefined;
+      });
 
-    const simResult = await this.server.simulateTransaction(tx);
-
-    if (SorobanRpc.Api.isSimulationError(simResult)) {
-      throw parseSorobanError(simResult.error);
-    }
-
-    const retval = (simResult as SorobanRpc.Api.SimulateTransactionSuccessResponse).result?.retval;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return retval !== undefined ? scValToNative(retval) : undefined;
+    this._readCache.set(cacheKey, promise);
+    return promise;
   }
 
   private async writeCall(method: string, args: xdr.ScVal[]): Promise<TransactionResult> {
