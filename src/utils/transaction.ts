@@ -52,11 +52,10 @@ const POLL_INTERVAL_MS = 2_000;
  * single contract method.
  *
  * @param server         - An initialised `SorobanRpc.Server` instance.
- *   **Deprecated** — this parameter is unused at build time and will be
- *   removed in a future release.  The `server` instance is only required
- *   during the simulation step; pass it to {@link simulateTransaction}
- *   instead.  The parameter is retained for backwards compatibility but
- *   its value is silently ignored.
+ *   **Note:** the `server` parameter is accepted for API-compatibility but is
+ *   not used during the build phase (the account is loaded by the caller).
+ *   The signature will be updated in a future release to remove this parameter
+ *   once all call-sites have been migrated to the new builder API.
  * @param sourceAccount  - The `Account` object for the transaction source.
  * @param contractId     - Bech32-encoded Soroban contract ID.
  * @param method         - Name of the contract function to invoke.
@@ -64,10 +63,10 @@ const POLL_INTERVAL_MS = 2_000;
  * @param networkPassphrase - Stellar network passphrase for envelope signing.
  * @returns An unsigned `Transaction` ready for simulation.
  *
- * @deprecated The `server` parameter will be removed in 0.3.0.
- *   The parameter is currently accepted but silently ignored — pass
- *   `undefined` or a dummy value until the signature is updated.
- *   See {@link https://github.com/Lead-Studios/veritix-contract-sdk/issues/279 #279}.
+ * @deprecated The `server` parameter is unused and will be removed in the next
+ *   major version.  Migrate to the upcoming `buildContractCallV2(sourceAccount,
+ *   contractId, method, args, networkPassphrase)` overload which omits it.
+ *   Target removal: v2.0.0.
  */
 export async function buildContractCall(
   server: SorobanRpc.Server,
@@ -78,7 +77,8 @@ export async function buildContractCall(
   networkPassphrase: string,
 ): Promise<Transaction> {
   // server is not used at build time; the account is loaded by the caller.
-  // The parameter is kept for API stability and will be removed in 0.3.0.
+  // The parameter is kept for backwards-compatibility and will be removed in
+  // v2.0.0 — see the @deprecated tag above.
   void server;
 
   const operation = new Contract(contractId).call(method, ...args);

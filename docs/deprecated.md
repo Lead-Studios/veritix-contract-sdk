@@ -1,198 +1,129 @@
 # Deprecated Symbols
 
-This file catalogues every symbol in `@veritix/contract-sdk` that has been marked
-`@deprecated`.  Each entry lists the version the symbol was deprecated in, the version
-it will be **removed** in, and the recommended replacement.
+This document lists every symbol in `@veritix/contract-sdk` that has been
+marked `@deprecated`.  Each entry includes the deprecation reason, the
+recommended replacement, and the version in which the deprecated symbol is
+scheduled for removal.
 
-For the full deprecation policy see the
-[Migration Guide — Deprecation Policy](./migration-guide.md#deprecation-policy) section.
-
----
-
-## Table of Contents
-
-- [buildContractCall — `server` parameter](#buildcontractcall--server-parameter)
-- [createRevenueSplit()](#createrevenuesplit)
-- [RevenueSplitParams](#revenuesplitp-arams)
-- [WatchOptions (re-export from `./client`)](#watchoptions-re-export-from-client)
+Contributors **must not** copy deprecated patterns into new code.  If you
+encounter a symbol marked `@deprecated` while working on the codebase, prefer
+the replacement shown below.
 
 ---
 
-## `buildContractCall` — `server` parameter
+## `buildContractCall` — unused `server` parameter
 
-| Field | Value |
-|-------|-------|
-| **Symbol** | `server: SorobanRpc.Server` — first parameter of `buildContractCall` |
+| | |
+|---|---|
+| **Symbol** | `buildContractCall(server, sourceAccount, contractId, method, args, networkPassphrase)` |
 | **File** | `src/utils/transaction.ts` |
-| **Deprecated in** | 0.2.0 |
-| **Removed in** | 0.3.0 |
-| **Replacement** | Pass `server` only to `simulateTransaction` — it is not needed at build time |
+| **Deprecated since** | v1.x |
+| **Target removal** | v2.0.0 |
 
-### Details
+### What is deprecated
 
-`buildContractCall` accepts a `SorobanRpc.Server` as its first argument, but the parameter
-is silently ignored inside the function body.  The `server` reference is only needed during
-the simulation step (i.e. when calling `simulateTransaction`), not when building the
-unsigned transaction envelope.
+The first parameter `server: SorobanRpc.Server` is **not used** inside
+`buildContractCall`.  It was included in the original signature to mirror the
+shape of `simulateTransaction`, but the build phase only needs the
+`sourceAccount`, `contractId`, `method`, `args`, and `networkPassphrase`.
+Keeping an unused parameter in a public API is misleading and forces callers to
+construct (or mock) a server object when they do not need one.
 
-The parameter was originally included to match a planned API that was never implemented.
-It will be **removed** in 0.3.0 and callers should stop passing it (or pass `undefined`
-as a transitional measure once the signature changes to accept `SorobanRpc.Server | undefined`).
+The parameter is currently silenced with `void server;` at the top of the
+function body.
 
-### Migration
+### Internal pattern to avoid
 
 ```ts
-// ❌ Before (0.x — still works but server arg is ignored)
-const tx = await buildContractCall(
-  server,              // ← this value is ignored
-  sourceAccount,
-  contractId,
-  method,
-  args,
-  networkPassphrase,
-);
+// ❌  Do NOT copy this pattern into new builder helpers
+export async function buildContractCall(
+  server: SorobanRpc.Server,  // ← unused, will be removed
+  sourceAccount: Account,
+  …
+) {
+  void server; // ← signals the parameter is intentionally ignored
+  …
+}
+```
 
-// ✅ After (0.3.0 — server parameter removed)
-// Pass server only to simulateTransaction where it is actually used:
-const tx = await buildContractCall(
-  sourceAccount,
-  contractId,
-  method,
-  args,
-  networkPassphrase,
-);
-const { transaction, simulatedFee } = await simulateTransaction(server, tx);
+### Migration path
+
+A new overload `buildContractCallV2` will be introduced that omits the
+`server` parameter entirely:
+
+```ts
+// ✅  Future API (v2.0.0)
+export async function buildContractCallV2(
+  sourceAccount: Account,
+  contractId: string,
+  method: string,
+  args: xdr.ScVal[],
+  networkPassphrase: string,
+): Promise<Transaction>
+```
+
+Until `buildContractCallV2` is available, keep calling `buildContractCall` as
+before — the deprecation warning is informational.  When upgrading to v2,
+remove the `server` argument from every call-site.
+
+**Search pattern for call-sites:**
+
+```bash
+grep -rn "buildContractCall(" src/ tests/
 ```
 
 ---
 
-## `createRevenueSplit()`
+## `Keypair.random()` for simulation source accounts
 
-| Field | Value |
-|-------|-------|
-| **Symbol** | `SplitterModule.createRevenueSplit(params: RevenueSplitParams)` |
-| **File** | `src/modules/splitter.ts` |
-| **Deprecated in** | 0.2.0 |
-| **Removed in** | 0.3.0 |
-| **Replacement** | `SplitterModule.createSplit({ recipients, totalAmount })` |
+| | |
+|---|---|
+| **Symbol** | Use of `Keypair.random()` to generate a throwaway simulation account |
+| **File** | Previously scattered across module helpers; replaced by `DUMMY_PUBLIC_KEY` |
+| **Deprecated since** | v1.x |
+| **Target removal** | Already removed — do not reintroduce |
 
-### Details
+### What was deprecated
 
-`createRevenueSplit` is a convenience wrapper that hard-codes a three-party split between
-an organizer, artist, and platform address.  The generic `createSplit` method accepts any
-number of recipients via a `recipients: SplitRecipient[]` array and is strictly more
-powerful.  The `createRevenueSplit` method (and its associated `RevenueSplitParams` type)
-will be removed in 0.3.0.
+Early versions of some module helpers called `Keypair.random()` to produce a
+temporary source account for read-only Soroban simulations.  Generating a new
+Ed25519 keypair on every call wastes CPU and produces non-deterministic
+transaction envelopes that are harder to test.
 
-### Migration
+### What replaced it
+
+`DUMMY_PUBLIC_KEY` (exported from `src/utils/network.ts`) is a static,
+deterministic public key derived from a fixed 32-byte seed (`0x11 * 32`).
+It is a valid Ed25519 key with a correct Stellar checksum but is not funded
+on any network, making it safe to use as the source for simulations.
 
 ```ts
-// ❌ Before (deprecated since 0.2.0)
-await client.splitter.createRevenueSplit({
-  organizer:    'GORG…',
-  organizerBps: 6_000,
-  artist:       'GART…',
-  artistBps:    3_000,
-  platform:     'GPLT…',
-  totalAmount:  20_000_000n,
-});
+// ✅  Correct pattern
+import { DUMMY_PUBLIC_KEY } from '../utils/network';
 
-// ✅ After — use createSplit directly
-await client.splitter.createSplit({
-  recipients: [
-    { address: 'GORG…', shareBps: 6_000 },
-    { address: 'GART…', shareBps: 3_000 },
-    { address: 'GPLT…', shareBps: 1_000 },  // 10_000 - 6_000 - 3_000
-  ],
-  totalAmount: 20_000_000n,
-});
+const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+const tx = await buildContractCall(server, sourceAccount, …);
+```
+
+```ts
+// ❌  Do NOT use Keypair.random() for simulation source accounts
+const sourceAccount = new Account(Keypair.random().publicKey(), '0');
 ```
 
 ---
 
-## `RevenueSplitParams`
+## Adding new deprecations
 
-| Field | Value |
-|-------|-------|
-| **Symbol** | `interface RevenueSplitParams` |
-| **File** | `src/types/index.ts` |
-| **Deprecated in** | 0.2.0 |
-| **Removed in** | 0.3.0 |
-| **Replacement** | `SplitRecipient[]` array passed to `CreateSplitParams.recipients` |
+When you deprecate a symbol:
 
-### Details
+1. Add a `@deprecated` JSDoc tag to the symbol with:
+   - A short reason.
+   - The replacement or migration path.
+   - The target removal version (e.g. `Target removal: v2.0.0`).
 
-`RevenueSplitParams` is the parameter type for the deprecated
-[`createRevenueSplit()`](#createrevenuesplit) method.  It models a fixed three-party split
-with named `organizer`, `artist`, and `platform` roles.  The generic `SplitRecipient`
-interface is more flexible and should be used instead.
+2. Add an entry to this file following the template above.
 
-### Migration
+3. If the symbol is exported from `src/index.ts`, mark it there too.
 
-```ts
-// ❌ Before — RevenueSplitParams
-import type { RevenueSplitParams } from '@veritix/contract-sdk';
-
-const params: RevenueSplitParams = {
-  organizer: 'GORG…', organizerBps: 6_000,
-  artist:    'GART…', artistBps:    3_000,
-  platform:  'GPLT…',
-  totalAmount: 20_000_000n,
-};
-
-// ✅ After — SplitRecipient[] + CreateSplitParams
-import type { SplitRecipient, CreateSplitParams } from '@veritix/contract-sdk';
-
-const recipients: SplitRecipient[] = [
-  { address: 'GORG…', shareBps: 6_000 },
-  { address: 'GART…', shareBps: 3_000 },
-  { address: 'GPLT…', shareBps: 1_000 },
-];
-const params: CreateSplitParams = { recipients, totalAmount: 20_000_000n };
-```
-
----
-
-## `WatchOptions` re-export from `./client`
-
-| Field | Value |
-|-------|-------|
-| **Symbol** | `export type { WatchOptions } from './client'` |
-| **File** | `src/index.ts` (barrel) |
-| **Deprecated in** | 0.2.0 |
-| **Removed in** | 0.3.0 |
-| **Replacement** | Import `WatchOptions` from `@veritix/contract-sdk` directly (sourced from `./types/index`) |
-
-### Details
-
-`WatchOptions` is defined in `src/types/index.ts` and was also re-exported from
-`src/client.ts`, resulting in a duplicate export in the public barrel (`src/index.ts`).
-The re-export from `./client` was always redundant — the canonical export is the one sourced
-from `./types/index`.
-
-For consumers this is **transparent** — importing `WatchOptions` from `@veritix/contract-sdk`
-continues to work.  The internal re-export path via `./client` will be cleaned up in 0.3.0.
-
-### Migration
-
-No consumer-facing code change is required.  If you imported the interface using a deep
-import path, switch to the barrel export:
-
-```ts
-// ❌ Deep import (never part of the public API)
-import type { WatchOptions } from '@veritix/contract-sdk/src/client';
-
-// ✅ Public barrel export (unchanged, works today and after 0.3.0)
-import type { WatchOptions } from '@veritix/contract-sdk';
-```
-
----
-
-## Summary table
-
-| Symbol | Kind | Deprecated | Removed | Replacement |
-|--------|------|-----------|---------|-------------|
-| `buildContractCall` `server` param | Function parameter | 0.2.0 | 0.3.0 | Remove arg; pass `server` only to `simulateTransaction` |
-| `SplitterModule.createRevenueSplit()` | Method | 0.2.0 | 0.3.0 | `SplitterModule.createSplit({ recipients, totalAmount })` |
-| `RevenueSplitParams` | Interface | 0.2.0 | 0.3.0 | `SplitRecipient[]` + `CreateSplitParams` |
-| `WatchOptions` from `./client` re-export | Type export | 0.2.0 | 0.3.0 | Import from `@veritix/contract-sdk` (no change for consumers) |
+4. Open a tracking issue (or reference an existing one) so the removal is
+   scheduled in the correct milestone.
