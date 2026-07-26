@@ -29,6 +29,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - GitHub Actions docs deployment workflow (`.github/workflows/docs.yml`) — deploys TypeDoc to GitHub Pages on release (#295)
 - `npm run docs:serve` script for local doc preview on http://localhost:8080 (#295)
 - API docs published to https://lead-studios.github.io/veritix-contract-sdk/ (#295)
+- `TicketPurchaseModule` — ticket checkout with availability validation and receipt retrieval (#52)
+- `PurchaseRequest`, `Receipt`, `BillingDetails`, `AddressDetails` types for ticket checkout (#52)
+- `TicketAnalyticsModule` — ticket order totals, hourly/daily/weekly/monthly/yearly breakdowns, and CSV/XLS export (#49)
+- `TicketOrder`, `TicketPeriod`, `ExportFormat` types for ticket analytics (#49)
+- `RevenueAnalyticsModule` — event revenue and profit totals with daily/weekly/monthly/yearly filters (#48)
+- `TicketSale`, `RevenuePeriod` types and `TRANSACTION_CHARGE_RATE` constant for revenue analytics (#48)
+- `CollaboratorModule` — add, retrieve, update, and remove event collaborators (#46)
+- `Collaborator`, `CollaboratorUpdate` types and `MAX_COLLABORATORS_PER_EVENT` constant (#46)
 
 ---
 
