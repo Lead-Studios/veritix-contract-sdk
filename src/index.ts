@@ -18,7 +18,9 @@
 // Client
 // ---------------------------------------------------------------------------
 export { VeriTixClient } from './client';
-export type { WatchOptions } from './client';
+// NOTE: WatchOptions was previously exported from './client' (deprecated).
+// The canonical export is from './types/index' below.
+// @deprecated importing WatchOptions from './client' — use './types/index' directly.
 
 // ---------------------------------------------------------------------------
 // Types

@@ -222,6 +222,11 @@ export interface RecurringRecord {
 
 /**
  * Parameters for splitting revenue between organizer, artist, and platform.
+ *
+ * @deprecated Since 0.2.0 — use {@link SplitRecipient}\[\] with
+ *   {@link CreateSplitParams} directly instead.  This interface tightly
+ *   couples to a three-party split and will be removed in 0.3.0.
+ *   See {@link https://github.com/Lead-Studios/veritix-contract-sdk/issues/279 #279}.
  */
 export interface RevenueSplitParams {
   /** Stellar address of the organizer */
