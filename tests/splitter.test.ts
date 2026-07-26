@@ -1,6 +1,6 @@
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
-import { Keypair } from '@stellar/stellar-sdk';
+import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
 
 const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
@@ -114,5 +114,53 @@ describe('SplitterModule.createRevenueSplit (validation)', () => {
         totalAmount: 1_000_000n,
       })
     ).rejects.toMatchObject({ code: VeriTixErrorCode.SplitInvalidShares });
+  });
+});
+
+describe('SplitterModule.getSplitterStats', () => {
+  function makeMockClient() {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
+    const mockServer = { simulateTransaction: jest.fn() };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).server = mockServer;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).connected = true;
+    return { client, mockServer };
+  }
+
+  it('throws when simulation returns error', async () => {
+    const { client, mockServer } = makeMockClient();
+    mockServer.simulateTransaction.mockResolvedValue({ status: 'ERROR', error: 'panic' });
+    await expect(client.splitter.getSplitterStats()).rejects.toThrow();
+  });
+
+  it('throws when simulation returns void', async () => {
+    const { client, mockServer } = makeMockClient();
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: xdr.ScVal.scvVoid() },
+    });
+    await expect(client.splitter.getSplitterStats()).rejects.toMatchObject({
+      code: VeriTixErrorCode.Unknown,
+    });
+  });
+
+  it('parses a valid stats map', async () => {
+    const { client, mockServer } = makeMockClient();
+    const mapVal = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total_splits'), val: xdr.ScVal.scvU32(25) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('distributed_count'), val: xdr.ScVal.scvU32(20) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('cancelled_count'), val: xdr.ScVal.scvU32(3) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total_distributed_value'), val: xdr.ScVal.scvI128(xdr.Int128Parts.fromBigInt(BigInt(5000000))) }),
+    ]);
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: { retval: mapVal },
+    });
+    const stats = await client.splitter.getSplitterStats();
+    expect(stats.totalSplits).toBe(25);
+    expect(stats.distributedCount).toBe(20);
+    expect(stats.cancelledCount).toBe(3);
+    expect(stats.totalDistributedValue).toBe(5000000n);
   });
 });
