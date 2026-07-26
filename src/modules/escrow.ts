@@ -361,6 +361,56 @@ export class EscrowModule {
     return ledger >= record.expiryLedger;
   }
 
+  /**
+   * Returns how many ledgers an escrow has been active.
+   * Returns `0` for settled (released or refunded) escrows.
+   *
+   * @param escrowId      - Numeric escrow identifier.
+   * @param currentLedger - Optional current ledger sequence. If not provided, fetches from the server.
+   * @returns The number of ledgers the escrow has been active.
+   * @throws {VeriTixError} With code `ESCROW_NOT_FOUND` if the escrow does not exist.
+   *
+   * @example
+   * ```ts
+   * const age = await client.escrow.getEscrowAge(1n);
+   * console.log('Escrow has been active for', age, 'ledgers');
+   * ```
+   */
+  async getEscrowAge(escrowId: bigint, currentLedger?: number): Promise<number> {
+    const escrow = await this.getEscrow(escrowId);
+    if (!escrow) {
+      throw new VeriTixError(VeriTixErrorCode.EscrowNotFound, 'Escrow not found');
+    }
+
+    if (escrow.released || escrow.refunded) {
+      return 0;
+    }
+
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_escrow_age',
+      [bigintToScVal(escrowId, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue) {
+      return 0;
+    }
+
+    return scValToNumber(returnValue);
+  }
+
   // -------------------------------------------------------------------------
   // Write operations
   // -------------------------------------------------------------------------
