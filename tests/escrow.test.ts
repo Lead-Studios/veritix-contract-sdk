@@ -1281,6 +1281,58 @@ describe('EscrowModule.createEscrow — pre-flight VeriTixError validation', () 
   });
 });
 
+// ---------------------------------------------------------------------------
+// getEscrowedValueForDepositor tests
+// ---------------------------------------------------------------------------
+
+describe('EscrowModule.getEscrowedValueForDepositor', () => {
+  it('throws INVALID_ADDRESS for bad address', async () => {
+    const { client } = makeConnectedClient();
+    await expect(client.escrow.getEscrowedValueForDepositor('not-a-valid-address')).rejects.toMatchObject({
+      code: VeriTixErrorCode.InvalidAddress,
+    });
+  });
+
+  it('returns 0n when depositor has no escrows', async () => {
+    const validAddress = Keypair.random().publicKey();
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([]);
+    const total = await client.escrow.getEscrowedValueForDepositor(validAddress);
+    expect(total).toBe(0n);
+  });
+
+  it('returns 0n when all escrows are settled', async () => {
+    const validAddress = Keypair.random().publicKey();
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n, 2n]);
+    jest.spyOn(client.escrow, 'getEscrowsBatch').mockResolvedValue([
+      { id: 1n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 1_000_000n, released: true, refunded: false, expiryLedger: 1_000_000, memos: [] },
+      { id: 2n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 2_000_000n, released: false, refunded: true, expiryLedger: 1_000_000, memos: [] },
+    ]);
+    const total = await client.escrow.getEscrowedValueForDepositor(validAddress);
+    expect(total).toBe(0n);
+  });
+
+  it('sums amounts for active escrows only', async () => {
+    const validAddress = Keypair.random().publicKey();
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n, 2n, 3n]);
+    jest.spyOn(client.escrow, 'getEscrowsBatch').mockResolvedValue([
+      { id: 1n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 1_000_000n, released: false, refunded: false, expiryLedger: 1_000_000, memos: [] },
+      { id: 2n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 2_000_000n, released: true, refunded: false, expiryLedger: 1_000_000, memos: [] },
+      { id: 3n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 3_000_000n, released: false, refunded: false, expiryLedger: 1_000_000, memos: [] },
+    ]);
+    const total = await client.escrow.getEscrowedValueForDepositor(validAddress);
+    expect(total).toBe(4_000_000n);
+  });
+
+  it('returns 0n when batch returns all nulls', async () => {
+    const validAddress = Keypair.random().publicKey();
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n, 2n]);
+    jest.spyOn(client.escrow, 'getEscrowsBatch').mockResolvedValue([null, null]);
+    const total = await client.escrow.getEscrowedValueForDepositor(validAddress);
+    expect(total).toBe(0n);
 describe('EscrowModule.getEscrowStats', () => {
   it('throws when simulation returns error', async () => {
     const { client, mockServer } = makeConnectedClient();
