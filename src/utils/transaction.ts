@@ -52,12 +52,22 @@ const POLL_INTERVAL_MS = 2_000;
  * single contract method.
  *
  * @param server         - An initialised `SorobanRpc.Server` instance.
+ *   **Deprecated** — this parameter is unused at build time and will be
+ *   removed in a future release.  The `server` instance is only required
+ *   during the simulation step; pass it to {@link simulateTransaction}
+ *   instead.  The parameter is retained for backwards compatibility but
+ *   its value is silently ignored.
  * @param sourceAccount  - The `Account` object for the transaction source.
  * @param contractId     - Bech32-encoded Soroban contract ID.
  * @param method         - Name of the contract function to invoke.
  * @param args           - Ordered list of XDR `ScVal` arguments for the call.
  * @param networkPassphrase - Stellar network passphrase for envelope signing.
  * @returns An unsigned `Transaction` ready for simulation.
+ *
+ * @deprecated The `server` parameter will be removed in 0.3.0.
+ *   The parameter is currently accepted but silently ignored — pass
+ *   `undefined` or a dummy value until the signature is updated.
+ *   See {@link https://github.com/Lead-Studios/veritix-contract-sdk/issues/279 #279}.
  */
 export async function buildContractCall(
   server: SorobanRpc.Server,
@@ -67,7 +77,8 @@ export async function buildContractCall(
   args: xdr.ScVal[],
   networkPassphrase: string,
 ): Promise<Transaction> {
-  // server is not used at build time; the account is loaded by the caller
+  // server is not used at build time; the account is loaded by the caller.
+  // The parameter is kept for API stability and will be removed in 0.3.0.
   void server;
 
   const operation = new Contract(contractId).call(method, ...args);
