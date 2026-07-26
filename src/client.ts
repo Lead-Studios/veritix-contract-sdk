@@ -249,10 +249,6 @@ export class VeriTixClient extends EventEmitter {
    * ```
    */
   async connect(): Promise<number> {
-    this.server = new SorobanRpc.Server(this.config.rpcUrl, { allowHttp: false });
-    const ledger = await this.server.getLatestLedger();
-    this.connected = true;
-    return ledger.sequence;
     const retries = this.config.retries ?? 3;
     const retryDelayMs = this.config.retryDelayMs ?? 1_000;
 
