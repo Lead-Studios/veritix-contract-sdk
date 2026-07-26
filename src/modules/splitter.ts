@@ -381,4 +381,36 @@ export class SplitterModule {
   async distribute(_id: bigint): Promise<TransactionResult> {
     throw new Error('SplitterModule.distribute: not implemented');
   }
+
+  /**
+   * Distributes multiple splits in a single transaction. Collects failures
+   * without throwing — returns a summary of results.
+   *
+   * @param ids - Array of numeric split identifiers to distribute.
+   * @returns Summary with distributed and failed split IDs.
+   *
+   * @example
+   * ```ts
+   * const { distributed, failed } = await client.splitter.bulkDistribute([1n, 2n, 3n]);
+   * ```
+   */
+  async bulkDistribute(_ids: bigint[]): Promise<{ distributed: bigint[]; failed: bigint[] }> {
+    if (!this.keypair) {
+      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'A Keypair is required for write operations.');
+    }
+
+    const distributed: bigint[] = [];
+    const failed: bigint[] = [];
+
+    for (const id of _ids) {
+      try {
+        await this.distribute(id);
+        distributed.push(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+
+    return { distributed, failed };
+  }
 }
