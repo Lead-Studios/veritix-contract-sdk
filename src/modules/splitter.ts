@@ -243,8 +243,24 @@ export class SplitterModule {
    * @param params - {@link RevenueSplitParams}
    * @returns A {@link TransactionResult} on success.
    *
+   * @deprecated Since 0.2.0 — use {@link createSplit} with an explicit
+   *   `recipients` array instead.  `createRevenueSplit` is a thin wrapper
+   *   that only supports a fixed three-party split and will be removed in
+   *   0.3.0.  Migrate to:
+   *   ```ts
+   *   await client.splitter.createSplit({
+   *     recipients: [
+   *       { address: organizer, shareBps: organizerBps },
+   *       { address: artist,    shareBps: artistBps },
+   *       { address: platform,  shareBps: 10_000 - organizerBps - artistBps },
+   *     ],
+   *     totalAmount,
+   *   });
+   *   ```
+   *
    * @example
    * ```ts
+   * // ❌ Deprecated — will be removed in 0.3.0
    * await client.splitter.createRevenueSplit({
    *   organizer: 'GORG…', organizerBps: 6000,
    *   artist:    'GART…', artistBps:    3000,
