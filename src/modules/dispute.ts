@@ -563,6 +563,22 @@ export class DisputeModule {
   }
 
   /**
+   * Force-expires an expired dispute. Must be called by the contract admin.
+   *
+   * @param disputeId - The dispute ID to expire.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   * @throws {VeriTixError} With code `DISPUTE_NOT_FOUND` if dispute does not exist.
+   * @throws {VeriTixError} With code `DISPUTE_ALREADY_RESOLVED` if already resolved.
+   *
+   * @example
+   * ```ts
+   * await client.dispute.expireDispute(3n);
+   * ```
+   */
+  async expireDispute(disputeId: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('DisputeModule.expireDispute: signing keypair required');
    * Appeals a resolved dispute. Must be called by the original claimant.
    *
    * @param disputeId - The dispute ID to appeal.
@@ -589,6 +605,22 @@ export class DisputeModule {
       );
     }
 
+    if (dispute.status !== DisputeStatus.Open) {
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeAlreadyResolved,
+        'Dispute already resolved',
+      );
+    }
+
+    const admin = this.keypair.publicKey();
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(admin, '0'),
+      this.config.contractId,
+      'expire_dispute',
+      [
+        addressToScVal(admin),
     if (dispute.status === DisputeStatus.Open) {
       throw new VeriTixError(
         VeriTixErrorCode.InvalidAmount,

@@ -4,6 +4,7 @@
  */
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
+import { addressToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
 import { addressToScVal, scValToBigint, scValToNumber } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
@@ -281,6 +282,88 @@ export class SplitterModule {
       { address: platform, shareBps: 10_000 - totalBps },
     ];
     return this.createSplit({ recipients, totalAmount });
+  }
+
+  /**
+   * Returns a preview of how a revenue split would distribute funds to recipients,
+   * without performing any on-chain mutation. Useful for estimating payouts before
+   * committing to a split.
+   *
+   * @param params - Revenue split parameters (organizer, artist, platform, totalAmount).
+   * @returns Array of recipient addresses with their calculated share amounts.
+   *
+   * @example
+   * ```ts
+   * const preview = await client.splitter.getRevenueSharePreview({
+   *   organizer: 'GABC…', organizerBps: 4000,
+   *   artist: 'GXYZ…', artistBps: 3500,
+   *   platform: 'GDEF…', totalAmount: 10_000_000n,
+   * });
+   * preview.forEach(r => console.log(`${r.address}: ${r.amount}`));
+   * ```
+   */
+  getRevenueSharePreview(params: RevenueSplitParams): Array<{ address: string; amount: bigint }> {
+    const { organizer, organizerBps, artist, artistBps, platform, totalAmount } = params;
+    const platformBps = 10_000 - organizerBps - artistBps;
+
+    return [
+      { address: organizer, amount: (totalAmount * BigInt(organizerBps)) / 10_000n },
+      { address: artist, amount: (totalAmount * BigInt(artistBps)) / 10_000n },
+      { address: platform, amount: (totalAmount * BigInt(platformBps)) / 10_000n },
+    ];
+   * Replaces a compromised recipient address in an existing split.
+   * Must be called by the split sender.
+   *
+   * @param splitId - The split ID containing the recipient to replace.
+   * @param oldRecipient - The current recipient address to replace.
+   * @param newRecipient - The new recipient address.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   *
+   * @example
+   * ```ts
+   * await client.splitter.replaceRecipient(2n, 'GOLD…', 'NEW…');
+   * ```
+   */
+  async replaceRecipient(
+    splitId: bigint,
+    oldRecipient: string,
+    newRecipient: string,
+  ): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'SplitterModule.replaceRecipient: signing keypair required');
+    }
+
+    const sender = this.keypair.publicKey();
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(sender, '0'),
+      this.config.contractId,
+      'replace_recipient',
+      [
+        bigintToScVal(splitId, 'u64'),
+        addressToScVal(oldRecipient),
+        addressToScVal(newRecipient),
+      ],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
   }
 
   /**
