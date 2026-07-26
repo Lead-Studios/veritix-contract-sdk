@@ -166,6 +166,9 @@ describe('RecurringModule', () => {
     });
   });
 
+  describe('transferPayer()', () => {
+    it('throws ReadOnlyClient when no keypair', async () => {
+      await expect(recurring.transferPayer(1n, 'GNEW')).rejects.toThrow('signing keypair required');
   describe('amendRecurring()', () => {
     it('throws ReadOnlyClient when no keypair', async () => {
       await expect(recurring.amendRecurring(1n, 100n, 100)).rejects.toThrow('signing keypair required');
@@ -184,6 +187,12 @@ describe('RecurringModule', () => {
         status: 'SUCCESS',
         result: { retval: undefined },
       });
+      mockServer.sendTransaction.mockResolvedValue({ hash: 'transfer-hash', status: 'PENDING' });
+      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 55 });
+
+      const result = await c.recurring.transferPayer(3n, 'GNEWPAYER');
+      expect(result.successful).toBe(true);
+      expect(result.hash).toBe('transfer-hash');
       mockServer.sendTransaction.mockResolvedValue({ hash: 'amend-hash', status: 'PENDING' });
       mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 50 });
 

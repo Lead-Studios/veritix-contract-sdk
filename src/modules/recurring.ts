@@ -118,6 +118,17 @@ export class RecurringModule {
   }
 
   /**
+   * Reassigns the payer of an existing recurring payment to a new address.
+   * Both the current and new payer must co-sign the transaction.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @param newPayer - New payer Stellar account address.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   */
+  async transferPayer(_id: bigint, _newPayer: string): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.transferPayer: signing keypair required');
    * Updates the amount and/or interval of an existing recurring payment.
    * Must be called by the payer.
    *
@@ -153,6 +164,10 @@ export class RecurringModule {
       this.server,
       new Account(payer, '0'),
       this.config.contractId,
+      'transfer_payer',
+      [
+        bigintToScVal(_id, 'u64'),
+        addressToScVal(_newPayer),
       'amend_recurring',
       [
         bigintToScVal(_id, 'u64'),
