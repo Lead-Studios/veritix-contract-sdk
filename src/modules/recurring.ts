@@ -8,6 +8,7 @@
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, RecurringRecord, RecurringExecutionEntry, TransactionResult } from '../types/index';
+import { bigintToScVal } from '../utils/scval';
 import { addressToScVal, bigintToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
@@ -128,6 +129,22 @@ export class RecurringModule {
   async transferPayer(_id: bigint, _newPayer: string): Promise<TransactionResult> {
     if (!this.keypair) {
       throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.transferPayer: signing keypair required');
+   * Updates the amount and/or interval of an existing recurring payment.
+   * Must be called by the payer.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @param amount - New amount per interval (in stroops). Pass `undefined` to keep current.
+   * @param interval - New charge interval in ledgers. Pass `undefined` to keep current.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   */
+  async amendRecurring(
+    _id: bigint,
+    _amount?: bigint,
+    _interval?: number,
+  ): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.amendRecurring: signing keypair required');
    * Pauses an active recurring payment. Must be called by the payer.
    * Pre-flight checks verify the record exists and is currently active.
    *
@@ -151,6 +168,11 @@ export class RecurringModule {
       [
         bigintToScVal(_id, 'u64'),
         addressToScVal(_newPayer),
+      'amend_recurring',
+      [
+        bigintToScVal(_id, 'u64'),
+        bigintToScVal(_amount ?? 0n, 'i128'),
+        xdr.ScVal.scvU32(_interval ?? 0),
       ],
       'pause_recurring',
       [bigintToScVal(_id, 'u64')],
