@@ -177,6 +177,9 @@ export async function estimateFee(
     networkPassphrase,
   );
 
+  const result = await server.simulateTransaction(tx);
+  void result; // raw simulation result (unused — fee is extracted via simulateTransaction)
+
   const { simulatedFee } = await simulateTransaction(server, tx);
 
   const latestLedger = await server.getLatestLedger();

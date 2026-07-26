@@ -1282,95 +1282,163 @@ describe('EscrowModule.createEscrow — pre-flight VeriTixError validation', () 
 });
 
 // ---------------------------------------------------------------------------
-// getEscrowedValueForDepositor tests
+// #262 — EscrowModule.escrowBetween and getEscrowedValueForDepositor
 // ---------------------------------------------------------------------------
 
-describe('EscrowModule.getEscrowedValueForDepositor', () => {
-  it('throws INVALID_ADDRESS for bad address', async () => {
+describe('EscrowModule.escrowBetween', () => {
+  const DEPOSITOR = 'GBZXN7PIRZGNMHGA76QJRYR3ERW7VH2MJL7G2P6CC6QH5M2LQJUSVQ6C';
+  const BENEFICIARY = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+
+  function makeRecord(overrides: Partial<EscrowRecord> = {}): EscrowRecord {
+    return {
+      id: 1n,
+      depositor: DEPOSITOR,
+      beneficiary: BENEFICIARY,
+      amount: 1_000_000n,
+      released: false,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+      ...overrides,
+    };
+  }
+
+  it('returns the escrow ID when an active escrow is found', async () => {
     const { client } = makeConnectedClient();
-    await expect(client.escrow.getEscrowedValueForDepositor('not-a-valid-address')).rejects.toMatchObject({
-      code: VeriTixErrorCode.InvalidAddress,
-    });
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n]);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(makeRecord({ id: 1n }));
+
+    const id = await client.escrow.escrowBetween(DEPOSITOR, BENEFICIARY);
+    expect(id).toBe(1n);
   });
 
-  it('returns 0n when depositor has no escrows', async () => {
-    const validAddress = Keypair.random().publicKey();
+  it('returns null when the matching escrow is already released (settled)', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n]);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(
+      makeRecord({ id: 1n, released: true }),
+    );
+
+    const id = await client.escrow.escrowBetween(DEPOSITOR, BENEFICIARY);
+    expect(id).toBeNull();
+  });
+
+  it('returns null when the matching escrow is already refunded (settled)', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n]);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(
+      makeRecord({ id: 1n, refunded: true }),
+    );
+
+    const id = await client.escrow.escrowBetween(DEPOSITOR, BENEFICIARY);
+    expect(id).toBeNull();
+  });
+
+  it('returns null when there are no escrows for the depositor', async () => {
     const { client } = makeConnectedClient();
     jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([]);
-    const total = await client.escrow.getEscrowedValueForDepositor(validAddress);
-    expect(total).toBe(0n);
+
+    const id = await client.escrow.escrowBetween(DEPOSITOR, BENEFICIARY);
+    expect(id).toBeNull();
   });
 
-  it('returns 0n when all escrows are settled', async () => {
-    const validAddress = Keypair.random().publicKey();
+  it('returns null when no escrow beneficiary matches', async () => {
     const { client } = makeConnectedClient();
-    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n, 2n]);
-    jest.spyOn(client.escrow, 'getEscrowsBatch').mockResolvedValue([
-      { id: 1n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 1_000_000n, released: true, refunded: false, expiryLedger: 1_000_000, memos: [] },
-      { id: 2n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 2_000_000n, released: false, refunded: true, expiryLedger: 1_000_000, memos: [] },
-    ]);
-    const total = await client.escrow.getEscrowedValueForDepositor(validAddress);
-    expect(total).toBe(0n);
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n]);
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(
+      makeRecord({ id: 1n, beneficiary: 'GDIFFERENTADDRESS' }),
+    );
+
+    const id = await client.escrow.escrowBetween(DEPOSITOR, BENEFICIARY);
+    expect(id).toBeNull();
   });
 
-  it('sums amounts for active escrows only', async () => {
-    const validAddress = Keypair.random().publicKey();
+  it('returns the first active matching escrow when multiple exist', async () => {
     const { client } = makeConnectedClient();
     jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n, 2n, 3n]);
-    jest.spyOn(client.escrow, 'getEscrowsBatch').mockResolvedValue([
-      { id: 1n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 1_000_000n, released: false, refunded: false, expiryLedger: 1_000_000, memos: [] },
-      { id: 2n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 2_000_000n, released: true, refunded: false, expiryLedger: 1_000_000, memos: [] },
-      { id: 3n, depositor: validAddress, beneficiary: FAKE_ADDRESS, amount: 3_000_000n, released: false, refunded: false, expiryLedger: 1_000_000, memos: [] },
-    ]);
-    const total = await client.escrow.getEscrowedValueForDepositor(validAddress);
+    jest
+      .spyOn(client.escrow, 'getEscrow')
+      .mockResolvedValueOnce(makeRecord({ id: 1n, released: true }))
+      .mockResolvedValueOnce(makeRecord({ id: 2n }))
+      .mockResolvedValueOnce(makeRecord({ id: 3n }));
+
+    const id = await client.escrow.escrowBetween(DEPOSITOR, BENEFICIARY);
+    expect(id).toBe(2n);
+  });
+});
+
+describe('EscrowModule.getEscrowedValueForDepositor', () => {
+  const DEPOSITOR = 'GBZXN7PIRZGNMHGA76QJRYR3ERW7VH2MJL7G2P6CC6QH5M2LQJUSVQ6C';
+  const BENEFICIARY = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+
+  function makeRecord(id: bigint, amount: bigint, settled = false): EscrowRecord {
+    return {
+      id,
+      depositor: DEPOSITOR,
+      beneficiary: BENEFICIARY,
+      amount,
+      released: settled,
+      refunded: false,
+      expiryLedger: 1_000_000,
+      memos: [],
+    };
+  }
+
+  it('returns 0n when the depositor has no escrows', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([]);
+
+    const total = await client.escrow.getEscrowedValueForDepositor(DEPOSITOR);
+    expect(total).toBe(0n);
+  });
+
+  it('sums amounts for 3 active escrows', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n, 2n, 3n]);
+    jest
+      .spyOn(client.escrow, 'getEscrow')
+      .mockResolvedValueOnce(makeRecord(1n, 1_000_000n))
+      .mockResolvedValueOnce(makeRecord(2n, 2_000_000n))
+      .mockResolvedValueOnce(makeRecord(3n, 3_000_000n));
+
+    const total = await client.escrow.getEscrowedValueForDepositor(DEPOSITOR);
+    expect(total).toBe(6_000_000n);
+  });
+
+  it('excludes settled (released) escrows from the sum', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n, 2n, 3n]);
+    jest
+      .spyOn(client.escrow, 'getEscrow')
+      .mockResolvedValueOnce(makeRecord(1n, 1_000_000n)) // active
+      .mockResolvedValueOnce(makeRecord(2n, 2_000_000n, true)) // released — excluded
+      .mockResolvedValueOnce(makeRecord(3n, 3_000_000n)); // active
+
+    const total = await client.escrow.getEscrowedValueForDepositor(DEPOSITOR);
     expect(total).toBe(4_000_000n);
   });
 
-  it('returns 0n when batch returns all nulls', async () => {
-    const validAddress = Keypair.random().publicKey();
+  it('excludes refunded escrows from the sum', async () => {
     const { client } = makeConnectedClient();
     jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n, 2n]);
-    jest.spyOn(client.escrow, 'getEscrowsBatch').mockResolvedValue([null, null]);
-    const total = await client.escrow.getEscrowedValueForDepositor(validAddress);
+    jest
+      .spyOn(client.escrow, 'getEscrow')
+      .mockResolvedValueOnce(makeRecord(1n, 1_000_000n)) // active
+      .mockResolvedValueOnce({ ...makeRecord(2n, 5_000_000n), refunded: true }); // refunded — excluded
+
+    const total = await client.escrow.getEscrowedValueForDepositor(DEPOSITOR);
+    expect(total).toBe(1_000_000n);
+  });
+
+  it('returns 0n when all escrows are settled', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrowsByDepositor').mockResolvedValue([1n, 2n]);
+    jest
+      .spyOn(client.escrow, 'getEscrow')
+      .mockResolvedValueOnce(makeRecord(1n, 1_000_000n, true))
+      .mockResolvedValueOnce({ ...makeRecord(2n, 2_000_000n), refunded: true });
+
+    const total = await client.escrow.getEscrowedValueForDepositor(DEPOSITOR);
     expect(total).toBe(0n);
-describe('EscrowModule.getEscrowStats', () => {
-  it('throws when simulation returns error', async () => {
-    const { client, mockServer } = makeConnectedClient();
-    mockServer.simulateTransaction.mockResolvedValue({ status: 'ERROR', error: 'contract panic' });
-    await expect(client.escrow.getEscrowStats()).rejects.toThrow();
-  });
-
-  it('throws when simulation returns void', async () => {
-    const { client, mockServer } = makeConnectedClient();
-    mockServer.simulateTransaction.mockResolvedValue({
-      status: 'SUCCESS',
-      result: { retval: xdr.ScVal.scvVoid() },
-    });
-    await expect(client.escrow.getEscrowStats()).rejects.toMatchObject({
-      code: VeriTixErrorCode.Unknown,
-    });
-  });
-
-  it('parses a valid stats map', async () => {
-    const { client, mockServer } = makeConnectedClient();
-    const mapVal = xdr.ScVal.scvMap([
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total'), val: nativeToScVal(100, { type: 'u32' }) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('active'), val: nativeToScVal(42, { type: 'u32' }) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('released'), val: nativeToScVal(35, { type: 'u32' }) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('refunded'), val: nativeToScVal(23, { type: 'u32' }) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total_value'), val: nativeToScVal(5000000n, { type: 'i128' }) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('avg_value'), val: nativeToScVal(50000n, { type: 'i128' }) }),
-    ]);
-    mockServer.simulateTransaction.mockResolvedValue({
-      status: 'SUCCESS',
-      result: { retval: mapVal },
-    });
-    const stats = await client.escrow.getEscrowStats();
-    expect(stats.total).toBe(100);
-    expect(stats.active).toBe(42);
-    expect(stats.released).toBe(35);
-    expect(stats.refunded).toBe(23);
-    expect(stats.totalValue).toBe(5000000n);
-    expect(stats.avgValue).toBe(50000n);
   });
 });

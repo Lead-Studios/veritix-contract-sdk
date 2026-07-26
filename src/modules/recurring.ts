@@ -8,10 +8,9 @@
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, RecurringRecord, RecurringExecutionEntry, TransactionResult } from '../types/index';
-import { bigintToScVal } from '../utils/scval';
 import { addressToScVal, bigintToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
-import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { parseSorobanError } from '../utils/errors';
 import { parseRecurringExecutionEntry } from '../utils/parsers';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
 
@@ -118,118 +117,100 @@ export class RecurringModule {
   }
 
   /**
-   * Reassigns the payer of an existing recurring payment to a new address.
-   * Both the current and new payer must co-sign the transaction.
+   * Amends an existing recurring payment's amount and/or interval.
+   * Must be called by the payer. At least one of `amount` or `interval` must be provided.
    *
-   * @param id - Numeric recurring-payment identifier.
-   * @param newPayer - New payer Stellar account address.
+   * @param id       - Numeric recurring-payment identifier.
+   * @param params   - Object with optional `amount` and/or `interval` fields to update.
    * @returns A {@link TransactionResult} on success.
-   * @throws {Error} If no signing keypair is available.
-   */
-  async transferPayer(_id: bigint, _newPayer: string): Promise<TransactionResult> {
-    if (!this.keypair) {
-      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.transferPayer: signing keypair required');
-   * Updates the amount and/or interval of an existing recurring payment.
-   * Must be called by the payer.
+   * @throws {Error} If neither `amount` nor `interval` is provided.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not the payer.
    *
-   * @param id - Numeric recurring-payment identifier.
-   * @param amount - New amount per interval (in stroops). Pass `undefined` to keep current.
-   * @param interval - New charge interval in ledgers. Pass `undefined` to keep current.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {Error} If no signing keypair is available.
+   * @example
+   * ```ts
+   * await client.recurring.amendRecurring(1n, { amount: 750_000n });
+   * ```
    */
   async amendRecurring(
-    _id: bigint,
-    _amount?: bigint,
-    _interval?: number,
+    id: bigint,
+    params: { amount?: bigint; interval?: number },
   ): Promise<TransactionResult> {
+    if (params.amount === undefined && params.interval === undefined) {
+      throw new Error('RecurringModule.amendRecurring: at least one of amount or interval must be provided');
+    }
     if (!this.keypair) {
-      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.amendRecurring: signing keypair required');
-   * Pauses an active recurring payment. Must be called by the payer.
-   * Pre-flight checks verify the record exists and is currently active.
-   *
-   * @param id - Numeric recurring-payment identifier.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `RECURRING_NOT_FOUND` if the record does not exist.
-   * @throws {VeriTixError} With code `RECURRING_ALREADY_PAUSED` if already paused.
-   */
-  async pauseRecurring(_id: bigint): Promise<TransactionResult> {
-    if (!this.keypair) {
-      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.pauseRecurring: signing keypair required');
+      throw new Error('RecurringModule.amendRecurring: signing keypair required');
     }
 
-    const payer = this.keypair.publicKey();
+    const args = [bigintToScVal(id, 'u64')];
+    if (params.amount !== undefined) {
+      args.push(bigintToScVal(params.amount, 'i128'));
+    }
+    if (params.interval !== undefined) {
+      args.push(bigintToScVal(BigInt(params.interval), 'u64'));
+    }
 
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
     const tx = await buildContractCall(
       this.server,
-      new Account(payer, '0'),
+      sourceAccount,
       this.config.contractId,
-      'transfer_payer',
-      [
-        bigintToScVal(_id, 'u64'),
-        addressToScVal(_newPayer),
       'amend_recurring',
-      [
-        bigintToScVal(_id, 'u64'),
-        bigintToScVal(_amount ?? 0n, 'i128'),
-        xdr.ScVal.scvU32(_interval ?? 0),
-      ],
-      'pause_recurring',
-      [bigintToScVal(_id, 'u64')],
+      args,
       this.config.networkPassphrase,
     );
-
     const raw = await this.server.simulateTransaction(tx);
     if (SorobanRpc.Api.isSimulationError(raw)) {
       throw parseSorobanError(raw.error);
     }
-
-    const returnValue =
-      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
-
     const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
-    const result = await submitTransaction(this.server, assembled, this.keypair);
-
-    return { ...result, returnValue };
+    return submitTransaction(this.server, assembled, this.keypair);
   }
 
   /**
-   * Resumes a paused recurring payment. Must be called by the payer.
-   * Pre-flight checks verify the record exists and is currently paused.
+   * Transfers the payer role of a recurring payment to a new payer.
+   * Requires authorisation from both the current payer and the new payer.
    *
-   * @param id - Numeric recurring-payment identifier.
+   * @param id       - Numeric recurring-payment identifier.
+   * @param newPayer - Stellar account address of the incoming payer.
    * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `RECURRING_NOT_FOUND` if the record does not exist.
-   * @throws {VeriTixError} With code `RECURRING_NOT_PAUSED` if not currently paused.
+   * @throws {Error} If `newPayer` is the same as the current payer's address.
+   * @throws {Error} If the recurring payment is inactive.
+   * @throws {Error} If no signing keypair is provided.
+   *
+   * @example
+   * ```ts
+   * await client.recurring.transferPayer(1n, 'GNEW…');
+   * ```
    */
-  async resumeRecurring(_id: bigint): Promise<TransactionResult> {
+  async transferPayer(id: bigint, newPayer: string): Promise<TransactionResult> {
     if (!this.keypair) {
-      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.resumeRecurring: signing keypair required');
+      throw new Error('RecurringModule.transferPayer: signing keypair required');
+    }
+    if (newPayer === this.keypair.publicKey()) {
+      throw new Error('RecurringModule.transferPayer: new payer must differ from the current payer');
     }
 
-    const payer = this.keypair.publicKey();
+    const record = await this.getRecurring(id);
+    if (record && !record.active) {
+      throw new Error('RecurringModule.transferPayer: recurring payment is inactive');
+    }
 
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
     const tx = await buildContractCall(
       this.server,
-      new Account(payer, '0'),
+      sourceAccount,
       this.config.contractId,
-      'resume_recurring',
-      [bigintToScVal(_id, 'u64')],
+      'transfer_payer',
+      [bigintToScVal(id, 'u64'), addressToScVal(newPayer)],
       this.config.networkPassphrase,
     );
-
     const raw = await this.server.simulateTransaction(tx);
     if (SorobanRpc.Api.isSimulationError(raw)) {
       throw parseSorobanError(raw.error);
     }
-
-    const returnValue =
-      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
-
     const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
-    const result = await submitTransaction(this.server, assembled, this.keypair);
-
-    return { ...result, returnValue };
+    return submitTransaction(this.server, assembled, this.keypair);
   }
 
   // -------------------------------------------------------------------------

@@ -190,6 +190,7 @@ export function ledgerToApproxDate(ledger: number, currentLedger: number, curren
   return new Date(now.getTime() + secondsDiff * 1000);
 }
 
+// ---------------------------------------------------------------------------
 // Address validation
 // ---------------------------------------------------------------------------
 

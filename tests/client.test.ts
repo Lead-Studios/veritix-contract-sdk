@@ -224,3 +224,151 @@ describe('VeriTixClient', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// #264 — VeriTixClient event emitter: connected, disconnected, retry, error
+// ---------------------------------------------------------------------------
+
+describe('VeriTixClient event emitter', () => {
+  const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+
+  function makeClientWithServer(getLatestLedger: jest.Mock) {
+    const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    // Override server creation inside connect() by injecting after instantiation
+    const mockServer = { getLatestLedger };
+    // We intercept server construction by replacing the server post-connect setup
+    // via spying on SorobanRpc.Server constructor
+    return { c, mockServer };
+  }
+
+  it('emits "connected" with { ledger } after a successful connect()', async () => {
+    const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    const connectedHandler = jest.fn();
+    c.on('connected', connectedHandler);
+
+    // Intercept SorobanRpc.Server so no real network call is made
+    const { SorobanRpc } = require('@stellar/stellar-sdk');
+    const origServer = SorobanRpc.Server;
+    SorobanRpc.Server = jest.fn().mockImplementation(() => ({
+      getLatestLedger: jest.fn().mockResolvedValue({ sequence: 42 }),
+    }));
+
+    try {
+      const ledger = await c.connect();
+      expect(ledger).toBe(42);
+      expect(connectedHandler).toHaveBeenCalledWith({ ledger: 42 });
+    } finally {
+      SorobanRpc.Server = origServer;
+    }
+  });
+
+  it('emits "disconnected" after disconnect()', () => {
+    const { client: c } = makeConnectedClient();
+    const handler = jest.fn();
+    c.on('disconnected', handler);
+    c.disconnect();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(c.isConnected()).toBe(false);
+  });
+
+  it('does NOT emit "connected" when connection fails', async () => {
+    const c = new VeriTixClient(
+      getTestnetConfig(FAKE_CONTRACT),
+    );
+    // Override config to have 0 retries so it fails fast
+    (c.config as any).retries = 0;
+
+    const connectedHandler = jest.fn();
+    c.on('connected', connectedHandler);
+
+    const { SorobanRpc } = require('@stellar/stellar-sdk');
+    const origServer = SorobanRpc.Server;
+    SorobanRpc.Server = jest.fn().mockImplementation(() => ({
+      getLatestLedger: jest.fn().mockRejectedValue(new Error('network unavailable')),
+    }));
+
+    try {
+      await expect(c.connect()).rejects.toMatchObject({
+        code: VeriTixErrorCode.ConnectionFailed,
+      });
+      expect(connectedHandler).not.toHaveBeenCalled();
+    } finally {
+      SorobanRpc.Server = origServer;
+    }
+  });
+
+  it('emits "retry" on transient connection failure with { attempt, delayMs }', async () => {
+    const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    (c.config as any).retries = 2;
+    (c.config as any).retryDelayMs = 1; // keep test fast
+
+    const retryHandler = jest.fn();
+    c.on('retry', retryHandler);
+
+    let callCount = 0;
+    const { SorobanRpc } = require('@stellar/stellar-sdk');
+    const origServer = SorobanRpc.Server;
+    SorobanRpc.Server = jest.fn().mockImplementation(() => ({
+      getLatestLedger: jest.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount <= 2) return Promise.reject(new Error('transient'));
+        return Promise.resolve({ sequence: 99 });
+      }),
+    }));
+
+    try {
+      const ledger = await c.connect();
+      expect(ledger).toBe(99);
+      // retry should have been emitted twice (attempt 1 and 2)
+      expect(retryHandler).toHaveBeenCalledTimes(2);
+      expect(retryHandler.mock.calls[0][0]).toMatchObject({ attempt: 1 });
+      expect(retryHandler.mock.calls[1][0]).toMatchObject({ attempt: 2 });
+    } finally {
+      SorobanRpc.Server = origServer;
+    }
+  });
+
+  it('emits "error" when all retries are exhausted', async () => {
+    const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    (c.config as any).retries = 1;
+    (c.config as any).retryDelayMs = 1;
+
+    // Must attach an error listener to avoid unhandled error exception
+    const errorHandler = jest.fn();
+    c.on('error', errorHandler);
+
+    const { SorobanRpc } = require('@stellar/stellar-sdk');
+    const origServer = SorobanRpc.Server;
+    SorobanRpc.Server = jest.fn().mockImplementation(() => ({
+      getLatestLedger: jest.fn().mockRejectedValue(new Error('always fails')),
+    }));
+
+    try {
+      await expect(c.connect()).rejects.toMatchObject({
+        code: VeriTixErrorCode.ConnectionFailed,
+      });
+      expect(errorHandler).toHaveBeenCalledTimes(1);
+      expect(errorHandler.mock.calls[0][0]).toBeInstanceOf(VeriTixError);
+    } finally {
+      SorobanRpc.Server = origServer;
+    }
+  });
+
+  it('verify TypeScript compile-time event signatures via on() overload', () => {
+    const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    // These should compile without type errors — the overloaded on() accepts
+    // only the correctly-typed listeners for each event key.
+    const onConnected: (data: { ledger: number }) => void = jest.fn();
+    const onDisconnected: () => void = jest.fn();
+    const onRetry: (data: { attempt: number; delayMs: number }) => void = jest.fn();
+    const onError: (err: VeriTixError) => void = jest.fn();
+
+    c.on('connected', onConnected);
+    c.on('disconnected', onDisconnected);
+    c.on('retry', onRetry);
+    c.on('error', onError);
+
+    // If TypeScript compiles this without errors, the type signatures are correct.
+    expect(true).toBe(true);
+  });
+});
