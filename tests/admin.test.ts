@@ -104,10 +104,87 @@ describe("AdminModule.manualRefund()", () => {
 
   it("returns a TransactionResult on success", async () => {
     const { client } = makeAdminClient(Keypair.random());
-    const result = await client.admin.manualRefund(42n, "organizer no-show");
+    const result = await client.admin.whitelistAddress('GABC');
+    const result = await client.admin.setProtocolFee(100);
     expect(result.hash).toBe("mockhash");
     expect(result.successful).toBe(true);
   });
+});
+
+describe("AdminModule.enableWhitelist()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.enableWhitelist())
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("calls buildContractCall with 'enable_whitelist' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.enableWhitelist();
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("enable_whitelist");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const result = await client.admin.enableWhitelist();
+    const result = await client.admin.dividendDistribute(2_000_000n);
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+});
+
+describe("AdminModule.dividendDistribute()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.dividendDistribute(1_000_000n))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("calls buildContractCall with 'dividend_distribute' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.dividendDistribute(500_000n);
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("dividend_distribute");
+describe("AdminModule.whitelistAddress()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.whitelistAddress('GABC'))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("calls buildContractCall with 'whitelist_address' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.whitelistAddress('GABC');
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("whitelist_address");
+describe("AdminModule.forceRefundEscrow()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.forceRefundEscrow(42n))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("calls buildContractCall with 'force_refund_escrow' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.forceRefundEscrow(42n);
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("force_refund_escrow");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const result = await client.admin.dividendDistribute(2_000_000n);
+    const result = await client.admin.whitelistAddress('GABC');
+    const result = await client.admin.forceRefundEscrow(10n);
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+});
 
   it("calls buildContractCall with 'force_refund_escrow' method", async () => {
     const { client } = makeAdminClient(Keypair.random());
@@ -286,5 +363,57 @@ describe("AdminModule.unpause()", () => {
       expect.anything(),
       keypair,
     );
+  });
+});
+
+describe("AdminModule.updateTokenMetadata()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.updateTokenMetadata({ name: 'NewName' }))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("calls buildContractCall with 'update_token_metadata' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.updateTokenMetadata({ name: 'VeriTix V2' });
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("update_token_metadata");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const result = await client.admin.updateTokenMetadata({ symbol: 'VTX2' });
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+});
+
+describe("AdminModule.setProtocolFee()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.setProtocolFee(250))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("calls buildContractCall with 'set_protocol_fee' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.setProtocolFee(250);
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("set_protocol_fee");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const result = await client.admin.setProtocolFee(100);
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+
+  it("invokes simulateTransaction once", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.setProtocolFee(500);
+    expect(txUtils.simulateTransaction as jest.Mock).toHaveBeenCalledTimes(1);
   });
 });

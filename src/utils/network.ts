@@ -26,9 +26,12 @@ const MAINNET_RPC_URL = 'https://mainnet.stellar.validationcloud.io/v1/soroban/r
  * on-chain, so we always use this static key instead of generating a fresh
  * {@link Keypair} per call (which would burn CPU on every read).
  *
+ * Derived from a fixed 32-byte seed (`0x11 * 32`) so it is reproducible
+ * across environments while having a valid Ed25519 checksum.
+ *
  * @internal
  */
-export const DUMMY_PUBLIC_KEY = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
+export const DUMMY_PUBLIC_KEY = 'GDIEVMRSOQV3JKZ2CNUL2RQV4TTNAISKW4NAC25PQUQKGMWJO6DTOAE7';
 
 /** Network passphrase for Stellar Testnet */
 export const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
@@ -186,6 +189,7 @@ export function ledgerToApproxDate(ledger: number, currentLedger: number, curren
   const secondsDiff = (ledger - currentLedger) * LEDGER_CLOSE_SECONDS;
   return new Date(now.getTime() + secondsDiff * 1000);
 }
+
 // Address validation
 // ---------------------------------------------------------------------------
 
