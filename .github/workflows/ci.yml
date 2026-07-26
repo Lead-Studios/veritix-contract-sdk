@@ -12,6 +12,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -27,5 +29,20 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Type Coverage
+        run: npm run type-coverage
+
       - name: Test
         run: npm test -- --coverage --coverageThreshold='{"global":{"lines":80}}'
+
+      - name: Changelog Validation
+        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'no-changelog')
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+          CHANGED_SRC=$(git diff --name-only "$BASE" "$HEAD" -- src/ | wc -l)
+          CHANGED_CHANGELOG=$(git diff --name-only "$BASE" "$HEAD" -- CHANGELOG.md | wc -l)
+          if [ "$CHANGED_SRC" -gt "0" ] && [ "$CHANGED_CHANGELOG" -eq "0" ]; then
+            echo "::error::Please update CHANGELOG.md under [Unreleased] when modifying files in src/."
+            exit 1
+          fi

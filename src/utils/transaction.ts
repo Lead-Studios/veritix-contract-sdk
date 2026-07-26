@@ -21,6 +21,7 @@ import {
 
 import type { TransactionResult, FeeEstimate } from '../types/index';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from './errors';
+import { DUMMY_PUBLIC_KEY } from './network';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,12 +52,21 @@ const POLL_INTERVAL_MS = 2_000;
  * single contract method.
  *
  * @param server         - An initialised `SorobanRpc.Server` instance.
+ *   **Note:** the `server` parameter is accepted for API-compatibility but is
+ *   not used during the build phase (the account is loaded by the caller).
+ *   The signature will be updated in a future release to remove this parameter
+ *   once all call-sites have been migrated to the new builder API.
  * @param sourceAccount  - The `Account` object for the transaction source.
  * @param contractId     - Bech32-encoded Soroban contract ID.
  * @param method         - Name of the contract function to invoke.
  * @param args           - Ordered list of XDR `ScVal` arguments for the call.
  * @param networkPassphrase - Stellar network passphrase for envelope signing.
  * @returns An unsigned `Transaction` ready for simulation.
+ *
+ * @deprecated The `server` parameter is unused and will be removed in the next
+ *   major version.  Migrate to the upcoming `buildContractCallV2(sourceAccount,
+ *   contractId, method, args, networkPassphrase)` overload which omits it.
+ *   Target removal: v2.0.0.
  */
 export async function buildContractCall(
   server: SorobanRpc.Server,
@@ -66,7 +76,9 @@ export async function buildContractCall(
   args: xdr.ScVal[],
   networkPassphrase: string,
 ): Promise<Transaction> {
-  // server is not used at build time; the account is loaded by the caller
+  // server is not used at build time; the account is loaded by the caller.
+  // The parameter is kept for backwards-compatibility and will be removed in
+  // v2.0.0 — see the @deprecated tag above.
   void server;
 
   const operation = new Contract(contractId).call(method, ...args);
@@ -149,7 +161,7 @@ export async function estimateFee(
   args: xdr.ScVal[],
 ): Promise<FeeEstimate> {
   // Use a throwaway keypair — simulation does not require a funded account
-  const result = await server.simulateTransaction(tx);
+  const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
   const tx = await buildContractCall(
     server,
