@@ -117,6 +117,48 @@ describe('SplitterModule.createRevenueSplit (validation)', () => {
   });
 });
 
+describe('SplitterModule.bulkDistribute', () => {
+  it('throws when no signing keypair', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    await expect(client.splitter.bulkDistribute([1n, 2n])).rejects.toThrow();
+  });
+
+  it('returns distributed/failed summary', async () => {
+    const kp = Keypair.random();
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
+    const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
+describe('SplitterModule.getRevenueSharePreview', () => {
+  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
+
+  it('calculates correct shares for a three-way split', () => {
+    const preview = client.splitter.getRevenueSharePreview({
+      organizer: 'GORG...',
+      organizerBps: 4000,
+      artist: 'GART...',
+      artistBps: 3500,
+      platform: 'GPLAT...',
+      totalAmount: 10_000_000n,
+    });
+    expect(preview).toHaveLength(3);
+    expect(preview[0]).toEqual({ address: 'GORG...', amount: 4_000_000n });
+    expect(preview[1]).toEqual({ address: 'GART...', amount: 3_500_000n });
+    expect(preview[2]).toEqual({ address: 'GPLAT...', amount: 2_500_000n });
+  });
+
+  it('handles zero-amount split', () => {
+    const preview = client.splitter.getRevenueSharePreview({
+      organizer: 'GORG...',
+      organizerBps: 5000,
+      artist: 'GART...',
+      artistBps: 5000,
+      platform: 'GPLAT...',
+      totalAmount: 0n,
+    });
+    expect(preview.every(r => r.amount === 0n)).toBe(true);
+describe('SplitterModule.replaceRecipient', () => {
+  it('throws when no signing keypair', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    await expect(client.splitter.replaceRecipient(1n, 'GOLD', 'NEW')).rejects.toThrow('signing keypair required');
 describe('SplitterModule.getSplitterStats', () => {
   function makeMockClient() {
     const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
@@ -125,6 +167,15 @@ describe('SplitterModule.getSplitterStats', () => {
     (client as any).server = mockServer;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (client as any).connected = true;
+
+    jest.spyOn(client.splitter as any, 'distribute').mockImplementation(async (id: bigint) => {
+      if (id === 2n) throw new Error('not found');
+      return { hash: 'h', ledger: 1, successful: true };
+    });
+
+    const result = await client.splitter.bulkDistribute([1n, 2n, 3n]);
+    expect(result.distributed).toEqual([1n, 3n]);
+    expect(result.failed).toEqual([2n]);
     return { client, mockServer };
   }
 
