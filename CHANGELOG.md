@@ -21,6 +21,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `VeriTixErrorCode.InvalidAddress`, `WatchTimeout`, `TransactionFailed` error codes
 - GitHub Actions CI workflow (`.github/workflows/ci.yml`)
 - GitHub Actions release workflow (`.github/workflows/release.yml`)
+- Type coverage check in CI (`npm run type-coverage`, requires ≥95% typed coverage) (#291)
+- `type-coverage` devDependency and `npm run type-coverage` script (#291)
+- npm provenance attestations on release (`--provenance` flag, SLSA Level 3 supply-chain security) (#293)
+- `id-token: write` permission in release workflow to enable provenance (#293)
+- Changelog validation step in CI — fails if `src/` is modified without updating `CHANGELOG.md` (#294)
+- GitHub Actions docs deployment workflow (`.github/workflows/docs.yml`) — deploys TypeDoc to GitHub Pages on release (#295)
+- `npm run docs:serve` script for local doc preview on http://localhost:8080 (#295)
+- API docs published to https://lead-studios.github.io/veritix-contract-sdk/ (#295)
 
 ---
 
