@@ -14,7 +14,7 @@ import type {
   TransactionResult,
   BatchSettlementResult,
 } from '../types/index';
-import { addressToScVal, bigintToScVal, scValToBigint, stringToScVal } from '../utils/scval';
+import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseEscrowRecord } from '../utils/parsers';
@@ -93,6 +93,78 @@ export class EscrowModule {
     }
 
     return parseEscrowRecord(returnValue);
+  }
+
+  /**
+   * Returns aggregate escrow statistics.
+   *
+   * @returns Object with `total`, `active`, `released`, `refunded`, `totalValue`, and `avgValue`.
+   * @throws {VeriTixError} If the contract returns no data or an unexpected format.
+   *
+   * @example
+   * ```ts
+   * const stats = await client.escrow.getEscrowStats();
+   * console.log('Active escrows:', stats.active);
+   * ```
+   */
+  async getEscrowStats(): Promise<{
+    total: number;
+    active: number;
+    released: number;
+    refunded: number;
+    totalValue: bigint;
+    avgValue: bigint;
+  }> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_escrow_stats',
+      [],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getEscrowStats: no data returned');
+    }
+
+    if (returnValue.switch() !== xdr.ScValType.scvMap()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getEscrowStats: expected ScMap result');
+    }
+
+    const map = returnValue.map() ?? [];
+    const get = (key: string): xdr.ScVal | undefined =>
+      map.find((e) => e.key().sym() === key)?.val();
+
+    const totalVal = get('total');
+    const activeVal = get('active');
+    const releasedVal = get('released');
+    const refundedVal = get('refunded');
+    const totalValueVal = get('total_value');
+    const avgValueVal = get('avg_value');
+
+    if (!totalVal || !activeVal || !releasedVal || !refundedVal || !totalValueVal || !avgValueVal) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'EscrowModule.getEscrowStats: incomplete stats map');
+    }
+
+    return {
+      total: scValToNumber(totalVal),
+      active: scValToNumber(activeVal),
+      released: scValToNumber(releasedVal),
+      refunded: scValToNumber(refundedVal),
+      totalValue: scValToBigint(totalValueVal),
+      avgValue: scValToBigint(avgValueVal),
+    };
   }
 
   /**
@@ -283,6 +355,56 @@ export class EscrowModule {
     return ledger >= record.expiryLedger;
   }
 
+  /**
+   * Returns how many ledgers an escrow has been active.
+   * Returns `0` for settled (released or refunded) escrows.
+   *
+   * @param escrowId      - Numeric escrow identifier.
+   * @param currentLedger - Optional current ledger sequence. If not provided, fetches from the server.
+   * @returns The number of ledgers the escrow has been active.
+   * @throws {VeriTixError} With code `ESCROW_NOT_FOUND` if the escrow does not exist.
+   *
+   * @example
+   * ```ts
+   * const age = await client.escrow.getEscrowAge(1n);
+   * console.log('Escrow has been active for', age, 'ledgers');
+   * ```
+   */
+  async getEscrowAge(escrowId: bigint, currentLedger?: number): Promise<number> {
+    const escrow = await this.getEscrow(escrowId);
+    if (!escrow) {
+      throw new VeriTixError(VeriTixErrorCode.EscrowNotFound, 'Escrow not found');
+    }
+
+    if (escrow.released || escrow.refunded) {
+      return 0;
+    }
+
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_escrow_age',
+      [bigintToScVal(escrowId, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue) {
+      return 0;
+    }
+
+    return scValToNumber(returnValue);
+  }
+
   // -------------------------------------------------------------------------
   // Write operations
   // -------------------------------------------------------------------------
@@ -417,6 +539,133 @@ export class EscrowModule {
    */
   async refundEscrow(id: bigint): Promise<TransactionResult> {
     return this.settleEscrow('refund_escrow', id);
+  }
+
+  /**
+   * Triggers automatic release of an escrow after its expiry deadline.
+   * Callable by anyone (e.g. a keeper bot) — no signing keypair required.
+   * The escrow must have reached its `expiryLedger` and must not already be
+   * settled (released or refunded).
+   *
+   * @param id             - Numeric escrow identifier.
+   * @param currentLedger  - Optional current ledger sequence. If not provided, fetches from the server.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ESCROW_NOT_FOUND` if the escrow does not exist.
+   * @throws {VeriTixError} With code `ESCROW_ALREADY_SETTLED` if already settled.
+   * @throws {VeriTixError} With code `ESCROW_NOT_EXPIRED` if the expiry ledger has not been reached.
+   *
+   * @example
+   * ```ts
+   * // Keeper bot triggers auto-release after deadline
+   * const result = await client.escrow.triggerAutoRelease(1n);
+   * console.log('Auto-released in tx:', result.hash);
+   * ```
+   */
+  async triggerAutoRelease(id: bigint, currentLedger?: number): Promise<TransactionResult> {
+    const escrow = await this.getEscrow(id);
+   * Transfers the beneficiary role of an escrow to a new address.
+   * Must be called by the depositor. The new beneficiary must be a valid
+   * Stellar address and must differ from the depositor.
+   *
+   * @param escrowId      - Numeric escrow identifier.
+   * @param newBeneficiary - Stellar account address of the new beneficiary.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ESCROW_NOT_FOUND` if the escrow does not exist.
+   * @throws {VeriTixError} With code `ESCROW_ALREADY_SETTLED` if already settled.
+   * @throws {VeriTixError} With code `ESCROW_UNAUTHORIZED` if caller is not the depositor.
+   * @throws {VeriTixError} With code `INVALID_ADDRESS` if newBeneficiary is malformed.
+   * @throws {VeriTixError} With code `INVALID_BENEFICIARY` if newBeneficiary equals the depositor.
+   *
+   * @example
+   * ```ts
+   * const result = await client.escrow.transferBeneficiary(1n, 'GNEW…');
+   * console.log('Beneficiary transferred in tx:', result.hash);
+   * ```
+   */
+  async transferBeneficiary(escrowId: bigint, newBeneficiary: string): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.ReadOnlyClient,
+        'EscrowModule.transferBeneficiary: signing keypair required',
+      );
+    }
+
+    try {
+      new Address(newBeneficiary);
+    } catch {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        'EscrowModule.transferBeneficiary: newBeneficiary must be a valid Stellar address',
+      );
+    }
+
+    const escrow = await this.getEscrow(escrowId);
+    if (!escrow) {
+      throw new VeriTixError(VeriTixErrorCode.EscrowNotFound, 'Escrow not found');
+    }
+
+    if (escrow.released || escrow.refunded) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowAlreadySettled,
+        'Escrow has already been released or refunded',
+      );
+    }
+
+    const ledger = currentLedger ?? (await this.server.getLatestLedger()).sequence;
+    if (ledger < escrow.expiryLedger) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowNotExpired,
+        'Escrow has not yet reached its expiry ledger',
+      );
+    }
+
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'trigger_auto_release',
+      [bigintToScVal(id, 'u64')],
+    const caller = this.keypair.publicKey();
+    if (caller !== escrow.depositor) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowUnauthorized,
+        'EscrowModule.transferBeneficiary: caller is not the depositor',
+      );
+    }
+
+    if (newBeneficiary === caller) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidBeneficiary,
+        'EscrowModule.transferBeneficiary: newBeneficiary must not be the same as the depositor',
+      );
+    }
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(caller, '0'),
+      this.config.contractId,
+      'transfer_beneficiary',
+      [bigintToScVal(escrowId, 'u64'), addressToScVal(newBeneficiary)],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, undefined);
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
   }
 
   private async getEscrowIdsByAddress(
