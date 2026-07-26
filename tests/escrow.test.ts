@@ -724,6 +724,97 @@ describe('EscrowModule.isExpired', () => {
 });
 
 // ---------------------------------------------------------------------------
+// triggerAutoRelease tests
+// ---------------------------------------------------------------------------
+
+describe('EscrowModule.triggerAutoRelease', () => {
+  const EXPIRY_LEDGER = 1_000_000;
+
+  it('throws ESCROW_NOT_FOUND when escrow does not exist', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue(null);
+    await expect(client.escrow.triggerAutoRelease(1n, EXPIRY_LEDGER)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowNotFound,
+    });
+  });
+
+  it('throws ESCROW_ALREADY_SETTLED when escrow is released', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: true, refunded: false, expiryLedger: EXPIRY_LEDGER, memos: [],
+    });
+    await expect(client.escrow.triggerAutoRelease(1n, EXPIRY_LEDGER)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowAlreadySettled,
+    });
+  });
+
+  it('throws ESCROW_ALREADY_SETTLED when escrow is refunded', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: false, refunded: true, expiryLedger: EXPIRY_LEDGER, memos: [],
+    });
+    await expect(client.escrow.triggerAutoRelease(1n, EXPIRY_LEDGER)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowAlreadySettled,
+    });
+  });
+
+  it('throws ESCROW_NOT_EXPIRED when current ledger is before expiry', async () => {
+    const { client } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: false, refunded: false, expiryLedger: EXPIRY_LEDGER, memos: [],
+    });
+    await expect(client.escrow.triggerAutoRelease(1n, EXPIRY_LEDGER - 1)).rejects.toMatchObject({
+      code: VeriTixErrorCode.EscrowNotExpired,
+    });
+  });
+
+  it('succeeds when current ledger equals expiry ledger', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    const fakeTx = { id: 'unsigned' } as never;
+    const fakeAssembledTx = { id: 'assembled' } as never;
+
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: false, refunded: false, expiryLedger: EXPIRY_LEDGER, memos: [],
+    });
+    jest.spyOn(transactionUtils, 'buildContractCall').mockResolvedValue(fakeTx);
+    jest.spyOn(SorobanRpc, 'assembleTransaction').mockReturnValue({
+      build: () => fakeAssembledTx,
+    } as never);
+    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
+      hash: 'auto-release-hash', ledger: 200, successful: true,
+    });
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS', result: { retval: xdr.ScVal.scvVoid() },
+    });
+
+    const result = await client.escrow.triggerAutoRelease(1n, EXPIRY_LEDGER);
+    expect(result).toMatchObject({ hash: 'auto-release-hash', ledger: 200, successful: true });
+  });
+
+  it('does not require a signing keypair', async () => {
+    const { client, mockServer } = makeConnectedClient();
+    jest.spyOn(client.escrow, 'getEscrow').mockResolvedValue({
+      id: 1n, depositor: FAKE_DEPOSITOR, beneficiary: FAKE_ADDRESS,
+      amount: 1_000_000n, released: false, refunded: false, expiryLedger: EXPIRY_LEDGER, memos: [],
+    });
+    jest.spyOn(transactionUtils, 'buildContractCall').mockResolvedValue({} as never);
+    jest.spyOn(SorobanRpc, 'assembleTransaction').mockReturnValue({
+      build: () => ({} as never),
+    } as never);
+    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
+      hash: 'hash', ledger: 100, successful: true,
+    });
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS', result: { retval: xdr.ScVal.scvVoid() },
+    });
+
+    // Should not throw ReadOnlyClient even without keypair
+    const result = await client.escrow.triggerAutoRelease(1n, EXPIRY_LEDGER);
+    expect(result.successful).toBe(true);
 // escrowBetween tests
 // ---------------------------------------------------------------------------
 

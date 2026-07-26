@@ -498,6 +498,27 @@ export class EscrowModule {
   }
 
   /**
+   * Triggers automatic release of an escrow after its expiry deadline.
+   * Callable by anyone (e.g. a keeper bot) — no signing keypair required.
+   * The escrow must have reached its `expiryLedger` and must not already be
+   * settled (released or refunded).
+   *
+   * @param id             - Numeric escrow identifier.
+   * @param currentLedger  - Optional current ledger sequence. If not provided, fetches from the server.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ESCROW_NOT_FOUND` if the escrow does not exist.
+   * @throws {VeriTixError} With code `ESCROW_ALREADY_SETTLED` if already settled.
+   * @throws {VeriTixError} With code `ESCROW_NOT_EXPIRED` if the expiry ledger has not been reached.
+   *
+   * @example
+   * ```ts
+   * // Keeper bot triggers auto-release after deadline
+   * const result = await client.escrow.triggerAutoRelease(1n);
+   * console.log('Auto-released in tx:', result.hash);
+   * ```
+   */
+  async triggerAutoRelease(id: bigint, currentLedger?: number): Promise<TransactionResult> {
+    const escrow = await this.getEscrow(id);
    * Transfers the beneficiary role of an escrow to a new address.
    * Must be called by the depositor. The new beneficiary must be a valid
    * Stellar address and must differ from the depositor.
@@ -546,6 +567,21 @@ export class EscrowModule {
       );
     }
 
+    const ledger = currentLedger ?? (await this.server.getLatestLedger()).sequence;
+    if (ledger < escrow.expiryLedger) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowNotExpired,
+        'Escrow has not yet reached its expiry ledger',
+      );
+    }
+
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'trigger_auto_release',
+      [bigintToScVal(id, 'u64')],
     const caller = this.keypair.publicKey();
     if (caller !== escrow.depositor) {
       throw new VeriTixError(
@@ -579,6 +615,7 @@ export class EscrowModule {
       SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
 
     const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, undefined);
     const result = await submitTransaction(this.server, assembled, this.keypair);
 
     return {
