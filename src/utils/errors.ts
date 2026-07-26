@@ -91,6 +91,7 @@ export enum VeriTixErrorCode {
   BatchTooLarge = 'BATCH_TOO_LARGE',
   /** Client has no Keypair — write operations are not available */
   ReadOnlyClient = 'READ_ONLY_CLIENT',
+  /** watchTransaction() or watchEscrow() timed out waiting for confirmation */
   /** watchTransaction() timed out waiting for confirmation */
   WatchTimeout = 'WATCH_TIMEOUT',
   /** Transaction was rejected by the network */
@@ -264,12 +265,13 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.Unauthorized]:                'Caller is not authorized to perform this operation.',
     [VeriTixErrorCode.InvalidAmount]:               'Amount must be greater than zero.',
     [VeriTixErrorCode.InvalidExpiryLedger]:         'Expiry ledger must be greater than the current ledger.',
-    [VeriTixErrorCode.InvalidAddress]:              'Beneficiary is not a valid Stellar account address.',
+    [VeriTixErrorCode.InvalidAddress]:              'Supplied address is not a valid Stellar Ed25519 public key.',
     [VeriTixErrorCode.InvalidBeneficiary]:          'Beneficiary must not be the same as the depositor.',
     [VeriTixErrorCode.Unknown]:                     `Unrecognised contract error: ${rawStr}`,
     [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
     [VeriTixErrorCode.BatchTooLarge]:               'Batch request exceeded maximum allowed size.',
     [VeriTixErrorCode.ReadOnlyClient]:              'This client is read-only. Provide a Keypair to enable write operations.',
+    [VeriTixErrorCode.WatchTimeout]:                'watchEscrow or watchTransaction timed out before the operation was confirmed.',
     [VeriTixErrorCode.WatchTimeout]:                'Watch timed out before the escrow settled.',
     [VeriTixErrorCode.TransactionFailed]:           'Transaction was rejected by the Stellar network.',
   };
