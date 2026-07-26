@@ -303,6 +303,15 @@ export class AdminModule {
   }
 
   // -------------------------------------------------------------------------
+  // Emergency refund
+  // -------------------------------------------------------------------------
+
+  /**
+   * Emergency force-refund for a single escrow. Must be called by admin.
+   * Unlike {@link manualRefund}, this method does not require a reason string
+   * and is intended for immediate emergency use.
+   *
+   * @param escrowId - The escrow ID to force-refund.
   // Fee management
   // -------------------------------------------------------------------------
 
@@ -315,6 +324,12 @@ export class AdminModule {
    *
    * @example
    * ```ts
+   * await client.admin.forceRefundEscrow(42n);
+   * ```
+   */
+  async forceRefundEscrow(escrowId: bigint): Promise<TransactionResult> {
+    return this.writeCall('force_refund_escrow', [
+      bigintToScVal(escrowId, 'u64'),
    * await client.admin.setProtocolFee(250); // 2.5%
    * ```
    */
