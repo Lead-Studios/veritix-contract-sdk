@@ -250,18 +250,6 @@ export class BatchModule {
     return this.writeCall('transfer_batch_with_memo', [entries]);
   }
 
-  async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
-    throw new Error('BatchModule.freezeBatch: not implemented');
-  }
-
-  async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
-    throw new Error('BatchModule.freezeBatch: not implemented');
-  }
-
-  async clawbackBatch(_targets: BatchClawbackTarget[]): Promise<TransactionResult> {
-    throw new Error('BatchModule.clawbackBatch: not implemented');
-  }
-
   /**
    * Freezes multiple accounts in a single contract invocation.
    * Caller must be the contract admin.
@@ -277,5 +265,85 @@ export class BatchModule {
    */
   async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
     throw new Error('BatchModule.freezeBatch: not implemented');
+  }
+
+  // -------------------------------------------------------------------------
+  // Batch burn
+  // -------------------------------------------------------------------------
+
+  /**
+   * Burns tokens from multiple owners in a single contract invocation.
+   * Each entry specifies the owner address and amount to burn.
+   * Caller must be the contract admin.
+   *
+   * @param entries - Array of `{ from, amount }` burn instructions.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   * @throws {Error} If entries array is empty.
+   *
+   * @example
+   * ```ts
+   * await client.batch.burnFromBatch([
+   *   { from: 'GABC…', amount: 100n },
+   *   { from: 'GXYZ…', amount: 200n },
+   * ]);
+   * ```
+   */
+  async burnFromBatch(entries: Array<{ from: string; amount: bigint }>): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.AdminUnauthorized,
+        'BatchModule.burnFromBatch: admin Keypair required',
+      );
+    }
+
+    if (entries.length === 0) {
+      throw new Error('BatchModule.burnFromBatch: entries array must not be empty');
+    }
+
+    if (entries.length > BATCH_MAX) {
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `BatchModule.burnFromBatch: max ${BATCH_MAX} entries per batch, got ${entries.length}`,
+      );
+    }
+
+    for (const entry of entries) {
+      if (entry.amount <= 0n) {
+        throw new VeriTixError(
+          VeriTixErrorCode.InvalidAmount,
+          `BatchModule.burnFromBatch: all amounts must be > 0, got ${entry.amount} for ${entry.from}`,
+        );
+      }
+    }
+
+    const admin = this.keypair.publicKey();
+    const sourceAccount = new Account(admin, '0');
+
+    const burnEntries = xdr.ScVal.scvVec(
+      entries.map((e) =>
+        xdr.ScVal.scvVec([
+          addressToScVal(e.from),
+          nativeToScVal(e.amount, { type: 'i128' }),
+        ]),
+      ),
+    );
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'burn_from_batch',
+      [burnEntries],
+      this.config.networkPassphrase,
+    );
+
+    const { transaction } = await simulateTransaction(this.server, tx);
+
+    try {
+      return await submitTransaction(this.server, transaction, this.keypair);
+    } catch (err) {
+      throw parseSorobanError(err);
+    }
   }
 }

@@ -155,9 +155,17 @@ npm test -- --watch    # watch mode
 
 1. Branch from `main`: `git checkout -b feat/implement-token-module`
 2. Implement and test your change.
-3. Run `npm run build && npm test && npm run lint` — all must pass.
-4. Open a PR against `main` with a clear description of what was implemented.
-5. Reference the relevant module in the PR title, e.g. `feat(token): implement mint and burn`.
+3. **Update `CHANGELOG.md`** — if your PR modifies any file under `src/`, you must add an entry under the `[Unreleased]` section. CI will fail the build if `src/` changes are detected without a corresponding `CHANGELOG.md` update. Use the following format:
+   ```markdown
+   ## [Unreleased]
+
+   ### Added
+   - Brief description of the new feature or fix (#PR-number)
+   ```
+   Use `### Added` for new features, `### Fixed` for bug fixes, `### Changed` for non-breaking changes, and `### Removed` for removed functionality.
+4. Run `npm run build && npm test && npm run lint` — all must pass.
+5. Open a PR against `main` with a clear description of what was implemented.
+6. Reference the relevant module in the PR title, e.g. `feat(token): implement mint and burn`.
 
 ---
 
