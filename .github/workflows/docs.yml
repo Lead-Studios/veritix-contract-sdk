@@ -1,0 +1,36 @@
+name: Deploy Docs
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  deploy-docs:
+    name: Build and Deploy API Docs
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate API docs
+        run: npm run docs:generate
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/api
+          publish_branch: gh-pages
+          commit_message: 'docs: deploy API docs for ${{ github.ref_name }}'

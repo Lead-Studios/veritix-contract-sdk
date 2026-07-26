@@ -5,6 +5,7 @@
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import { addressToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
+import { addressToScVal, scValToBigint, scValToNumber } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
@@ -138,6 +139,72 @@ export class SplitterModule {
   }
 
   /**
+   * Returns aggregate splitter statistics.
+   *
+   * @returns Object with `totalSplits`, `distributedCount`, `cancelledCount`, and `totalDistributedValue`.
+   * @throws {VeriTixError} If the contract returns no data or an unexpected format.
+   *
+   * @example
+   * ```ts
+   * const stats = await client.splitter.getSplitterStats();
+   * console.log('Total splits:', stats.totalSplits);
+   * ```
+   */
+  async getSplitterStats(): Promise<{
+    totalSplits: number;
+    distributedCount: number;
+    cancelledCount: number;
+    totalDistributedValue: bigint;
+  }> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_splitter_stats',
+      [],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'SplitterModule.getSplitterStats: no data returned');
+    }
+
+    if (returnValue.switch() !== xdr.ScValType.scvMap()) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'SplitterModule.getSplitterStats: expected ScMap result');
+    }
+
+    const map = returnValue.map() ?? [];
+    const get = (key: string): xdr.ScVal | undefined =>
+      map.find((e) => e.key().sym() === key)?.val();
+
+    const totalSplitsVal = get('total_splits');
+    const distributedCountVal = get('distributed_count');
+    const cancelledCountVal = get('cancelled_count');
+    const totalDistributedValueVal = get('total_distributed_value');
+
+    if (!totalSplitsVal || !distributedCountVal || !cancelledCountVal || !totalDistributedValueVal) {
+      throw new VeriTixError(VeriTixErrorCode.Unknown, 'SplitterModule.getSplitterStats: incomplete stats map');
+    }
+
+    return {
+      totalSplits: scValToNumber(totalSplitsVal),
+      distributedCount: scValToNumber(distributedCountVal),
+      cancelledCount: scValToNumber(cancelledCountVal),
+      totalDistributedValue: scValToBigint(totalDistributedValueVal),
+    };
+  }
+
+  /**
    * Creates a new payment split instruction on-chain.
    * Recipient `shareBps` values must sum to exactly 10 000.
    *
@@ -177,8 +244,24 @@ export class SplitterModule {
    * @param params - {@link RevenueSplitParams}
    * @returns A {@link TransactionResult} on success.
    *
+   * @deprecated Since 0.2.0 — use {@link createSplit} with an explicit
+   *   `recipients` array instead.  `createRevenueSplit` is a thin wrapper
+   *   that only supports a fixed three-party split and will be removed in
+   *   0.3.0.  Migrate to:
+   *   ```ts
+   *   await client.splitter.createSplit({
+   *     recipients: [
+   *       { address: organizer, shareBps: organizerBps },
+   *       { address: artist,    shareBps: artistBps },
+   *       { address: platform,  shareBps: 10_000 - organizerBps - artistBps },
+   *     ],
+   *     totalAmount,
+   *   });
+   *   ```
+   *
    * @example
    * ```ts
+   * // ❌ Deprecated — will be removed in 0.3.0
    * await client.splitter.createRevenueSplit({
    *   organizer: 'GORG…', organizerBps: 6000,
    *   artist:    'GART…', artistBps:    3000,

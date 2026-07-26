@@ -288,3 +288,32 @@ describe("AdminModule.unpause()", () => {
     );
   });
 });
+
+describe("AdminModule.setProtocolFee()", () => {
+  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+    const { client } = makeAdminClient();
+    await expect(client.admin.setProtocolFee(250))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("calls buildContractCall with 'set_protocol_fee' method", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.setProtocolFee(250);
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("set_protocol_fee");
+  });
+
+  it("returns a TransactionResult on success", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    const result = await client.admin.setProtocolFee(100);
+    expect(result.hash).toBe("mockhash");
+    expect(result.successful).toBe(true);
+  });
+
+  it("invokes simulateTransaction once", async () => {
+    const { client } = makeAdminClient(Keypair.random());
+    await client.admin.setProtocolFee(500);
+    expect(txUtils.simulateTransaction as jest.Mock).toHaveBeenCalledTimes(1);
+  });
+});
