@@ -303,6 +303,14 @@ export class AdminModule {
   }
 
   // -------------------------------------------------------------------------
+  // Dividend distribution
+  // -------------------------------------------------------------------------
+
+  /**
+   * Distributes profits (dividends) to token holders proportionally.
+   * Must be called by admin.
+   *
+   * @param totalAmount - Total dividend amount to distribute (in stroops).
   // Whitelist management
   // -------------------------------------------------------------------------
 
@@ -348,6 +356,12 @@ export class AdminModule {
    *
    * @example
    * ```ts
+   * await client.admin.dividendDistribute(1_000_000n);
+   * ```
+   */
+  async dividendDistribute(totalAmount: bigint): Promise<TransactionResult> {
+    return this.writeCall('dividend_distribute', [
+      bigintToScVal(totalAmount, 'i128'),
    * await client.admin.updateTokenMetadata({ name: 'VeriTix V2', symbol: 'VTX2' });
    * ```
    */
