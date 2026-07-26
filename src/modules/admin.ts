@@ -312,6 +312,13 @@ export class AdminModule {
    * and is intended for immediate emergency use.
    *
    * @param escrowId - The escrow ID to force-refund.
+  // Fee management
+  // -------------------------------------------------------------------------
+
+  /**
+   * Updates the protocol fee rate. Must be called by the admin.
+   *
+   * @param feeRateBps - New fee rate in basis points (e.g. 250 = 2.5%).
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
    *
@@ -323,6 +330,12 @@ export class AdminModule {
   async forceRefundEscrow(escrowId: bigint): Promise<TransactionResult> {
     return this.writeCall('force_refund_escrow', [
       bigintToScVal(escrowId, 'u64'),
+   * await client.admin.setProtocolFee(250); // 2.5%
+   * ```
+   */
+  async setProtocolFee(feeRateBps: number): Promise<TransactionResult> {
+    return this.writeCall('set_protocol_fee', [
+      xdr.ScVal.scvU32(feeRateBps),
     ]);
   }
 }
