@@ -36,6 +36,8 @@
     "release": "npm run build && changeset publish",
     "docs:generate": "typedoc",
     "docs:serve": "npx http-server docs/api -p 8080",
+    "size": "size-limit",
+    "playground": "ts-node scripts/playground.ts",
     "type-coverage": "type-coverage --at-least 95 --strict"
   },
   "keywords": [
