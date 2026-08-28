@@ -72,6 +72,17 @@ export type { OpenDisputeParams, ResolveDisputeParams } from './modules/dispute'
 export type { CreateSplitParams } from './modules/splitter';
 export type { SetupRecurringParams } from './modules/recurring';
 export type { BatchMintEntry, BatchTransferEntry } from './modules/batch';
+// New module types
+export type { Event, EventFilter } from './modules/events-service';
+export type { DashboardMetrics } from './modules/events-dashboard';
+export type { RevenuePeriod, TicketSale } from './modules/analytics/revenue-analytics.service';
+export type { TicketPeriod, ExportFormat, TicketOrder } from './modules/analytics/ticket-analytics.service';
+export type { Collaborator, CollaboratorUpdate } from './modules/collaborator/collaborator.service';
+export type { BillingDetails, AddressDetails, PurchaseRequest, Receipt } from './modules/ticket/ticket-purchase.service';
+
+// Module constants
+export { TRANSACTION_CHARGE_RATE } from './modules/analytics/revenue-analytics.service';
+export { MAX_COLLABORATORS_PER_EVENT } from './modules/collaborator/collaborator.service';
 
 // ---------------------------------------------------------------------------
 // Errors
