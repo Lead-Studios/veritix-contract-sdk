@@ -38,6 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `CollaboratorModule` — add, retrieve, update, and remove event collaborators (#46)
 - `Collaborator`, `CollaboratorUpdate` types and `MAX_COLLABORATORS_PER_EVENT` constant (#46)
 
+### Changed
+- `VeriTixClient` constructor now validates `config.contractId` as a Soroban contract ID (#433)
+- `TokenModule.transfer` now pre-flights an on-chain balance check and throws `INSUFFICIENT_BALANCE` when the sender lacks funds (#434)
+
 ---
 
 ## [0.1.0] — 2024-01-01 — Initial scaffold

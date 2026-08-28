@@ -26,7 +26,7 @@
  * ```
  */
 
-import { SorobanRpc, Keypair, xdr } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, StrKey, xdr } from '@stellar/stellar-sdk';
 
 import type {
   NetworkConfig,
@@ -108,6 +108,12 @@ export class VeriTixClient extends EventEmitter {
    */
   constructor(config: NetworkConfig, keypair?: Keypair) {
     super();
+    if (!config || typeof config.contractId !== 'string' || !StrKey.isValidContract(config.contractId)) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        'VeriTixClient: config.contractId must be a valid Soroban contract ID',
+      );
+    }
     this.config = config;
     this.keypair = keypair;
 
