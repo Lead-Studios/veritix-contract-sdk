@@ -38,6 +38,8 @@ import type {
   WatchOptions,
   EscrowRecord,
   AccountInfo,
+  VeriTixEvent,
+  StreamEventOptions,
 } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { DUMMY_PUBLIC_KEY, getMainnetConfig, getTestnetConfig } from './utils/network';
