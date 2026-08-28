@@ -5,7 +5,6 @@
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import { addressToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
-import { addressToScVal, scValToBigint, scValToNumber } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
