@@ -35,6 +35,7 @@ export type {
   ContractMetadata,
   EscrowRecord,
   TicketEscrowParams,
+  BatchSettlementResult,
   SplitRecord,
   SplitRecipient,
   DisputeRecord,
