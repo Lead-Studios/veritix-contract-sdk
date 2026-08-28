@@ -83,6 +83,8 @@ export class DisputeModule {
    * const dispute = await client.dispute.getDispute(3n);
    * console.log('Status:', dispute?.status);
    * ```
+   *
+   * @since 0.1.0
    */
   async getDispute(id: bigint): Promise<DisputeRecord | null> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -126,6 +128,8 @@ export class DisputeModule {
    *   console.log('Cannot release/refund: dispute is open');
    * }
    * ```
+   *
+   * @since 0.1.0
    */
   async isDisputeOpen(escrowId: bigint): Promise<boolean> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -169,6 +173,8 @@ export class DisputeModule {
    *   console.log('Dispute has expired');
    * }
    * ```
+   *
+   * @since 0.1.0
    */
   async isDisputeExpired(disputeId: bigint): Promise<boolean> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -209,6 +215,8 @@ export class DisputeModule {
    * const openDisputes = await client.dispute.getOpenDisputes();
    * console.log('Open disputes:', openDisputes);
    * ```
+   *
+   * @since 0.1.0
    */
   async getOpenDisputes(): Promise<bigint[]> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -259,6 +267,8 @@ export class DisputeModule {
    * const disputes = await client.dispute.getDisputesByResolver('GARB…');
    * console.log('Resolver disputes:', disputes);
    * ```
+   *
+   * @since 0.1.0
    */
   async getDisputesByResolver(resolver: string): Promise<bigint[]> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -309,6 +319,8 @@ export class DisputeModule {
    * const disputes = await client.dispute.getDisputesByClaimant('GABC…');
    * console.log('My disputes:', disputes);
    * ```
+   *
+   * @since 0.1.0
    */
   async getDisputesByClaimant(claimant: string): Promise<bigint[]> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -367,6 +379,8 @@ export class DisputeModule {
    *   console.log(`Dispute ${id}: ${dispute?.status}`);
    * }
    * ```
+   *
+   * @since 0.1.0
    */
   async getDisputeHistory(escrowId: bigint): Promise<bigint[]> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -431,6 +445,8 @@ export class DisputeModule {
    * ```ts
    * await client.dispute.openDispute(1n, 'GARB…', 'ticket not delivered');
    * ```
+   *
+   * @since 0.1.0
    */
   async openDispute(
     escrowId: bigint,
@@ -505,6 +521,8 @@ export class DisputeModule {
    *   resolution: DisputeStatus.ResolvedForBeneficiary,
    * });
    * ```
+   *
+   * @since 0.1.0
    */
   async resolveDispute(
     disputeId: bigint,
@@ -582,10 +600,63 @@ export class DisputeModule {
    * ```ts
    * await client.dispute.expireDispute(3n);
    * ```
+   *
+   * @since 0.1.0
    */
   async expireDispute(disputeId: bigint): Promise<TransactionResult> {
     if (!this.keypair) {
       throw new Error('DisputeModule.expireDispute: signing keypair required');
+    }
+
+    const dispute = await this.getDispute(disputeId);
+    if (!dispute) {
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeNotFound,
+        'Dispute not found',
+      );
+    }
+
+    if (dispute.status === DisputeStatus.Open) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        'DisputeModule.expireDispute: dispute is still open, cannot expire',
+      );
+    }
+
+    const admin = this.keypair.publicKey();
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(admin, '0'),
+      this.config.contractId,
+      'expire_dispute',
+      [
+        addressToScVal(admin),
+        bigintToScVal(disputeId, 'u64'),
+      ],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result
+        ? raw.result.retval
+        : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
+  }
+
+  /**
    * Appeals a resolved dispute. Must be called by the original claimant.
    *
    * @param disputeId - The dispute ID to appeal.
@@ -598,6 +669,9 @@ export class DisputeModule {
    * ```ts
    * await client.dispute.appealDispute(3n);
    * ```
+   *
+   * @since 0.1.0
+   * New method for dispute appeals.
    */
   async appealDispute(disputeId: bigint): Promise<TransactionResult> {
     if (!this.keypair) {
@@ -612,22 +686,6 @@ export class DisputeModule {
       );
     }
 
-    if (dispute.status !== DisputeStatus.Open) {
-      throw new VeriTixError(
-        VeriTixErrorCode.DisputeAlreadyResolved,
-        'Dispute already resolved',
-      );
-    }
-
-    const admin = this.keypair.publicKey();
-
-    const tx = await buildContractCall(
-      this.server,
-      new Account(admin, '0'),
-      this.config.contractId,
-      'expire_dispute',
-      [
-        addressToScVal(admin),
     if (dispute.status === DisputeStatus.Open) {
       throw new VeriTixError(
         VeriTixErrorCode.InvalidAmount,

@@ -148,6 +148,8 @@ export class TokenModule {
    * const balance = await client.token.balance('GABC…');
    * console.log('Balance (stroops):', balance.toString());
    * ```
+   *
+   * @since 0.1.0
    */
   async balance(address: string): Promise<bigint> {
     const result = await this.simulateRead('balance', [addressToScVal(address)]);
@@ -165,6 +167,8 @@ export class TokenModule {
    * const balances = await client.token.balanceOfBatch(['GABC…', 'GXYZ…']);
    * balances.forEach((b, i) => console.log(`Address ${i}:`, b.toString()));
    * ```
+   *
+   * @since 0.1.0
    */
   async balanceOfBatch(addresses: string[]): Promise<bigint[]> {
     if (addresses.length > 100) {
@@ -188,6 +192,8 @@ export class TokenModule {
    * const allowed = await client.token.allowance('GABC…', 'GSPENDER…');
    * console.log('Allowance:', allowed.toString());
    * ```
+   *
+   * @since 0.1.0
    */
   async allowance(owner: string, spender: string): Promise<bigint> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -237,6 +243,8 @@ export class TokenModule {
    * const tokenName = await client.token.name();
    * console.log('Token name:', tokenName);
    * ```
+   *
+   * @since 0.1.0
    */
   async name(): Promise<string> {
     const result = await this.simulateRead('name', []);
@@ -252,6 +260,8 @@ export class TokenModule {
    * const sym = await client.token.symbol();
    * console.log('Symbol:', sym); // e.g. "VTX"
    * ```
+   *
+   * @since 0.1.0
    */
   async symbol(): Promise<string> {
     const result = await this.simulateRead('symbol', []);
@@ -267,6 +277,8 @@ export class TokenModule {
    * const dec = await client.token.decimals();
    * console.log('Decimals:', dec); // typically 7
    * ```
+   *
+   * @since 0.1.0
    */
   async decimals(): Promise<number> {
     const result = await this.simulateRead('decimals', []);
@@ -281,6 +293,8 @@ export class TokenModule {
    * const supply = await client.token.totalSupply();
    * console.log('Total supply (stroops):', supply.toString());
    * ```
+   *
+   * @since 0.1.0
    */
   async totalSupply(): Promise<bigint> {
     const result = await this.simulateRead('total_supply', []);
@@ -297,6 +311,8 @@ export class TokenModule {
    * const count = await client.token.totalHolders();
    * console.log('Total holders:', count.toString());
    * ```
+   *
+   * @since 0.1.0
    */
   async totalHolders(): Promise<bigint> {
     const result = await this.simulateRead('total_holders', []);
@@ -320,6 +336,8 @@ export class TokenModule {
    * const page = await client.token.getHolders(0, 50);
    * page.forEach((addr, i) => console.log(i, addr));
    * ```
+   *
+   * @since 0.1.0
    */
   async getHolders(offset: number, limit: number): Promise<string[]> {
     if (!Number.isInteger(offset) || offset < 0) {
@@ -359,6 +377,8 @@ export class TokenModule {
    * const frozen = await client.token.isFrozen('GABC…');
    * if (frozen) console.warn('Account is frozen');
    * ```
+   *
+   * @since 0.1.0
    */
   async isFrozen(address: string): Promise<boolean> {
     // Pre-flight (issue #209): the contract address itself is never
@@ -394,6 +414,8 @@ export class TokenModule {
    * ```ts
    * await client.token.mint({ to: 'GABC…', amount: 10_000_000n }); // mint 1 XLM
    * ```
+   *
+   * @since 0.1.0
    */
   async mint(params: MintParams): Promise<TransactionResult> {
     return this.writeCall('mint', [
@@ -412,6 +434,8 @@ export class TokenModule {
    * ```ts
    * await client.token.burn(5_000_000n); // burn 0.5 XLM
    * ```
+   *
+   * @since 0.1.0
    */
   async burn(amount: bigint): Promise<TransactionResult> {
     if (amount <= 0n) {
@@ -440,6 +464,8 @@ export class TokenModule {
    * ```ts
    * await client.token.burnFrom('GABC…', 1_000_000n);
    * ```
+   *
+   * @since 0.1.0
    */
   async burnFrom(from: string, amount: bigint): Promise<TransactionResult> {
     if (amount <= 0n) {
@@ -468,6 +494,8 @@ export class TokenModule {
    * ```ts
    * await client.token.transfer({ from: 'GABC…', to: 'GXYZ…', amount: 2_000_000n });
    * ```
+   *
+   * @since 0.1.0
    */
   async transfer(params: TransferParams): Promise<TransactionResult> {
     const balance = await this.balance(params.from);
@@ -491,6 +519,8 @@ export class TokenModule {
    * @param to     - Recipient Stellar account address.
    * @param amount - Amount in stroops.
    * @param memo   - On-chain memo string (<= 64 bytes UTF-8).
+   *
+   * @since 0.1.0
    */
   async transferWithMemo(to: string, amount: bigint, memo: string): Promise<TransactionResult> {
     const memoBytes = Buffer.from(memo, 'utf8');
@@ -527,6 +557,8 @@ export class TokenModule {
    * // Caller must have been approved via client.token.approve(...)
    * await client.token.transferFrom('GOWNER…', 'GRECIPIENT…', 1_000_000n);
    * ```
+   *
+   * @since 0.1.0
    */
   async transferFrom(from: string, to: string, amount: bigint): Promise<TransactionResult> {
     if (!this.keypair) {
