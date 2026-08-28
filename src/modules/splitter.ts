@@ -53,7 +53,10 @@ export class SplitterModule {
     // TODO: implement
     void this.config;
     void this.server;
-    throw new Error('SplitterModule.getSplit: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.getSplit: not implemented'
+    );
   }
 
   /**
@@ -232,7 +235,10 @@ export class SplitterModule {
     // TODO: build & submit contract call
     void simulateTransaction;
     void submitTransaction;
-    throw new Error('SplitterModule.createSplit: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.createSplit: not implemented'
+    );
   }
 
   /**
@@ -381,7 +387,12 @@ export class SplitterModule {
    * ```
    */
   async distribute(_id: bigint): Promise<TransactionResult> {
-    throw new Error('SplitterModule.distribute: not implemented');
+    void this.server;
+    void _id;
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.distribute: not implemented'
+    );
   }
 
   /**

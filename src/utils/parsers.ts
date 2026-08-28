@@ -7,6 +7,7 @@
  * matching the field names used in the VeriTix Soroban contract structs.
  */
 import { xdr, scValToNative } from '@stellar/stellar-sdk';
+import { VeriTixError, VeriTixErrorCode } from './errors';
 import type {
   EscrowRecord,
   SplitRecord,
@@ -34,8 +35,9 @@ import {
  */
 function scMapToRecord(val: xdr.ScVal): Map<string, xdr.ScVal> {
   if (val.switch() !== xdr.ScValType.scvMap()) {
-    throw new Error(
-      `Expected ScvMap, got ScVal type: ${val.switch().name}`,
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `Expected ScvMap, got ScVal type: ${val.switch().name}`
     );
   }
   const map = new Map<string, xdr.ScVal>();
@@ -50,11 +52,15 @@ function scMapToRecord(val: xdr.ScVal): Map<string, xdr.ScVal> {
  * Retrieves a required field from an `ScvMap` record.
  *
  * @throws {Error} if the field is absent.
+ * @internal
  */
 function getField(map: Map<string, xdr.ScVal>, field: string): xdr.ScVal {
   const val = map.get(field);
   if (val === undefined) {
-    throw new Error(`Missing required field "${field}" in ScvMap`);
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `Missing required field "${field}" in ScvMap`
+    );
   }
   return val;
 }
@@ -110,7 +116,10 @@ export function parseSplitRecord(val: xdr.ScVal): SplitRecord {
 
   const recipientsVal = getField(map, 'recipients');
   if (recipientsVal.switch() !== xdr.ScValType.scvVec()) {
-    throw new Error('Field "recipients" must be an ScvVec');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'Field "recipients" must be an ScvVec'
+    );
   }
 
   const recipients: SplitRecipient[] = (recipientsVal.vec() ?? []).map((item) => {
@@ -214,8 +223,9 @@ const DISPUTE_STATUS_MAP: Record<string, DisputeStatus> = {
 function parseDisputeStatus(raw: string): DisputeStatus {
   const status = DISPUTE_STATUS_MAP[raw];
   if (!status) {
-    throw new Error(
-      `Unknown DisputeStatus value: "${raw}". Expected one of: ${Object.keys(DISPUTE_STATUS_MAP).join(', ')}`,
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `Unknown DisputeStatus value: "${raw}". Expected one of: ${Object.keys(DISPUTE_STATUS_MAP).join(', ')}`
     );
   }
   return status;
