@@ -263,8 +263,45 @@ export class BatchModule {
    * await client.batch.freezeBatch(['GABC…', 'GXYZ…', 'GDEF…']);
    * ```
    */
-  async freezeBatch(_addresses: string[]): Promise<TransactionResult> {
-    throw new Error('BatchModule.freezeBatch: not implemented');
+  async freezeBatch(addresses: string[]): Promise<TransactionResult> {
+    if (addresses.length === 0) {
+      throw new Error('BatchModule.freezeBatch: addresses array must not be empty');
+    }
+    if (addresses.length > FREEZE_BATCH_MAX) {
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `freezeBatch supports at most ${FREEZE_BATCH_MAX} addresses.`,
+      );
+    }
+    const entries = xdr.ScVal.scvVec(addresses.map(addressToScVal));
+    return this.writeCall('freeze_batch', [entries]);
+  }
+
+  /**
+   * Unfreezes multiple accounts in a single contract invocation.
+   * Caller must be the contract admin.
+   *
+   * @param addresses - Array of Stellar account addresses to unfreeze.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.batch.unfreezeBatch(['GABC…', 'GXYZ…', 'GDEF…']);
+   * ```
+   */
+  async unfreezeBatch(addresses: string[]): Promise<TransactionResult> {
+    if (addresses.length === 0) {
+      throw new Error('BatchModule.unfreezeBatch: addresses array must not be empty');
+    }
+    if (addresses.length > FREEZE_BATCH_MAX) {
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `unfreezeBatch supports at most ${FREEZE_BATCH_MAX} addresses.`,
+      );
+    }
+    const entries = xdr.ScVal.scvVec(addresses.map(addressToScVal));
+    return this.writeCall('unfreeze_batch', [entries]);
   }
 
   // -------------------------------------------------------------------------

@@ -10,7 +10,7 @@ import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, RecurringRecord, RecurringExecutionEntry, TransactionResult } from '../types/index';
 import { addressToScVal, bigintToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
-import { parseSorobanError } from '../utils/errors';
+import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { parseRecurringExecutionEntry } from '../utils/parsers';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
 
@@ -309,8 +309,15 @@ export class RecurringModule {
       try {
         await this.execute(id);
         executed.push(id);
-      } catch {
-        failed.push(id);
+      } catch (err) {
+        if (
+          err instanceof VeriTixError &&
+          err.code === VeriTixErrorCode.RecurringIntervalNotElapsed
+        ) {
+          skipped.push(id);
+        } else {
+          failed.push(id);
+        }
       }
     }
 
