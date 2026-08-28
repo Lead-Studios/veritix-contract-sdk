@@ -37,6 +37,7 @@ export type {
   RecurringRecord,
   RecurringExecutionEntry,
   TransactionResult,
+  UnsignedTxResult,
   WatchOptions,
 } from './types/index';
 

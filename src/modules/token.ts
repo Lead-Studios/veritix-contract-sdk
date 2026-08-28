@@ -9,10 +9,12 @@ import {
   Address,
   StrKey,
   Account,
+  TransactionBuilder,
   xdr,
   scValToNative,
   nativeToScVal,
 } from '@stellar/stellar-sdk';
+import type { Transaction } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
 import {
   buildContractCall,
@@ -58,6 +60,15 @@ export class TokenModule {
   private readonly server: SorobanRpc.Server;
   private readonly keypair: Keypair | undefined;
 
+  /**
+   * Optional external signer (e.g. a Freighter wallet) used to sign write
+   * transactions when no local `Keypair` is configured. When set, write
+   * operations are signed via this function instead of the local keypair.
+   *
+   * @internal Wire this via {@link setSigner}.
+   */
+  public signer?: (tx: Transaction) => Promise<Transaction>;
+
   /** In-flight request cache — deduplicates concurrent identical read calls. */
   private readonly _readCache = new RequestCache();
 
@@ -65,6 +76,18 @@ export class TokenModule {
     this.config = config;
     this.server = server;
     this.keypair = keypair;
+  }
+
+  /**
+   * Registers an external signer (e.g. a Freighter wallet) that signs write
+   * transactions. Used by {@link VeriTixClient.createFromFreighter} to override
+   * the default local-keypair signing path.
+   *
+   * @param signer - Function that signs a transaction and returns the signed
+   *                 transaction.
+   */
+  setSigner(signer: (tx: Transaction) => Promise<Transaction>): void {
+    this.signer = signer;
   }
 
   // -------------------------------------------------------------------------
@@ -107,14 +130,16 @@ export class TokenModule {
   }
 
   private async writeCall(method: string, args: xdr.ScVal[]): Promise<TransactionResult> {
-    if (!this.keypair) {
+    if (!this.keypair && !this.signer) {
       throw new VeriTixError(
         VeriTixErrorCode.ReadOnlyClient,
         'A Keypair is required for write operations. Pass it to VeriTixClient.',
       );
     }
 
-    const sourceAccount = await this.server.getAccount(this.keypair.publicKey());
+    const sourceAccount = await this.server.getAccount(
+      this.keypair ? this.keypair.publicKey() : this.sourceForWrite(),
+    );
     const tx = await buildContractCall(
       this.server,
       sourceAccount,
@@ -125,7 +150,42 @@ export class TokenModule {
     );
 
     const { transaction } = await simulateTransaction(this.server, tx);
+
+    if (this.signer) {
+      return this.submitSigned(transaction);
+    }
     return submitTransaction(this.server, transaction, this.keypair);
+  }
+
+  private sourceForWrite(): string {
+    // With an external signer, use a throwaway source account — simulation does
+    // not require a funded account.
+    return this.keypair?.publicKey() ?? DUMMY_PUBLIC_KEY;
+  }
+
+  /** Submits a transaction signed by the external {@link signer}. */
+  private async submitSigned(tx: Transaction): Promise<TransactionResult> {
+    const signed = await this.signer!(tx);
+    const sendResponse = await this.server.sendTransaction(signed);
+    if (sendResponse.status === 'ERROR') {
+      throw new VeriTixError(
+        VeriTixErrorCode.TransactionFailed,
+        'Transaction submission rejected by the network.',
+      );
+    }
+    const hash = sendResponse.hash;
+    const result = await this.server.getTransaction(hash);
+    if (result.status === 'SUCCESS') {
+      return {
+        hash,
+        ledger: (result as { ledger?: number }).ledger ?? 0,
+        successful: true,
+      };
+    }
+    if (result.status === 'FAILED') {
+      throw new VeriTixError(VeriTixErrorCode.TransactionFailed, 'Transaction failed on-chain.');
+    }
+    throw new VeriTixError(VeriTixErrorCode.Unknown, 'Transaction not confirmed after submission.');
   }
 
   // -------------------------------------------------------------------------

@@ -212,6 +212,8 @@ export interface RecurringRecord {
   interval: number;
   /** Whether this recurring payment is still active */
   active: boolean;
+  /** Whether this recurring payment is currently paused */
+  paused: boolean;
   /** Ledger sequence number when the most recent charge was executed */
   lastChargedLedger: number;
 }
@@ -265,6 +267,20 @@ export interface TransactionResult {
   successful: boolean;
   /** Optional decoded return value from the contract invocation */
   returnValue?: unknown;
+}
+
+/**
+ * Result of building an unsigned transaction via {@link VeriTixClient.buildUnsignedTx}.
+ * The `xdr` payload is ready to be signed externally (e.g. via a hardware wallet
+ * or a browser extension) and then submitted with {@link VeriTixClient.submitSignedTx}.
+ */
+export interface UnsignedTxResult {
+  /** Base64-encoded, assembled (simulated + fee-bumped) unsigned transaction XDR */
+  xdr: string;
+  /** SHA-256 transaction hash of the unsigned transaction (hex-encoded) */
+  hash: string;
+  /** Estimated transaction fee in stroops */
+  estimatedFee: string;
 }
 
 /**
