@@ -6,6 +6,13 @@
  * condition is met, a resolver adjudicates a dispute, or the escrow expires.
  */
 
+/**
+ * @module EscrowModule
+ *
+ * Provides read and write methods for the VeriTix escrow contract functions.
+ * Handles escrow creation, release, refund, dispute integration, and
+ * bulk settlement operations.
+ */
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type {
   EscrowRecord,
