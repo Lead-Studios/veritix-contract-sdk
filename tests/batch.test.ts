@@ -7,7 +7,7 @@ import { Keypair } from "@stellar/stellar-sdk";
 import { VeriTixClient } from "../src/client";
 import { getTestnetConfig } from "../src/utils/network";
 import { VeriTixError, VeriTixErrorCode } from "../src/utils/errors";
-import type { BatchTransferRecipient, BatchTransferWithMemoRecipient } from "../src/modules/batch";
+import type { BatchMintEntry, BatchTransferRecipient, BatchTransferWithMemoRecipient } from "../src/modules/batch";
 
 const FAKE_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 const CURRENT_LEDGER = 1000;
@@ -39,9 +39,6 @@ function makeClient(keypair?: Keypair) {
 }
 
 function addr() { return Keypair.random().publicKey(); }
-function approval(expirationLedger = FUTURE_LEDGER): BatchApprovalEntry {
-  return { spender: addr(), amount: 1_000_000n, expirationLedger };
-}
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -78,6 +75,25 @@ describe("BatchModule.transferBatch() — validation", () => {
       .rejects.toMatchObject({ code: VeriTixErrorCode.InvalidAmount });
   });
 });
+
+  it("throws AdminUnauthorized when no keypair", async () => {
+    const client = makeClient();
+    await expect(client.batch.mintBatch([{ to: addr(), amount: 1n }]))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("throws for empty entries array", async () => {
+    const client = makeClient(Keypair.random());
+    await expect(client.batch.mintBatch([]))
+      .rejects.toThrow("must not be empty");
+  });
+
+  it("throws BatchTooLarge for 51 entries", async () => {
+    const client = makeClient(Keypair.random());
+    const entries: BatchMintEntry[] = Array.from({ length: 51 }, () => ({ to: addr(), amount: 1n }));
+    await expect(client.batch.mintBatch(entries))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.BatchTooLarge });
+  });
 
   it("accepts exactly 50 recipients without error", async () => {
     const client = makeClient(Keypair.random());
@@ -191,7 +207,7 @@ describe("BatchModule.burnFromBatch()", () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it("throws ADMIN_UNAUTHORIZED when no keypair", async () => {
+  it("throws AdminUnauthorized when no keypair", async () => {
     const client = makeClient();
     await expect(client.batch.burnFromBatch([{ from: addr(), amount: 100n }]))
       .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
@@ -232,5 +248,35 @@ describe("BatchModule.burnFromBatch()", () => {
     ]);
     expect(result.hash).toBe("mockhash");
     expect(result.successful).toBe(true);
+  });
+});
+
+describe("BatchModule.unfreezeBatch()", () => {
+  it("throws AdminUnauthorized when no keypair", async () => {
+    const client = makeClient();
+    await expect(client.batch.unfreezeBatch([addr()]))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  });
+
+  it("throws BatchTooLarge when over 50 addresses", async () => {
+    const client = makeClient(Keypair.random());
+    const addresses = Array.from({ length: 51 }, () => addr());
+    await expect(client.batch.unfreezeBatch(addresses))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.BatchTooLarge });
+  });
+
+  it("submits with the correct addresses argument", async () => {
+    const client = makeClient(Keypair.random());
+    const addresses = [addr(), addr(), addr()];
+    await client.batch.unfreezeBatch(addresses);
+    const buildMock = txUtils.buildContractCall as jest.Mock;
+    expect(buildMock).toHaveBeenCalled();
+    expect(buildMock.mock.calls[0][3]).toBe("unfreeze_batch");
+  });
+
+  it("throws for an empty addresses array", async () => {
+    const client = makeClient(Keypair.random());
+    await expect(client.batch.unfreezeBatch([]))
+      .rejects.toThrow("must not be empty");
   });
 });

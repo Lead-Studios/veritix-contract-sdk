@@ -212,6 +212,8 @@ export interface RecurringRecord {
   interval: number;
   /** Whether this recurring payment is still active */
   active: boolean;
+  /** Whether this recurring payment is currently paused */
+  paused: boolean;
   /** Ledger sequence number when the most recent charge was executed */
   lastChargedLedger: number;
 }

@@ -137,6 +137,49 @@ describe("parseEscrowRecord", () => {
     const partial = xdr.ScVal.scvMap(entries);
     expect(() => parseEscrowRecord(partial)).toThrow(/depositor|missing/i);
   });
+
+  it("returns a correctly typed EscrowRecord from an ScvMap", () => {
+    const record = parseEscrowRecord(makeEscrowScVal());
+    expect(typeof record.id).toBe("bigint");
+    expect(typeof record.depositor).toBe("string");
+    expect(typeof record.beneficiary).toBe("string");
+    expect(typeof record.amount).toBe("bigint");
+    expect(typeof record.released).toBe("boolean");
+    expect(typeof record.refunded).toBe("boolean");
+    expect(typeof record.expiryLedger).toBe("number");
+    expect(Array.isArray(record.memos)).toBe(true);
+  });
+
+  it("an extra field at position 2 does not corrupt other fields", () => {
+    const base = makeEscrowScVal({
+      id: 7n,
+      depositor: TEST_DEPOSITOR,
+      beneficiary: TEST_BENEFICIARY,
+      amount: 3_000n,
+      released: false,
+      refunded: true,
+      expiryLedger: 777_777,
+      memos: ["a", "b"],
+    });
+    const original = base.map()!;
+    const entries: xdr.ScMapEntry[] = [...original.slice(0, 2)];
+    entries.push(
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("extra_field"), val: xdr.ScVal.scvString("ignored") }),
+    );
+    for (let i = 2; i < original.length; i++) entries.push(original[i]);
+
+    const record = parseEscrowRecord(xdr.ScVal.scvMap(entries));
+    expect(record).toEqual({
+      id: 7n,
+      depositor: TEST_DEPOSITOR,
+      beneficiary: TEST_BENEFICIARY,
+      amount: 3_000n,
+      released: false,
+      refunded: true,
+      expiryLedger: 777_777,
+      memos: ["a", "b"],
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -231,6 +274,23 @@ describe("parseSplitRecord", () => {
   it("throws when passed a non-map ScVal", () => {
     expect(() => parseSplitRecord(xdr.ScVal.scvBool(true))).toThrow("ScvMap");
   });
+
+  it("returns a correctly typed SplitRecord", () => {
+    const recipients = [
+      { address: TEST_RECIPIENT1, shareBps: 6_000 },
+      { address: TEST_RECIPIENT2, shareBps: 4_000 },
+    ];
+    const record = parseSplitRecord(makeSplitScVal({ recipients }));
+    expect(typeof record.id).toBe("bigint");
+    expect(typeof record.sender).toBe("string");
+    expect(typeof record.totalAmount).toBe("bigint");
+    expect(typeof record.distributed).toBe("boolean");
+    expect(typeof record.cancelled).toBe("boolean");
+    expect(Array.isArray(record.recipients)).toBe(true);
+    expect(record.recipients.length).toBe(2);
+    expect(typeof record.recipients[0].address).toBe("string");
+    expect(typeof record.recipients[0].shareBps).toBe("number");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -304,6 +364,12 @@ describe("parseDisputeRecord", () => {
       status: DisputeStatus.Open, openedAt: 900_000,
     });
   });
+
+  it("maps the status string to the correct DisputeStatus enum value", () => {
+    const record = parseDisputeRecord(makeDisputeScVal({ status: "ResolvedForBeneficiary" }));
+    expect(record.status).toBe(DisputeStatus.ResolvedForBeneficiary);
+    expect(record.status).toBe("ResolvedForBeneficiary");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -365,11 +431,22 @@ describe("parseRecurringRecord", () => {
       amount: 500_000n,
       interval: 2_592_000,
       active: true,
+      paused: false,
       lastChargedLedger: 800_000,
     });
   });
 
   it("throws when passed a non-map ScVal", () => {
     expect(() => parseRecurringRecord(xdr.ScVal.scvVoid())).toThrow("ScvMap");
+  });
+
+  it("returns paused:true when the paused field is true", () => {
+    const record = parseRecurringRecord(makeRecurringScVal({ paused: true }));
+    expect(record.paused).toBe(true);
+  });
+
+  it("maps paused = false when the field is not specified", () => {
+    const record = parseRecurringRecord(makeRecurringScVal({ active: true }));
+    expect(record.paused).toBe(false);
   });
 });

@@ -26,8 +26,7 @@
  * ```
  */
 
-import { SorobanRpc, Keypair, Contract, xdr } from '@stellar/stellar-sdk';
-import { SorobanRpc, Keypair, StrKey, xdr } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Contract, StrKey, xdr } from '@stellar/stellar-sdk';
 
 import type {
   NetworkConfig,
@@ -137,8 +136,8 @@ export class VeriTixClient extends EventEmitter {
   }
 
   /** Redacts the keypair when the client is logged via console/util.inspect. */
-  [Symbol.for('nodejs.util.inspect.custom')](): string {
-    return createSafeInspect()();
+  [Symbol.for('nodejs.util.inspect.custom')](): (depth: number, opts: object) => string {
+    return createSafeInspect();
   }
 
   // -------------------------------------------------------------------------
@@ -177,7 +176,8 @@ export class VeriTixClient extends EventEmitter {
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): VeriTixClient {
     // Guard against browser bundles: a statically-inlined secret key would
     // end up shipped to every client. Require an explicit client in browsers.
-    if (typeof window !== 'undefined' || typeof document !== 'undefined') {
+    if (typeof globalThis !== 'undefined' &&
+        (globalThis as unknown as { window?: unknown }).window !== undefined) {
       throw new VeriTixError(
         VeriTixErrorCode.ReadOnlyClient,
         'VeriTixClient.fromEnvironment is not available in browser contexts; construct a VeriTixClient explicitly and never inline a secret key',
@@ -336,8 +336,10 @@ export class VeriTixClient extends EventEmitter {
     let contractFound = false;
     if (rpcReachable) {
       try {
+        const contract = new Contract(this.config.contractId);
         await this.server.getContractData(
-          new Contract(this.config.contractId).getAddress().toScVal(),
+          contract.address(),
+          xdr.ScVal.scvAddress(contract.address().toScAddress()),
         );
         contractFound = true;
       } catch {
