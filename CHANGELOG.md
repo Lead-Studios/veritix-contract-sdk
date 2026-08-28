@@ -42,6 +42,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `BatchModule.freezeBatch`/`unfreezeBatch` — added typed batch freezing/unfreezing with size validation (#425)
 - `EscrowModule.triggerAutoRelease` — now pre-flights `auto_release_after_ledger` eligibility before submitting (#426)
 - `RecurringModule.executeAllDue` — routes `RECURRING_INTERVAL_NOT_ELAPSED` failures to `skipped[]` instead of `failed[]` (#427)
+### Changed
+- `VeriTixClient.healthCheck()` — returns `rpcReachable`, `contractFound`, and `latencyMs` for a lightweight RPC/contract health probe (#439)
+- `VeriTixClient` constructor now validates `config.contractId` as a Soroban contract ID (#433)
+- `TokenModule.transfer` now pre-flights an on-chain balance check and throws `INSUFFICIENT_BALANCE` when the sender lacks funds (#434)
 
 ---
 
