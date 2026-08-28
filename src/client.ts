@@ -664,4 +664,16 @@ export class VeriTixClient extends EventEmitter {
       },
     });
   }
+
+  /**
+   * Creates a new VeriTixClientPool that distributes calls across multiple RPC endpoints
+   * @param configs Array of NetworkConfig objects, one for each RPC endpoint
+   * @param keypair Optional Keypair to use for all clients in the pool
+   * @returns A proxy that acts like a VeriTixClient but distributes calls across the pool
+   */
+  static pool(configs: NetworkConfig[], keypair?: Keypair) {
+    const { VeriTixClientPool } = require('./pool');
+    const pool = new VeriTixClientPool(configs, keypair);
+    return pool.proxy;
+  }
 }
