@@ -351,14 +351,6 @@ export class AdminModule {
   }
 
   // -------------------------------------------------------------------------
-  // Dividend distribution
-  // -------------------------------------------------------------------------
-
-  /**
-   * Distributes profits (dividends) to token holders proportionally.
-   * Must be called by admin.
-   *
-   * @param totalAmount - Total dividend amount to distribute (in stroops).
   // Whitelist management
   // -------------------------------------------------------------------------
 
@@ -366,59 +358,8 @@ export class AdminModule {
    * Enables the whitelist feature on the contract. Must be called by admin.
    * When enabled, only whitelisted addresses can interact with the contract.
    *
-  // Emergency refund
-  // -------------------------------------------------------------------------
-
-  /**
-   * Emergency force-refund for a single escrow. Must be called by admin.
-   * Unlike {@link manualRefund}, this method does not require a reason string
-   * and is intended for immediate emergency use.
-   *
-   * @param escrowId - The escrow ID to force-refund.
-  // Fee management
-  // -------------------------------------------------------------------------
-
-  /**
-   * Updates the protocol fee rate. Must be called by the admin.
-   *
-   * @param feeRateBps - New fee rate in basis points (e.g. 250 = 2.5%).
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
-   */
-  async setProtocolFee(feeRateBps: number): Promise<TransactionResult> {
-    return this.writeCall('set_protocol_fee', [
-      xdr.ScVal.scvU32(feeRateBps),
-    ]);
-  }
-
-  // -------------------------------------------------------------------------
-  // Token metadata management
-  // -------------------------------------------------------------------------
-
-  /**
-   * Updates the on-chain token metadata (name, symbol, decimals). Must be called by admin.
-   *
-   * @param params - Metadata fields to update. All are optional; only provided fields are changed.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
-   *
-   * @example
-   * ```ts
-   * await client.admin.dividendDistribute(1_000_000n);
-   * ```
-   */
-  async dividendDistribute(totalAmount: bigint): Promise<TransactionResult> {
-    return this.writeCall('dividend_distribute', [
-      bigintToScVal(totalAmount, 'i128'),
-   * await client.admin.updateTokenMetadata({ name: 'VeriTix V2', symbol: 'VTX2' });
-   * ```
-   */
-  async updateTokenMetadata(params: { name?: string; symbol?: string; decimals?: number }): Promise<TransactionResult> {
-    const args: xdr.ScVal[] = [];
-    if (params.name !== undefined) args.push(stringToScVal(params.name));
-    if (params.symbol !== undefined) args.push(stringToScVal(params.symbol));
-    if (params.decimals !== undefined) args.push(xdr.ScVal.scvU32(params.decimals));
-    return this.writeCall('update_token_metadata', args);
    *
    * @example
    * ```ts
@@ -444,12 +385,21 @@ export class AdminModule {
    */
   async whitelistAddress(address: string): Promise<TransactionResult> {
     return this.writeCall('whitelist_address', [addressToScVal(address)]);
-   * await client.admin.forceRefundEscrow(42n);
-   * ```
-   */
-  async forceRefundEscrow(escrowId: bigint): Promise<TransactionResult> {
-    return this.writeCall('force_refund_escrow', [
-      bigintToScVal(escrowId, 'u64'),
+  }
+
+  // -------------------------------------------------------------------------
+  // Fee management
+  // -------------------------------------------------------------------------
+
+  /**
+   * Updates the protocol fee rate. Must be called by the admin.
+   *
+   * @param feeRateBps - New fee rate in basis points (e.g. 250 = 2.5%).
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
    * await client.admin.setProtocolFee(250); // 2.5%
    * ```
    */
@@ -457,5 +407,29 @@ export class AdminModule {
     return this.writeCall('set_protocol_fee', [
       xdr.ScVal.scvU32(feeRateBps),
     ]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Token metadata management
+  // -------------------------------------------------------------------------
+
+  /**
+   * Updates the on-chain token metadata (name, symbol, decimals). Must be called by admin.
+   *
+   * @param params - Metadata fields to update. All are optional; only provided fields are changed.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.updateTokenMetadata({ name: 'VeriTix V2', symbol: 'VTX2' });
+   * ```
+   */
+  async updateTokenMetadata(params: { name?: string; symbol?: string; decimals?: number }): Promise<TransactionResult> {
+    const args: xdr.ScVal[] = [];
+    if (params.name !== undefined) args.push(stringToScVal(params.name));
+    if (params.symbol !== undefined) args.push(stringToScVal(params.symbol));
+    if (params.decimals !== undefined) args.push(xdr.ScVal.scvU32(params.decimals));
+    return this.writeCall('update_token_metadata', args);
   }
 }

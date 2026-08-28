@@ -95,6 +95,23 @@ export async function buildContractCall(
 }
 
 // ---------------------------------------------------------------------------
+// Assemble
+// ---------------------------------------------------------------------------
+
+/**
+ * Assembles a simulated Soroban transaction back into a signable
+ * `TransactionBuilder` (see {@link SorobanRpc.assembleTransaction}).
+ *
+ * Thin local wrapper so module callers and unit tests can mock `assemble`.
+ */
+export function assembleTransaction(
+  raw: Transaction,
+  simulation: SorobanRpc.Api.SimulateTransactionResponse,
+): TransactionBuilder {
+  return SorobanRpc.assembleTransaction(raw, simulation);
+}
+
+// ---------------------------------------------------------------------------
 // Simulate  (#79)
 // ---------------------------------------------------------------------------
 
@@ -161,11 +178,6 @@ export async function estimateFee(
   args: xdr.ScVal[],
 ): Promise<FeeEstimate> {
   // Use a throwaway source account — simulation does not require a funded account
-  const sourceAccount = new Account(
-    'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN',
-    '0',
-  );
-  // Use a throwaway keypair — simulation does not require a funded account
   const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
   const tx = await buildContractCall(
