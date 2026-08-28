@@ -8,10 +8,10 @@
  */
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
-import type { NetworkConfig, TransactionResult, BatchSettlementResult } from '../types/index';
+import type { NetworkConfig, TransactionResult } from '../types/index';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
-import { addressToScVal, bigintToScVal, scValToString, stringToScVal } from '../utils/scval';
+import { addressToScVal } from '../utils/scval';
 
 /**
  * Handles all admin-level interactions with the VeriTix contract.
