@@ -223,8 +223,9 @@ const DISPUTE_STATUS_MAP: Record<string, DisputeStatus> = {
 function parseDisputeStatus(raw: string): DisputeStatus {
   const status = DISPUTE_STATUS_MAP[raw];
   if (!status) {
-    throw new Error(
-      `Unknown DisputeStatus value: "${raw}". Expected one of: ${Object.keys(DISPUTE_STATUS_MAP).join(', ')}`,
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `Unknown DisputeStatus value: "${raw}". Expected one of: ${Object.keys(DISPUTE_STATUS_MAP).join(', ')}`
     );
   }
   return status;
