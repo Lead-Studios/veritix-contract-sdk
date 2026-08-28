@@ -549,6 +549,53 @@ export class VeriTixClient extends EventEmitter {
     };
   }
 
+  /**
+   * Fetches Stellar account information including XLM balance, sequence number, and subentry count.
+   *
+   * @param address - Stellar account address to fetch information for
+   * @returns Promise resolving to AccountInfo with the account details
+   * @throws {VeriTixError} InvalidAddress if the account does not exist or the address is invalid
+   */
+  async getAccountInfo(address: string): Promise<AccountInfo> {
+    if (!this.connected || !this.server) {
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using module methods'
+      );
+    }
+
+    // Validate the address is a valid Stellar public key
+    if (!StrKey.isValidEd25519PublicKey(address)) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        `Invalid Stellar account address: ${address}`
+      );
+    }
+
+    try {
+      const account = await this.server.getAccount(address);
+      
+      // Find the native XLM balance
+      const xlmBalance = account.balances.find(balance => balance.asset_type === 'native')?.balance || '0';
+      
+      // Convert XLM balance (which is in XLM with 7 decimals) to stroops (1 XLM = 10^7 stroops)
+      const xlmBalanceInStroops = (parseFloat(xlmBalance) * 10_000_000).toString();
+      
+      return {
+        address: account.account_id,
+        xlmBalance: xlmBalanceInStroops,
+        sequence: account.sequence,
+        subentryCount: account.subentry_count,
+      };
+    } catch (err) {
+      // If the account doesn't exist or there's an error fetching it, throw InvalidAddress
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        `Account does not exist or could not be fetched: ${address}`
+      );
+    }
+  }
+
   // -------------------------------------------------------------------------
   // watchEscrow  (#153)
   // -------------------------------------------------------------------------
