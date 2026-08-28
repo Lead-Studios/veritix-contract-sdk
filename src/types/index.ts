@@ -269,6 +269,38 @@ export interface WatchOptions {
 }
 
 /**
+ * Represents a decoded Soroban contract event emitted by the VeriTix contract.
+ */
+export interface VeriTixEvent {
+  /** Event type/name as emitted by the contract */
+  type: string;
+  /** Ledger sequence number when the event was emitted */
+  ledger: number;
+  /** Unix timestamp (seconds since epoch) when the event was emitted */
+  timestamp: number;
+  /** Array of topic values associated with the event */
+  topics: string[];
+  /** Decoded event data payload */
+  data: unknown;
+}
+
+/**
+ * Options for {@link VeriTixClient.streamEvents}.
+ */
+export interface StreamEventOptions {
+  /** AbortSignal to cancel the event stream */
+  signal?: AbortSignal;
+  /** Initial backoff delay in milliseconds before first reconnection attempt (default 1000) */
+  initialBackoffMs?: number;
+  /** Maximum backoff delay in milliseconds (default 30000) */
+  maxBackoffMs?: number;
+  /** Whether to use exponential backoff for reconnections (default true) */
+  useExponentialBackoff?: boolean;
+  /** Horizon URL to use for SSE events (defaults to network-specific Horizon) */
+  horizonUrl?: string;
+}
+
+/**
  * Minimal representation of a submitted Stellar transaction result.
  */
 export interface TransactionResult {
