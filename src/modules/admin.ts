@@ -92,6 +92,8 @@ export class AdminModule {
    * @param newAdmin - Stellar account address of the incoming admin.
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @since 0.1.0
    */
   async setAdmin(_newAdmin: string): Promise<TransactionResult> {
     void this.config;
@@ -118,6 +120,8 @@ export class AdminModule {
    * ```ts
    * await client.admin.proposeAdmin('GNEW...');
    * ```
+   *
+   * @since 0.1.0
    */
   async proposeAdmin(newAdmin: string): Promise<TransactionResult> {
     return this.writeCall('propose_admin', [addressToScVal(newAdmin)]);
@@ -141,6 +145,8 @@ export class AdminModule {
    * // Called by the incoming admin keypair
    * await incomingAdminClient.admin.acceptAdmin();
    * ```
+   *
+   * @since 0.1.0
    */
   async acceptAdmin(): Promise<TransactionResult> {
     return this.writeCall('accept_admin', []);
@@ -157,6 +163,8 @@ export class AdminModule {
    * const pending = await client.admin.getPendingAdmin();
    * if (pending) console.log('Pending admin:', pending);
    * ```
+   *
+   * @since 0.1.0
    */
   async getPendingAdmin(): Promise<string | null> {
     const raw = await this.simulateRead('get_pending_admin', []);
@@ -196,6 +204,8 @@ export class AdminModule {
    * ```ts
    * await client.admin.clawback('GBAD…', 5_000_000n);
    * ```
+   *
+   * @since 0.1.0
    */
   async clawback(_from: string, _amount: bigint): Promise<TransactionResult> {
     throw new Error('AdminModule.clawback: not implemented');
@@ -223,6 +233,8 @@ export class AdminModule {
    * const result = await client.admin.cancelEvent([1n, 2n, 3n]);
    * console.log(`Cancelled ${result.settled}, failed: ${result.failed.length}`);
    * ```
+   *
+   * @since 0.1.0
    */
   async cancelEvent(escrowIds: bigint[]): Promise<BatchSettlementResult> {
     if (!this.keypair) {
@@ -264,6 +276,8 @@ export class AdminModule {
    * ```ts
    * await client.admin.manualRefund(42n, 'Organizer failed to deliver');
    * ```
+   *
+   * @since 0.1.0
    */
   async manualRefund(escrowId: bigint, reason: string): Promise<TransactionResult> {
     return this.writeCall('force_refund_escrow', [
@@ -289,6 +303,8 @@ export class AdminModule {
    * ```ts
    * await client.admin.forceRefundEscrow(42n);
    * ```
+   *
+   * @since 0.1.0
    */
   async forceRefundEscrow(escrowId: bigint): Promise<TransactionResult> {
     return this.writeCall('force_refund_escrow', [
@@ -312,6 +328,8 @@ export class AdminModule {
    * await client.admin.pause();
    * ```
    * @throws {VeriTixError} With code `CONTRACT_ALREADY_PAUSED` if the contract is already paused.
+   *
+   * @since 0.1.0
    */
   async pause(): Promise<TransactionResult> {
     return this.writeCall('pause', []);
@@ -328,6 +346,8 @@ export class AdminModule {
    * await client.admin.unpause();
    * ```
    * @throws {VeriTixError} With code `CONTRACT_NOT_PAUSED` if the contract is not currently paused.
+   *
+   * @since 0.1.0
    */
   async unpause(): Promise<TransactionResult> {
     return this.writeCall('unpause', []);
@@ -348,6 +368,8 @@ export class AdminModule {
    * ```ts
    * await client.admin.setProtocolFee(250); // 2.5%
    * ```
+   *
+   * @since 0.1.0
    */
   async setProtocolFee(feeRateBps: number): Promise<TransactionResult> {
     return this.writeCall('set_protocol_fee', [
@@ -370,6 +392,8 @@ export class AdminModule {
    * ```ts
    * await client.admin.updateTokenMetadata({ name: 'VeriTix V2', symbol: 'VTX2' });
    * ```
+   *
+   * @since 0.1.0
    */
   async updateTokenMetadata(params: { name?: string; symbol?: string; decimals?: number }): Promise<TransactionResult> {
     const args: xdr.ScVal[] = [];
@@ -394,6 +418,8 @@ export class AdminModule {
    * ```ts
    * await client.admin.enableWhitelist();
    * ```
+   *
+   * @since 0.1.0
    */
   async enableWhitelist(): Promise<TransactionResult> {
     return this.writeCall('enable_whitelist', []);
@@ -411,6 +437,8 @@ export class AdminModule {
    * ```ts
    * await client.admin.whitelistAddress('GABC…');
    * ```
+   *
+   * @since 0.1.0
    */
   async whitelistAddress(address: string): Promise<TransactionResult> {
     return this.writeCall('whitelist_address', [addressToScVal(address)]);
@@ -432,6 +460,8 @@ export class AdminModule {
    * ```ts
    * await client.admin.dividendDistribute(1_000_000n);
    * ```
+   *
+   * @since 0.1.0
    */
   async dividendDistribute(totalAmount: bigint): Promise<TransactionResult> {
     return this.writeCall('dividend_distribute', [

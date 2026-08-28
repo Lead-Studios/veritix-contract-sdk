@@ -106,6 +106,8 @@ export class BatchModule {
 
   /**
    * Mints tokens to multiple recipients in a single contract invocation.
+   *
+   * @since 0.1.0
    */
   async mintBatch(entries: BatchMintEntry[]): Promise<TransactionResult> {
     if (!this.keypair) {
@@ -177,6 +179,8 @@ export class BatchModule {
 
   /**
    * Distributes tokens to multiple recipients.
+   *
+   * @since 0.1.0
    */
   async transferBatch(recipients: BatchTransferRecipient[]): Promise<TransactionResult> {
     if (recipients.length === 0) {
@@ -213,6 +217,8 @@ export class BatchModule {
 
   /**
    * Distributes tokens with individual memos.
+   *
+   * @since 0.1.0
    */
   async transferBatchWithMemo(
     recipients: BatchTransferWithMemoRecipient[],
@@ -269,6 +275,8 @@ export class BatchModule {
    * ```ts
    * await client.batch.freezeBatch(['GABC…', 'GXYZ…', 'GDEF…']);
    * ```
+   *
+   * @since 0.1.0
    */
   async freezeBatch(addresses: string[]): Promise<TransactionResult> {
     if (addresses.length === 0) {
@@ -296,6 +304,9 @@ export class BatchModule {
    * ```ts
    * await client.batch.unfreezeBatch(['GABC…', 'GXYZ…', 'GDEF…']);
    * ```
+   *
+   * @since 0.1.0
+   * Added as a bug fix - was missing in the initial scaffold.
    */
   async unfreezeBatch(addresses: string[]): Promise<TransactionResult> {
     if (addresses.length === 0) {
@@ -332,6 +343,8 @@ export class BatchModule {
    *   { from: 'GXYZ…', amount: 200n },
    * ]);
    * ```
+   *
+   * @since 0.1.0
    */
   async burnFromBatch(entries: Array<{ from: string; amount: bigint }>): Promise<TransactionResult> {
     if (!this.keypair) {

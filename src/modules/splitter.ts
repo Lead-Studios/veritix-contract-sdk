@@ -55,6 +55,8 @@ export class SplitterModule {
    * const split = await client.splitter.getSplit(2n);
    * console.log('Distributed:', split?.distributed);
    * ```
+   *
+   * @since 0.1.0
    */
   async getSplit(_id: bigint): Promise<SplitRecord | null> {
     // TODO: implement
@@ -77,6 +79,8 @@ export class SplitterModule {
    * const ids = await client.splitter.getSplitsBySender('GABC…');
    * console.log('Splits created:', ids.length);
    * ```
+   *
+   * @since 0.1.0
    */
   async getSplitsBySender(_sender: string): Promise<bigint[]> {
     return [];
@@ -92,6 +96,8 @@ export class SplitterModule {
    * ```ts
    * const ids = await client.splitter.getSplitsForRecipient('GABC…');
    * ```
+   *
+   * @since 0.1.0
    */
   async getSplitsForRecipient(address: string): Promise<bigint[]> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -129,6 +135,8 @@ export class SplitterModule {
    * ]);
    * if (!valid) console.error(errors);
    * ```
+   *
+   * @since 0.1.0
    */
   validateRecipients(recipients: SplitRecipient[]): ValidationResult {
     const errors: string[] = [];
@@ -158,6 +166,8 @@ export class SplitterModule {
    * const stats = await client.splitter.getSplitterStats();
    * console.log('Total splits:', stats.totalSplits);
    * ```
+   *
+   * @since 0.1.0
    */
   async getSplitterStats(): Promise<{
     totalSplits: number;
@@ -230,6 +240,8 @@ export class SplitterModule {
    *   totalAmount: 10_000_000n,
    * });
    * ```
+   *
+   * @since 0.1.0
    */
   async createSplit(params: CreateSplitParams): Promise<TransactionResult> {
     if (!this.keypair) {
@@ -281,6 +293,8 @@ export class SplitterModule {
    *   totalAmount: 20_000_000n,
    * });
    * ```
+   *
+   * @since 0.1.0
    */
   async createRevenueSplit(params: RevenueSplitParams): Promise<TransactionResult> {
     const { organizer, organizerBps, artist, artistBps, platform, totalAmount } = params;
@@ -313,6 +327,8 @@ export class SplitterModule {
    * });
    * preview.forEach(r => console.log(`${r.address}: ${r.amount}`));
    * ```
+   *
+   * @since 0.1.0
    */
   getRevenueSharePreview(params: RevenueSplitParams): Array<{ address: string; amount: bigint }> {
     const { organizer, organizerBps, artist, artistBps, platform, totalAmount } = params;
@@ -339,6 +355,8 @@ export class SplitterModule {
    * ```ts
    * await client.splitter.replaceRecipient(2n, 'GOLD…', 'NEW…');
    * ```
+   *
+   * @since 0.1.0
    */
   async replaceRecipient(
     splitId: bigint,
@@ -392,6 +410,8 @@ export class SplitterModule {
    * const result = await client.splitter.distribute(2n);
    * console.log('Distributed in tx:', result.hash);
    * ```
+   *
+   * @since 0.1.0
    */
   async distribute(_id: bigint): Promise<TransactionResult> {
     void this.server;

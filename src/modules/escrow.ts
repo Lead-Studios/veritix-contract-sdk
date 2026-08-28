@@ -73,6 +73,8 @@ export class EscrowModule {
    * if (!record) throw new Error('Escrow not found');
    * console.log('Beneficiary:', record.beneficiary);
    * ```
+   *
+   * @since 0.1.0
    */
   async getEscrow(id: bigint): Promise<EscrowRecord | null> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -112,6 +114,8 @@ export class EscrowModule {
    * const stats = await client.escrow.getEscrowStats();
    * console.log('Active escrows:', stats.active);
    * ```
+   *
+   * @since 0.1.0
    */
   async getEscrowStats(): Promise<{
     total: number;
@@ -178,6 +182,8 @@ export class EscrowModule {
    *
    * @param address - Stellar account address of the depositor.
    * @returns Array of escrow IDs owned by that depositor.
+   *
+   * @since 0.1.0
    */
   async getEscrowsByDepositor(address: string): Promise<bigint[]> {
     return this.getEscrowIdsByAddress('escrows_by_depositor', address);
@@ -188,6 +194,8 @@ export class EscrowModule {
    *
    * @param address - Stellar account address of the beneficiary.
    * @returns Array of escrow IDs for that beneficiary.
+   *
+   * @since 0.1.0
    */
   async getEscrowsByBeneficiary(address: string): Promise<bigint[]> {
     return this.getEscrowIdsByAddress('escrows_by_beneficiary', address);
@@ -208,6 +216,8 @@ export class EscrowModule {
    * const id = await client.escrow.escrowBetween(depositorAddr, beneficiaryAddr);
    * if (id) console.log('Active escrow:', id);
    * ```
+   *
+   * @since 0.1.0
    */
   async escrowBetween(depositor: string, beneficiary: string): Promise<bigint | null> {
     const ids = await this.getEscrowsByDepositor(depositor);
@@ -234,6 +244,8 @@ export class EscrowModule {
    * const total = await client.escrow.getEscrowedValueForDepositor(depositorAddr);
    * console.log('Total escrowed:', total);
    * ```
+   *
+   * @since 0.1.0
    */
   async getEscrowedValueForDepositor(depositor: string): Promise<bigint> {
     const ids = await this.getEscrowsByDepositor(depositor);
@@ -266,6 +278,8 @@ export class EscrowModule {
    *   }
    * });
    * ```
+   *
+   * @since 0.1.0
    */
   async getEscrowsBatch(ids: bigint[]): Promise<(EscrowRecord | null)[]> {
     // Validate batch size
@@ -326,6 +340,8 @@ export class EscrowModule {
    *   console.log('Escrow has been settled');
    * }
    * ```
+   *
+   * @since 0.1.0
    */
   async isSettled(id: bigint): Promise<boolean> {
     const record = await this.getEscrow(id);
@@ -350,6 +366,8 @@ export class EscrowModule {
    *   const result = await client.escrow.refundEscrow(1n);
    * }
    * ```
+   *
+   * @since 0.1.0
    */
   async isExpired(id: bigint, currentLedger?: number): Promise<boolean> {
     const record = await this.getEscrow(id);
@@ -375,6 +393,8 @@ export class EscrowModule {
    * const age = await client.escrow.getEscrowAge(1n);
    * console.log('Escrow has been active for', age, 'ledgers');
    * ```
+   *
+   * @since 0.1.0
    */
   async getEscrowAge(escrowId: bigint, currentLedger?: number): Promise<number> {
     const escrow = await this.getEscrow(escrowId);
@@ -432,6 +452,8 @@ export class EscrowModule {
    *   expiryLedger: currentLedger + 17_280, // ~1 day
    * });
    * ```
+   *
+   * @since 0.1.0
    */
   async createEscrow(
     params: CreateEscrowParams,
@@ -509,6 +531,8 @@ export class EscrowModule {
    *
    * @param params - {@link TicketEscrowParams}
    * @returns The created escrow ID.
+   *
+   * @since 0.1.0
    */
   async createTicketEscrow(params: TicketEscrowParams): Promise<bigint> {
     const expiryLedger = params.eventLedger + (params.bufferLedgers ?? 5_000);
@@ -530,6 +554,8 @@ export class EscrowModule {
    * @param id - Numeric escrow identifier.
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ESCROW_ALREADY_SETTLED` if already settled.
+   *
+   * @since 0.1.0
    */
   async releaseEscrow(id: bigint): Promise<TransactionResult> {
     return this.settleEscrow('release_escrow', id);
@@ -542,6 +568,8 @@ export class EscrowModule {
    * @param id - Numeric escrow identifier.
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `ESCROW_NOT_EXPIRED` if still within expiry.
+   *
+   * @since 0.1.0
    */
   async refundEscrow(id: bigint): Promise<TransactionResult> {
     return this.settleEscrow('refund_escrow', id);
@@ -566,6 +594,8 @@ export class EscrowModule {
    * const result = await client.escrow.triggerAutoRelease(1n);
    * console.log('Auto-released in tx:', result.hash);
    * ```
+   *
+   * @since 0.1.0
    */
   async triggerAutoRelease(id: bigint, currentLedger?: number): Promise<TransactionResult> {
     const escrow = await this.getEscrow(id);
@@ -627,6 +657,8 @@ export class EscrowModule {
    * const result = await client.escrow.transferBeneficiary(1n, 'GNEW…');
    * console.log('Beneficiary transferred in tx:', result.hash);
    * ```
+   *
+   * @since 0.1.0
    */
   async transferBeneficiary(escrowId: bigint, newBeneficiary: string): Promise<TransactionResult> {
     if (!this.keypair) {
@@ -804,6 +836,8 @@ export class EscrowModule {
    * console.log(`Settled ${result.settled}, failed: ${result.failed.length}`);
    * console.log('Transaction hashes:', result.txHashes);
    * ```
+   *
+   * @since 0.1.0
    */
   async settleEvent(escrowIds: bigint[]): Promise<BatchSettlementResult> {
     if (!this.keypair) {

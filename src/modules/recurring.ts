@@ -65,6 +65,8 @@ export class RecurringModule {
    * const rec = await client.recurring.getRecurring(5n);
    * console.log('Active:', rec?.active);
    * ```
+   *
+   * @since 0.1.0
    */
   async getRecurring(_id: bigint): Promise<RecurringRecord | null> {
     // TODO: implement
@@ -92,6 +94,8 @@ export class RecurringModule {
    *   interval: 17_280,     // roughly daily
    * });
    * ```
+   *
+   * @since 0.1.0
    */
   async setup(_params: SetupRecurringParams): Promise<TransactionResult> {
     // TODO: implement
@@ -106,6 +110,8 @@ export class RecurringModule {
    * @param id - Numeric recurring-payment identifier.
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `RECURRING_INTERVAL_NOT_ELAPSED` if too soon.
+   *
+   * @since 0.1.0
    */
   async execute(_id: bigint): Promise<TransactionResult> {
     // TODO: implement
@@ -117,10 +123,100 @@ export class RecurringModule {
    *
    * @param id - Numeric recurring-payment identifier.
    * @returns A {@link TransactionResult} on success.
+   *
+   * @since 0.1.0
    */
   async cancel(_id: bigint): Promise<TransactionResult> {
     // TODO: implement
     throw new Error('RecurringModule.cancel: not implemented');
+  }
+
+  /**
+   * Pauses an active recurring payment. Must be called by the payer.
+   * The payment will not execute until resumed.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is provided.
+   * @throws {Error} If the recurring payment is not active.
+   *
+   * @example
+   * ```ts
+   * await client.recurring.pauseRecurring(1n);
+   * ```
+   *
+   * @since 0.1.0
+   * Added as a bug fix - was missing in the initial scaffold.
+   */
+  async pauseRecurring(id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.pauseRecurring: signing keypair required');
+    }
+
+    const record = await this.getRecurring(id);
+    if (record && !record.active) {
+      throw new Error('RecurringModule.pauseRecurring: recurring payment is not active');
+    }
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'pause_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
+  }
+
+  /**
+   * Resumes a paused recurring payment. Must be called by the payer.
+   * The payment will resume executing according to its interval.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is provided.
+   * @throws {Error} If the recurring payment is not paused.
+   *
+   * @example
+   * ```ts
+   * await client.recurring.resumeRecurring(1n);
+   * ```
+   *
+   * @since 0.1.0
+   * Added as a bug fix - was missing in the initial scaffold.
+   */
+  async resumeRecurring(id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.resumeRecurring: signing keypair required');
+    }
+
+    const record = await this.getRecurring(id);
+    if (record && record.active) {
+      throw new Error('RecurringModule.resumeRecurring: recurring payment is not paused');
+    }
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'resume_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
   }
 
   /**
@@ -137,6 +233,8 @@ export class RecurringModule {
    * ```ts
    * await client.recurring.amendRecurring(1n, { amount: 750_000n });
    * ```
+   *
+   * @since 0.1.0
    */
   async amendRecurring(
     id: bigint,
@@ -189,6 +287,8 @@ export class RecurringModule {
    * ```ts
    * await client.recurring.transferPayer(1n, 'GNEW…');
    * ```
+   *
+   * @since 0.1.0
    */
   async transferPayer(id: bigint, newPayer: string): Promise<TransactionResult> {
     if (!this.keypair) {
@@ -237,6 +337,8 @@ export class RecurringModule {
    *   console.log(`Ledger ${entry.executedAtLedger}: ${entry.amount} stroops`);
    * }
    * ```
+   *
+   * @since 0.1.0
    */
   async getRecurringHistory(id: bigint): Promise<RecurringExecutionEntry[]> {
     const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
@@ -300,6 +402,8 @@ export class RecurringModule {
    * const { executed, skipped, failed } = await client.recurring.executeAllDue(keypair.publicKey());
    * console.log(`Executed ${executed.length} payments, ${failed.length} failed`);
    * ```
+   *
+   * @since 0.1.0
    */
   async executeAllDue(payer: string): Promise<{ executed: bigint[]; skipped: bigint[]; failed: bigint[] }> {
     const ids = await this.getRecurringByPayer(payer);
