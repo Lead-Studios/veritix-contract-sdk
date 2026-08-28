@@ -7,6 +7,13 @@
  * {@link VeriTixErrorCode.AdminUnauthorized}.
  */
 
+/**
+ * @module AdminModule
+ *
+ * Provides administrative methods for the VeriTix platform contract functions.
+ * Handles platform configuration, contract upgrades, fee adjustments, and
+ * privileged operations that require admin authorization.
+ */
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
