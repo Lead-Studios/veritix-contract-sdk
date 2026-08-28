@@ -57,6 +57,13 @@ export { SplitterModule } from './modules/splitter';
 export { RecurringModule } from './modules/recurring';
 export { AdminModule } from './modules/admin';
 export { BatchModule } from './modules/batch';
+export { EventsService } from './modules/events-service';
+export { EventDashboard } from './modules/events-dashboard';
+export { EventGalleryService } from './modules/event-gallery.service';
+export { RevenueAnalyticsModule } from './modules/analytics/revenue-analytics.service';
+export { TicketAnalyticsModule } from './modules/analytics/ticket-analytics.service';
+export { CollaboratorModule } from './modules/collaborator/collaborator.service';
+export { TicketPurchaseModule } from './modules/ticket/ticket-purchase.service';
 
 // Module param types
 export type { MintParams, BurnParams, TransferParams, ApproveParams } from './modules/token';
