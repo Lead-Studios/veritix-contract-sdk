@@ -394,7 +394,10 @@ export class VeriTixClient extends EventEmitter {
    */
   async simulate(method: string, args: xdr.ScVal[]): Promise<SimulationResult> {
     if (!this.connected) {
-      throw new Error('VeriTixClient: call connect() before simulate()');
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before simulate()'
+      );
     }
 
     try {
@@ -448,7 +451,10 @@ export class VeriTixClient extends EventEmitter {
    */
   async getCurrentLedger(): Promise<number> {
     if (!this.connected || !this.server) {
-      throw new Error('VeriTixClient: call connect() before using module methods');
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using module methods'
+      );
     }
     const now = Date.now();
     if (
@@ -473,7 +479,10 @@ export class VeriTixClient extends EventEmitter {
    */
   async watchTransaction(hash: string, options?: WatchOptions): Promise<TransactionResult> {
     if (!this.connected || !this.server) {
-      throw new Error('VeriTixClient: call connect() before using module methods');
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using module methods'
+      );
     }
     const intervalMs = options?.intervalMs ?? 2_000;
     const timeoutMs = options?.timeoutMs ?? 60_000;
@@ -518,7 +527,10 @@ export class VeriTixClient extends EventEmitter {
    */
   async getContractMetadata(): Promise<ContractMetadata> {
     if (!this.connected || !this.server) {
-      throw new Error('VeriTixClient: call connect() before using module methods');
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using module methods'
+      );
     }
     const [name, symbol, decimal, totalSupply] = await Promise.all([
       this.token.name(),
@@ -595,8 +607,9 @@ export class VeriTixClient extends EventEmitter {
     return new Proxy({} as SorobanRpc.Server, {
       get: (_target, prop) => {
         if (!this.connected || !this.server) {
-          throw new Error(
-            `VeriTixClient: call connect() before using module methods (attempted access to server.${String(prop)})`,
+          throw new VeriTixError(
+            VeriTixErrorCode.ClientNotConnected,
+            `VeriTixClient: call connect() before using module methods (attempted access to server.${String(prop)})`
           );
         }
         return (this.server as unknown as Record<string | symbol, unknown>)[prop];
