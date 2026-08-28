@@ -1,4 +1,6 @@
 // Factory for creating VeriTixClient from Freighter wallet
+import { VeriTixClient } from '../client';
+
 export async function createFromFreighter(network: string = 'testnet') {
   try {
     const freighter = (window as any).freighter;
