@@ -53,7 +53,10 @@ export class SplitterModule {
     // TODO: implement
     void this.config;
     void this.server;
-    throw new Error('SplitterModule.getSplit: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.getSplit: not implemented'
+    );
   }
 
   /**
