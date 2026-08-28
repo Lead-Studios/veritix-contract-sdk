@@ -649,6 +649,183 @@ export class VeriTixClient extends EventEmitter {
   /**
    * Returns a proxy `SorobanRpc.Server` that throws a helpful error if
    * `connect()` has not been called yet.  Modules hold a reference to this
+/**
+   * Connects to Horizon Server-Sent Events (SSE) endpoint to stream contract events in real-time.
+   * Automatically reconnects with exponential backoff if the stream drops. Supports cancellation via AbortSignal.
+   * 
+   * @param options - {@link StreamEventOptions} for stream configuration (signal, backoff settings, cursor)
+   * @returns AsyncIterableIterator that yields {@link VeriTixEvent} as they are received
+   * 
+   * @example
+   * ```ts
+   * const controller = new AbortController();
+   * for await (const event of client.streamEvents({ signal: controller.signal })) {
+   *   console.log(`Received event: ${event.type} from ledger ${event.ledger}`);
+   *   if (event.type === 'ticket_purchased') {
+   *     console.log('New ticket sold!', event.data);
+   *   }
+   * }
+   * ```
+   */
+  async *streamEvents(options?: StreamEventOptions): AsyncIterableIterator<VeriTixEvent> {
+    if (!this.connected || !this.server) {
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using streamEvents()'
+      );
+    }
+
+    // Get proper Horizon URL based on network
+    const TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
+    const MAINNET_HORIZON_URL = 'https://horizon.stellar.org';
+    let baseHorizonUrl: string;
+    
+    if (this.config.network === 'testnet') {
+      baseHorizonUrl = TESTNET_HORIZON_URL;
+    } else {
+      baseHorizonUrl = MAINNET_HORIZON_URL;
+    }
+
+    // If user provided a custom RPC URL that's not the default, try to derive Horizon URL from it
+    const isDefaultTestnetRpc = this.config.rpcUrl === 'https://soroban-testnet.stellar.org';
+    const isDefaultMainnetRpc = this.config.rpcUrl === 'https://mainnet.stellar.validationcloud.io/v1/soroban/rpc';
+    
+    if (!isDefaultTestnetRpc && !isDefaultMainnetRpc) {
+      // Try to extract Horizon URL from custom RPC URL
+      baseHorizonUrl = this.config.rpcUrl.replace(/\/soroban\/rpc$/, '');
+    }
+
+    if (!baseHorizonUrl.endsWith('/')) {
+      baseHorizonUrl += '/';
+    }
+
+    const opts = {
+      initialBackoffMs: options?.initialBackoffMs ?? 1000,
+      maxBackoffMs: options?.maxBackoffMs ?? 30000,
+      signal: options?.signal,
+      cursor: options?.cursor,
+    };
+
+    let currentBackoff = opts.initialBackoffMs;
+    let eventQueue: VeriTixEvent[] = [];
+    let queueResolver: (() => void) | null = null;
+    let eventSource: any = null;
+    let isAborted = false;
+
+    // Dynamically import EventSource if in Node.js environment (browser has it globally)
+    let EventSourceImpl: typeof EventSource;
+    if (typeof EventSource === 'undefined') {
+      // Node.js environment - require eventsource package
+      try {
+        const { EventSource: NodeEventSource } = require('eventsource');
+        EventSourceImpl = NodeEventSource;
+      } catch (err) {
+        throw new VeriTixError(
+          VeriTixErrorCode.InvalidConfig,
+          'VeriTixClient: streamEvents() requires the "eventsource" package in Node.js environments. Please install it with npm install eventsource.'
+        );
+      }
+    } else {
+      // Browser environment - use global EventSource
+      EventSourceImpl = EventSource;
+    }
+
+    // Setup abort signal listener
+    if (opts.signal) {
+      opts.signal.addEventListener('abort', () => {
+        isAborted = true;
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (queueResolver) {
+          queueResolver();
+          queueResolver = null;
+        }
+      });
+    }
+
+    // Function to create and connect EventSource
+    const connectStream = () => {
+      if (isAborted) return;
+
+      // Horizon SSE endpoint for contract events: /contract/<contractId>/events
+      const streamUrl = new URL(`contract/${this.config.contractId}/events`, baseHorizonUrl);
+      if (opts.cursor) {
+        streamUrl.searchParams.set('cursor', opts.cursor);
+      }
+
+      try {
+        eventSource = new EventSourceImpl(streamUrl.toString());
+
+        eventSource.onopen = () => {
+          // Reset backoff on successful connection
+          currentBackoff = opts.initialBackoffMs;
+        };
+
+        eventSource.onmessage = (event: any) => {
+          try {
+            const rawEvent = JSON.parse(event.data);
+            // Parse raw Horizon SSE event into VeriTixEvent (Horizon event format: https://developers.stellar.org/docs/data/horizon/api-reference/stream/contract-events)
+            const veriTixEvent: VeriTixEvent = {
+              type: rawEvent.topic?.[0] || 'unknown',
+              ledger: parseInt(rawEvent.ledger, 10),
+              timestamp: parseInt(rawEvent.created_at ? new Date(rawEvent.created_at).getTime() / 1000 : rawEvent.timestamp, 10),
+              topics: rawEvent.topic || [],
+              data: rawEvent.value,
+            };
+            eventQueue.push(veriTixEvent);
+            if (queueResolver) {
+              queueResolver();
+              queueResolver = null;
+            }
+          } catch (parseErr) {
+            // Skip invalid events
+          }
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          // Schedule reconnection with exponential backoff if not aborted
+          if (!isAborted) {
+            setTimeout(() => {
+              currentBackoff = Math.min(currentBackoff * 2, opts.maxBackoffMs);
+              connectStream();
+            }, currentBackoff);
+          }
+        };
+      } catch (err) {
+        // Handle connection errors, schedule reconnection
+        if (!isAborted) {
+          setTimeout(() => {
+            currentBackoff = Math.min(currentBackoff * 2, opts.maxBackoffMs);
+            connectStream();
+          }, currentBackoff);
+        }
+      }
+    };
+
+    // Start initial connection
+    connectStream();
+
+    // Yield events as they come in
+    while (!isAborted) {
+      if (eventQueue.length === 0) {
+        // Wait for new events
+        await new Promise<void>((resolve) => {
+          queueResolver = resolve;
+        });
+      } else {
+        const nextEvent = eventQueue.shift()!;
+        yield nextEvent;
+      }
+    }
+  }
+
+  /**
    * proxy so they surface a clear message instead of a confusing crash.
    *
    * @internal
