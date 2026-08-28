@@ -37,6 +37,7 @@ import type {
   StellarNetwork,
   WatchOptions,
   EscrowRecord,
+  AccountInfo,
 } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { DUMMY_PUBLIC_KEY, getMainnetConfig, getTestnetConfig } from './utils/network';
