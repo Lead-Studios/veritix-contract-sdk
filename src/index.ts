@@ -107,6 +107,30 @@ export {
 } from './utils/network';
 
 // ---------------------------------------------------------------------------
+// ScVal conversion helpers
+// ---------------------------------------------------------------------------
+export {
+  addressToScVal,
+  bigintToScVal,
+  boolToScVal,
+  stringToScVal,
+  scValToString,
+  scValToBigint,
+  scValToBoolean,
+  scValToNumber,
+} from './utils/scval';
+
+// ---------------------------------------------------------------------------
+// XDR struct parsers
+// ---------------------------------------------------------------------------
+export {
+  parseEscrowRecord,
+  parseSplitRecord,
+  parseDisputeRecord,
+  parseRecurringRecord,
+} from './utils/parsers';
+
+// ---------------------------------------------------------------------------
 // Format helpers
 // ---------------------------------------------------------------------------
 export { stroopsToXLM, xlmToStroops, formatXLM } from './utils/format';
