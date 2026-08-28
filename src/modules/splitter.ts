@@ -4,7 +4,6 @@
  */
 
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
-import { addressToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
 import { addressToScVal, scValToBigint, scValToNumber } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
@@ -311,6 +310,9 @@ export class SplitterModule {
       { address: artist, amount: (totalAmount * BigInt(artistBps)) / 10_000n },
       { address: platform, amount: (totalAmount * BigInt(platformBps)) / 10_000n },
     ];
+  }
+
+  /**
    * Replaces a compromised recipient address in an existing split.
    * Must be called by the split sender.
    *
