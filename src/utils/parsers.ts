@@ -7,6 +7,7 @@
  * matching the field names used in the VeriTix Soroban contract structs.
  */
 import { xdr, scValToNative } from '@stellar/stellar-sdk';
+import { VeriTixError, VeriTixErrorCode } from './errors';
 import type {
   EscrowRecord,
   SplitRecord,
