@@ -37,6 +37,7 @@ export type {
   EscrowRecord,
   TicketEscrowParams,
   BatchSettlementResult,
+  AccountInfo,
   SplitRecord,
   SplitRecipient,
   DisputeRecord,
