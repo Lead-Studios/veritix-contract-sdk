@@ -563,6 +563,46 @@ export class EscrowModule {
    */
   async triggerAutoRelease(id: bigint, currentLedger?: number): Promise<TransactionResult> {
     const escrow = await this.getEscrow(id);
+    if (!escrow) {
+      throw new VeriTixError(VeriTixErrorCode.EscrowNotFound, 'Escrow not found');
+    }
+
+    if (escrow.released || escrow.refunded) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowAlreadySettled,
+        'Escrow has already been released or refunded',
+      );
+    }
+
+    // Pre-flight: do not submit until the auto-release ledger has elapsed.
+    const ledger = currentLedger ?? (await this.server.getLatestLedger()).sequence;
+    if (ledger < escrow.expiryLedger) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowNotExpired,
+        'Escrow auto-release not yet eligible: expiry ledger has not been reached',
+      );
+    }
+
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'trigger_auto_release',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, undefined);
+  }
+
+  /**
    * Transfers the beneficiary role of an escrow to a new address.
    * Must be called by the depositor. The new beneficiary must be a valid
    * Stellar address and must differ from the depositor.
@@ -619,13 +659,6 @@ export class EscrowModule {
       );
     }
 
-    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
-    const tx = await buildContractCall(
-      this.server,
-      sourceAccount,
-      this.config.contractId,
-      'trigger_auto_release',
-      [bigintToScVal(id, 'u64')],
     const caller = this.keypair.publicKey();
     if (caller !== escrow.depositor) {
       throw new VeriTixError(

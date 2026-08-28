@@ -38,6 +38,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `CollaboratorModule` — add, retrieve, update, and remove event collaborators (#46)
 - `Collaborator`, `CollaboratorUpdate` types and `MAX_COLLABORATORS_PER_EVENT` constant (#46)
 
+### Fixed
+- `BatchModule.freezeBatch`/`unfreezeBatch` — added typed batch freezing/unfreezing with size validation (#425)
+- `EscrowModule.triggerAutoRelease` — now pre-flights `auto_release_after_ledger` eligibility before submitting (#426)
+- `RecurringModule.executeAllDue` — routes `RECURRING_INTERVAL_NOT_ELAPSED` failures to `skipped[]` instead of `failed[]` (#427)
+
 ---
 
 ## [0.1.0] — 2024-01-01 — Initial scaffold
