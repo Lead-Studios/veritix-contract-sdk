@@ -1,3 +1,5 @@
+import { VeriTixError, VeriTixErrorCode } from '../../utils/errors';
+
 /** Billing contact captured at checkout. */
 export interface BillingDetails {
   fullName: string;
@@ -38,12 +40,15 @@ export class TicketPurchaseModule {
   /** Confirms a purchase against remaining availability and stores a receipt. */
   public purchase(orderId: string, request: PurchaseRequest, available: number): Receipt {
     if (!Number.isInteger(request.quantity) || request.quantity < 1) {
-      throw new Error('Ticket quantity must be a positive integer.');
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        'Ticket quantity must be a positive integer.'
+      );
     }
     if (request.quantity > available) {
-      throw new Error(
-        `Only ${available} ticket(s) remain for event ${request.eventId}; ` +
-          `${request.quantity} requested.`,
+      throw new VeriTixError(
+        VeriTixErrorCode.InsufficientBalance,
+        `Only ${available} ticket(s) remain for event ${request.eventId}; ${request.quantity} requested.`
       );
     }
     const receipt: Receipt = {
