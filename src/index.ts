@@ -19,6 +19,7 @@
 // ---------------------------------------------------------------------------
 export { VeriTixClient } from './client';
 export { VeriTixClientExtended } from './client-extended';
+export { VeriTixClientPool } from './pool';
 export { createSafeToJSON, createSafeInspect } from './client-security';
 export { VeriTixSDK } from './namespace';
 export { createFromFreighter } from './modules/freighter-factory';
@@ -36,6 +37,7 @@ export type {
   EscrowRecord,
   TicketEscrowParams,
   BatchSettlementResult,
+  AccountInfo,
   SplitRecord,
   SplitRecipient,
   DisputeRecord,

@@ -98,6 +98,21 @@ export interface TicketEscrowParams {
 export interface BatchSettlementResult {
   /** Number of escrows successfully settled */
   settled: number;
+}
+
+/**
+ * Stellar account information returned by {@link VeriTixClient.getAccountInfo}.
+ */
+export interface AccountInfo {
+  /** Stellar account address */
+  address: string;
+  /** XLM balance of the account (in stroops as string) */
+  xlmBalance: string;
+  /** Account sequence number */
+  sequence: string;
+  /** Number of subentries associated with the account */
+  subentryCount: number;
+}
   /** Escrow IDs that failed to settle */
   failed: bigint[];
   /** Transaction hashes for all submitted settlement transactions */

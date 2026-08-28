@@ -37,6 +37,7 @@ import type {
   StellarNetwork,
   WatchOptions,
   EscrowRecord,
+  AccountInfo,
 } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { DUMMY_PUBLIC_KEY, getMainnetConfig, getTestnetConfig } from './utils/network';
@@ -548,6 +549,53 @@ export class VeriTixClient extends EventEmitter {
     };
   }
 
+  /**
+   * Fetches Stellar account information including XLM balance, sequence number, and subentry count.
+   *
+   * @param address - Stellar account address to fetch information for
+   * @returns Promise resolving to AccountInfo with the account details
+   * @throws {VeriTixError} InvalidAddress if the account does not exist or the address is invalid
+   */
+  async getAccountInfo(address: string): Promise<AccountInfo> {
+    if (!this.connected || !this.server) {
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using module methods'
+      );
+    }
+
+    // Validate the address is a valid Stellar public key
+    if (!StrKey.isValidEd25519PublicKey(address)) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        `Invalid Stellar account address: ${address}`
+      );
+    }
+
+    try {
+      const account = await this.server.getAccount(address);
+      
+      // Find the native XLM balance
+      const xlmBalance = account.balances.find(balance => balance.asset_type === 'native')?.balance || '0';
+      
+      // Convert XLM balance (which is in XLM with 7 decimals) to stroops (1 XLM = 10^7 stroops)
+      const xlmBalanceInStroops = (parseFloat(xlmBalance) * 10_000_000).toString();
+      
+      return {
+        address: account.account_id,
+        xlmBalance: xlmBalanceInStroops,
+        sequence: account.sequence,
+        subentryCount: account.subentry_count,
+      };
+    } catch (err) {
+      // If the account doesn't exist or there's an error fetching it, throw InvalidAddress
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        `Account does not exist or could not be fetched: ${address}`
+      );
+    }
+  }
+
   // -------------------------------------------------------------------------
   // watchEscrow  (#153)
   // -------------------------------------------------------------------------
@@ -615,5 +663,19 @@ export class VeriTixClient extends EventEmitter {
         return (this.server as unknown as Record<string | symbol, unknown>)[prop];
       },
     });
+  }
+
+  /**
+   * Creates a new VeriTixClientPool that distributes calls across multiple RPC endpoints
+   * @param configs Array of NetworkConfig objects, one for each RPC endpoint
+   * @param keypair Optional Keypair to use for all clients in the pool
+   * @returns A proxy that acts like a VeriTixClient but distributes calls across the pool
+   */
+  static pool(configs: NetworkConfig[], keypair?: Keypair) {
+    const { VeriTixClientPool } = require('./pool');
+    // Create a client for each configuration
+    const clients = configs.map(config => new VeriTixClient(config, keypair));
+    const pool = new VeriTixClientPool(clients);
+    return pool.proxy;
   }
 }
