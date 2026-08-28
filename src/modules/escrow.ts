@@ -651,11 +651,10 @@ export class EscrowModule {
       );
     }
 
-    const ledger = currentLedger ?? (await this.server.getLatestLedger()).sequence;
-    if (ledger < escrow.expiryLedger) {
+    if (escrow.released || escrow.refunded) {
       throw new VeriTixError(
-        VeriTixErrorCode.EscrowNotExpired,
-        'Escrow has not yet reached its expiry ledger',
+        VeriTixErrorCode.EscrowAlreadySettled,
+        'Escrow has already been released or refunded',
       );
     }
 
@@ -692,7 +691,6 @@ export class EscrowModule {
       SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
 
     const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
-    const result = await submitTransaction(this.server, assembled, undefined);
     const result = await submitTransaction(this.server, assembled, this.keypair);
 
     return {

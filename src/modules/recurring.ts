@@ -139,7 +139,7 @@ export class RecurringModule {
       throw new Error('RecurringModule.amendRecurring: at least one of amount or interval must be provided');
     }
     if (!this.keypair) {
-      throw new Error('RecurringModule.amendRecurring: signing keypair required');
+      throw new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'RecurringModule.amendRecurring: signing keypair required');
     }
 
     const args = [bigintToScVal(id, 'u64')];
