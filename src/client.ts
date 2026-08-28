@@ -48,6 +48,7 @@ import { SplitterModule } from './modules/splitter';
 import { RecurringModule } from './modules/recurring';
 import { AdminModule } from './modules/admin';
 import { BatchModule } from './modules/batch';
+import { createSafeToJSON, createSafeInspect } from './client-security';
 
 /** Strongly-typed event map for VeriTixClient */
 export interface VeriTixClientEvents {
@@ -123,6 +124,16 @@ export class VeriTixClient extends EventEmitter {
     this.batch = new BatchModule(config, lazyServer, keypair);
   }
 
+  /** Serialises the client without exposing the secret keypair. */
+  toJSON(): Record<string, unknown> {
+    return createSafeToJSON(this)();
+  }
+
+  /** Redacts the keypair when the client is logged via console/util.inspect. */
+  [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return createSafeInspect()();
+  }
+
   // -------------------------------------------------------------------------
   // Static factories
   // -------------------------------------------------------------------------
@@ -157,6 +168,14 @@ export class VeriTixClient extends EventEmitter {
    * ```
    */
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): VeriTixClient {
+    // Guard against browser bundles: a statically-inlined secret key would
+    // end up shipped to every client. Require an explicit client in browsers.
+    if (typeof window !== 'undefined' || typeof document !== 'undefined') {
+      throw new VeriTixError(
+        VeriTixErrorCode.ReadOnlyClient,
+        'VeriTixClient.fromEnvironment is not available in browser contexts; construct a VeriTixClient explicitly and never inline a secret key',
+      );
+    }
     const source: NodeJS.ProcessEnv = env ?? {};
 
     // VERITIX_CONTRACT_ID — required.

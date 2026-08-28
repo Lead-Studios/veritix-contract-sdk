@@ -210,6 +210,12 @@ export function isValidStellarAddress(address: string): boolean {
  * @param fieldName - Human-readable field name used in the error message.
  */
 export function assertValidAddress(address: string, fieldName: string): void {
+  if (StrKey.isValidContract(address)) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidAddress,
+      `${fieldName} must be a Stellar account address, not a Soroban contract ID: "${address}"`,
+    );
+  }
   if (!isValidStellarAddress(address)) {
     throw new VeriTixError(
       VeriTixErrorCode.InvalidAddress,
