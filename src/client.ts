@@ -27,6 +27,7 @@
  */
 
 import { SorobanRpc, Keypair, Contract, xdr } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, StrKey, xdr } from '@stellar/stellar-sdk';
 
 import type {
   NetworkConfig,
@@ -48,6 +49,7 @@ import { SplitterModule } from './modules/splitter';
 import { RecurringModule } from './modules/recurring';
 import { AdminModule } from './modules/admin';
 import { BatchModule } from './modules/batch';
+import { createSafeToJSON, createSafeInspect } from './client-security';
 
 /** Strongly-typed event map for VeriTixClient */
 export interface VeriTixClientEvents {
@@ -107,6 +109,12 @@ export class VeriTixClient extends EventEmitter {
    */
   constructor(config: NetworkConfig, keypair?: Keypair) {
     super();
+    if (!config || typeof config.contractId !== 'string' || !StrKey.isValidContract(config.contractId)) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        'VeriTixClient: config.contractId must be a valid Soroban contract ID',
+      );
+    }
     this.config = config;
     this.keypair = keypair;
 
@@ -121,6 +129,16 @@ export class VeriTixClient extends EventEmitter {
     this.recurring = new RecurringModule(config, lazyServer, keypair);
     this.admin = new AdminModule(config, lazyServer, keypair);
     this.batch = new BatchModule(config, lazyServer, keypair);
+  }
+
+  /** Serialises the client without exposing the secret keypair. */
+  toJSON(): Record<string, unknown> {
+    return createSafeToJSON(this)();
+  }
+
+  /** Redacts the keypair when the client is logged via console/util.inspect. */
+  [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return createSafeInspect()();
   }
 
   // -------------------------------------------------------------------------
@@ -157,6 +175,14 @@ export class VeriTixClient extends EventEmitter {
    * ```
    */
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): VeriTixClient {
+    // Guard against browser bundles: a statically-inlined secret key would
+    // end up shipped to every client. Require an explicit client in browsers.
+    if (typeof window !== 'undefined' || typeof document !== 'undefined') {
+      throw new VeriTixError(
+        VeriTixErrorCode.ReadOnlyClient,
+        'VeriTixClient.fromEnvironment is not available in browser contexts; construct a VeriTixClient explicitly and never inline a secret key',
+      );
+    }
     const source: NodeJS.ProcessEnv = env ?? {};
 
     // VERITIX_CONTRACT_ID — required.

@@ -465,6 +465,13 @@ export class TokenModule {
    * ```
    */
   async transfer(params: TransferParams): Promise<TransactionResult> {
+    const balance = await this.balance(params.from);
+    if (balance < params.amount) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InsufficientBalance,
+        `transfer: insufficient balance for ${params.from} (has ${balance}, needs ${params.amount})`,
+      );
+    }
     return this.writeCall('transfer', [
       addressToScVal(params.from),
       addressToScVal(params.to),

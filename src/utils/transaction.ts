@@ -314,6 +314,15 @@ export async function submitTransaction(
 
   const hash = sendResponse.hash;
 
+  // Verify the hash Soroban RPC returned matches the transaction we signed.
+  const expectedHash = Buffer.from(tx.hash()).toString('hex');
+  if (!hash || hash !== expectedHash) {
+    throw new VeriTixError(
+      VeriTixErrorCode.Unknown,
+      `Transaction hash mismatch: expected ${expectedHash}, got ${hash}`,
+    );
+  }
+
   // 3. Poll until confirmed
   for (let attempt = 0; attempt < maxPollAttempts; attempt++) {
     await sleep(POLL_INTERVAL_MS);

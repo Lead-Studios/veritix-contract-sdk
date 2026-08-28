@@ -40,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - `VeriTixClient.healthCheck()` — returns `rpcReachable`, `contractFound`, and `latencyMs` for a lightweight RPC/contract health probe (#439)
+- `VeriTixClient` constructor now validates `config.contractId` as a Soroban contract ID (#433)
+- `TokenModule.transfer` now pre-flights an on-chain balance check and throws `INSUFFICIENT_BALANCE` when the sender lacks funds (#434)
 
 ---
 
