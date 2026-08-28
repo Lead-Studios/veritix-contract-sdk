@@ -8,7 +8,6 @@ import { Keypair, SorobanRpc } from '@stellar/stellar-sdk';
 import type { VeriTixClient } from './client';
 import type { NetworkConfig } from './types/index';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
-import { Keypair } from '@stellar/stellar-sdk';
 
 /**
  * Health status of an individual pool member

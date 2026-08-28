@@ -673,7 +673,9 @@ export class VeriTixClient extends EventEmitter {
    */
   static pool(configs: NetworkConfig[], keypair?: Keypair) {
     const { VeriTixClientPool } = require('./pool');
-    const pool = new VeriTixClientPool(configs, keypair);
+    // Create a client for each configuration
+    const clients = configs.map(config => new VeriTixClient(config, keypair));
+    const pool = new VeriTixClientPool(clients);
     return pool.proxy;
   }
 }
