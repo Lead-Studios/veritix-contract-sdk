@@ -4,6 +4,7 @@
  */
 
 import { VeriTixClient } from '../src/client';
+import { VeriTixClientExtended } from '../src/client-extended';
 import { getTestnetConfig } from '../src/utils/network';
 import { TokenModule } from '../src/modules/token';
 import { EscrowModule } from '../src/modules/escrow';
@@ -164,11 +165,45 @@ describe('VeriTixClient', () => {
   });
 
   // -------------------------------------------------------------------------
+  // healthCheck()  (#439)
+  // -------------------------------------------------------------------------
+
+  describe('healthCheck()', () => {
+    it('throws if not connected', async () => {
+      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+      await expect(c.healthCheck()).rejects.toThrow();
+    });
+
+    it('reports rpcReachable when the RPC responds', async () => {
+      const { client } = makeConnectedClient();
+      const result = await client.healthCheck();
+      expect(result.rpcReachable).toBe(true);
+      expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // withKeypair()  (#440)
+  // -------------------------------------------------------------------------
+
+  describe('withKeypair()', () => {
+    it('clones the client with a new keypair, reusing the same config', () => {
+      const KP = require('@stellar/stellar-sdk').Keypair;
+      const keypair1 = KP.random();
+      const keypair2 = KP.random();
+      const extended = new VeriTixClientExtended(getTestnetConfig(FAKE_CONTRACT_ID), keypair1);
+      const clone = extended.withKeypair(keypair2);
+      expect(clone).not.toBe(extended);
+      expect(clone.config).toBe(extended.config);
+      expect(clone.getPublicKey()).toBe(keypair2.publicKey());
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // watchTransaction()
   // -------------------------------------------------------------------------
 
-  describe('watchTransaction()', () => {
-    const FAKE_HASH = 'abc123def456';
+  describe('watchTransaction()', () => {    const FAKE_HASH = 'abc123def456';
 
     function makeClientWithGetTransaction(responses: Array<{ status: string; ledger?: number }>) {
       const { client: c } = makeConnectedClient();

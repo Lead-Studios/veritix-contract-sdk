@@ -38,6 +38,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `CollaboratorModule` — add, retrieve, update, and remove event collaborators (#46)
 - `Collaborator`, `CollaboratorUpdate` types and `MAX_COLLABORATORS_PER_EVENT` constant (#46)
 
+### Changed
+- `VeriTixClient.healthCheck()` — returns `rpcReachable`, `contractFound`, and `latencyMs` for a lightweight RPC/contract health probe (#439)
+
 ---
 
 ## [0.1.0] — 2024-01-01 — Initial scaffold
