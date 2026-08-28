@@ -3,6 +3,13 @@
  * Payment splitter operations exposed by the VeriTix Soroban contract.
  */
 
+/**
+ * @module SplitterModule
+ *
+ * Provides revenue distribution methods for the VeriTix platform.
+ * Handles automated revenue splitting between event organizers, artists,
+ * and the platform, with support for custom BPS configurations.
+ */
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import { addressToScVal, scValToBigint, scValToNumber } from '../utils/scval';
 import { buildContractCall } from '../utils/transaction';

@@ -5,6 +5,13 @@
  * Each helper is a thin, focused adapter over the `@stellar/stellar-sdk` XDR
  * types so that module implementations never duplicate conversion logic.
  */
+/**
+ * @module ScValUtils
+ *
+ * Provides Stellar SCV (Soroban Contract Value) conversion utilities for the VeriTix SDK.
+ * Handles conversion between JavaScript types and Soroban's xdr.ScVal type, including
+ * address serialization, bigint conversion, and string/number type transformations.
+ */
 import {
   Address,
   nativeToScVal,

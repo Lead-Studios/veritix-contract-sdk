@@ -1,5 +1,9 @@
 /**
- * @module utils/parsers
+ * @module ParsersUtils
+ *
+ * Provides data parsing and validation utilities for the VeriTix SDK.
+ * Handles schema validation, data transformation, and input sanitization
+ * to ensure type safety across all API interactions.
  * Parsers that convert Soroban `ScVal` (XDR) responses into the typed
  * TypeScript interfaces defined in `src/types/index.ts`.
  *
