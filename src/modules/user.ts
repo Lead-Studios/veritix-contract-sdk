@@ -8,6 +8,7 @@
  */
 
 import { SorobanRpc, Keypair } from '@stellar/stellar-sdk';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import type { NetworkConfig, TransactionResult } from '../types/index';
 
 /**
@@ -49,7 +50,10 @@ export class AdminModule {
     void this.config;
     void this.server;
     void this.keypair;
-    throw new Error('AdminModule.setAdmin: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'AdminModule.setAdmin: not implemented'
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -66,7 +70,11 @@ export class AdminModule {
    */
   async freeze(_address: string): Promise<TransactionResult> {
     // TODO: implement
-    throw new Error('AdminModule.freeze: not implemented');
+    void _address;
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'AdminModule.freeze: not implemented'
+    );
   }
 
   /**
@@ -78,7 +86,11 @@ export class AdminModule {
    */
   async unfreeze(_address: string): Promise<TransactionResult> {
     // TODO: implement
-    throw new Error('AdminModule.unfreeze: not implemented');
+    void _address;
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'AdminModule.unfreeze: not implemented'
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -96,7 +108,12 @@ export class AdminModule {
    */
   async clawback(_from: string, _amount: bigint): Promise<TransactionResult> {
     // TODO: implement
-    throw new Error('AdminModule.clawback: not implemented');
+    void _from;
+    void _amount;
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'AdminModule.clawback: not implemented'
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -112,7 +129,10 @@ export class AdminModule {
    */
   async pause(): Promise<TransactionResult> {
     // TODO: implement
-    throw new Error('AdminModule.pause: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'AdminModule.pause: not implemented'
+    );
   }
 
   /**
@@ -123,6 +143,9 @@ export class AdminModule {
    */
   async unpause(): Promise<TransactionResult> {
     // TODO: implement
-    throw new Error('AdminModule.unpause: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'AdminModule.unpause: not implemented'
+    );
   }
 }
