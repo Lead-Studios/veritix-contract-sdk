@@ -35,8 +35,9 @@ import {
  */
 function scMapToRecord(val: xdr.ScVal): Map<string, xdr.ScVal> {
   if (val.switch() !== xdr.ScValType.scvMap()) {
-    throw new Error(
-      `Expected ScvMap, got ScVal type: ${val.switch().name}`,
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `Expected ScvMap, got ScVal type: ${val.switch().name}`
     );
   }
   const map = new Map<string, xdr.ScVal>();
@@ -51,11 +52,15 @@ function scMapToRecord(val: xdr.ScVal): Map<string, xdr.ScVal> {
  * Retrieves a required field from an `ScvMap` record.
  *
  * @throws {Error} if the field is absent.
+ * @internal
  */
 function getField(map: Map<string, xdr.ScVal>, field: string): xdr.ScVal {
   const val = map.get(field);
   if (val === undefined) {
-    throw new Error(`Missing required field "${field}" in ScvMap`);
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `Missing required field "${field}" in ScvMap`
+    );
   }
   return val;
 }
