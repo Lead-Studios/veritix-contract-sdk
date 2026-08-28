@@ -45,6 +45,8 @@ export type {
   RecurringExecutionEntry,
   TransactionResult,
   WatchOptions,
+  VeriTixEvent,
+  StreamEventOptions,
 } from './types/index';
 
 export { DisputeStatus } from './types/index';
