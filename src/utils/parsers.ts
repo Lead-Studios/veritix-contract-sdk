@@ -116,7 +116,10 @@ export function parseSplitRecord(val: xdr.ScVal): SplitRecord {
 
   const recipientsVal = getField(map, 'recipients');
   if (recipientsVal.switch() !== xdr.ScValType.scvVec()) {
-    throw new Error('Field "recipients" must be an ScvVec');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'Field "recipients" must be an ScvVec'
+    );
   }
 
   const recipients: SplitRecipient[] = (recipientsVal.vec() ?? []).map((item) => {
