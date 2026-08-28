@@ -1,8 +1,32 @@
-import { Keypair, xdr } from '@stellar/stellar-sdk';
+import { Keypair, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
 import { DisputeStatus } from '../src/types/index';
 import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
+import * as transactionUtils from '../src/utils/transaction';
+
+/** Minimal valid raw Soroban simulation-success used to drive assembleTransaction. */
+function rawSimSuccess(): any {
+  const resources = new (xdr as any).SorobanResources({
+    footprint: new (xdr as any).LedgerFootprint({ readOnly: [], readWrite: [] }),
+    instructions: 0,
+    readBytes: 0,
+    writeBytes: 0,
+  });
+  const sd = new (xdr as any).SorobanTransactionData({
+    resources,
+    resourceFee: xdr.Int64.fromString('0'),
+    ext: (xdr as any).ExtensionPoint.fromXDR(Buffer.from([0, 0, 0, 0])),
+  });
+  return {
+    id: '1',
+    latestLedger: 100,
+    transactionData: sd.toXDR('base64'),
+    minResourceFee: '100',
+    cost: { cpuInsns: '0', memBytes: '0' },
+    results: [{ auth: [], xdr: xdr.ScVal.scvVoid().toXDR('base64') }],
+  };
+}
 
 const FAKE_CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
 const FAKE_ESCROW_ID = 123n;
@@ -393,6 +417,33 @@ describe('DisputeModule.expireDispute', () => {
   });
 
   it('throws DISPUTE_NOT_FOUND when dispute does not exist', async () => {
+    const keypair = Keypair.random();
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.dispute, 'getDispute').mockResolvedValue(null);
+
+    await expect(client.dispute.expireDispute(999n)).rejects.toMatchObject({
+      code: VeriTixErrorCode.DisputeNotFound,
+    });
+  });
+
+  it('throws DISPUTE_ALREADY_RESOLVED when dispute is not open', async () => {
+    const keypair = Keypair.random();
+    const { client } = makeConnectedClient(keypair);
+    jest.spyOn(client.dispute, 'getDispute').mockResolvedValue({
+      id: 1n,
+      escrowId: 100n,
+      claimant: Keypair.random().publicKey(),
+      resolver: keypair.publicKey(),
+      status: DisputeStatus.ResolvedForDepositor,
+      openedAt: 1,
+    });
+
+    await expect(client.dispute.expireDispute(1n)).rejects.toMatchObject({
+      code: VeriTixErrorCode.DisputeAlreadyResolved,
+    });
+  });
+});
+
 describe('DisputeModule.isDisputeExpired', () => {
   it('returns true when dispute is expired', async () => {
     const keypair = Keypair.random();
@@ -410,32 +461,6 @@ describe('DisputeModule.isDisputeExpired', () => {
     const { client, mockServer } = makeConnectedClient(keypair);
     mockServer.simulateTransaction.mockResolvedValue({
       status: 'SUCCESS',
-      result: { retval: undefined },
-    });
-    await expect(client.dispute.expireDispute(999n)).rejects.toMatchObject({
-      code: VeriTixErrorCode.DisputeNotFound,
-    });
-  });
-
-  it('throws DISPUTE_ALREADY_RESOLVED when dispute is not open', async () => {
-    const keypair = Keypair.random();
-    const { client, mockServer } = makeConnectedClient(keypair);
-    const disputeId = 1n;
-    const mockRecord = xdr.ScVal.scvMap([
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('id'), val: xdr.ScVal.scvU64(xdr.Uint64.fromString('1')) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('escrow_id'), val: xdr.ScVal.scvU64(xdr.Uint64.fromString('100')) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('claimant'), val: xdr.ScVal.scvString(Keypair.random().publicKey()) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('resolver'), val: xdr.ScVal.scvString(Keypair.random().publicKey()) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('status'), val: xdr.ScVal.scvSymbol('ResolvedForBeneficiary') }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('opened_at'), val: xdr.ScVal.scvU64(xdr.Uint64.fromString('500')) }),
-    ]);
-    mockServer.simulateTransaction.mockResolvedValue({
-      status: 'SUCCESS',
-      result: { retval: mockRecord },
-    });
-    await expect(client.dispute.expireDispute(disputeId)).rejects.toMatchObject({
-      code: VeriTixErrorCode.DisputeAlreadyResolved,
-    });
       result: { retval: xdr.ScVal.scvBool(false) },
     });
     const expired = await client.dispute.isDisputeExpired(1n);
@@ -461,6 +486,63 @@ describe('DisputeModule.isDisputeExpired', () => {
       error: 'contract panic',
     });
     await expect(client.dispute.isDisputeExpired(1n)).rejects.toThrow();
+  });
+});
+
+describe('DisputeModule.appealDispute', () => {
+  const appealClaimant = Keypair.random();
+  const appealResolver = Keypair.random().publicKey();
+
+  it('throws when no signing keypair is available', async () => {
+    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+    await expect(
+      client.dispute.appealDispute(3n, appealResolver),
+    ).rejects.toThrow('signing keypair required');
+  });
+
+  it('throws DISPUTE_INVALID_STATE when appealResolver equals the caller', async () => {
+    const { client } = makeConnectedClient(appealClaimant);
+    await expect(
+      client.dispute.appealDispute(FAKE_ESCROW_ID, appealClaimant.publicKey()),
+    ).rejects.toMatchObject({
+      code: VeriTixErrorCode.DisputeInvalidState,
+    });
+  });
+
+  it('submits appeal_dispute with the correct dispute_id and appeal_resolver args', async () => {
+    const appealResolver = Keypair.random().publicKey();
+    const { client, mockServer } = makeConnectedClient(appealClaimant);
+
+    jest.spyOn(client.dispute, 'getDispute').mockResolvedValue({
+      id: FAKE_ESCROW_ID,
+      escrowId: 321n,
+      claimant: appealClaimant.publicKey(),
+      resolver: appealResolver,
+      status: DisputeStatus.Open,
+      openedAt: 1,
+    });
+
+    const buildSpy = jest.spyOn(transactionUtils, 'buildContractCall');
+    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
+      hash: 'appeal-hash',
+      ledger: 120,
+      successful: true,
+      returnValue: undefined,
+    });
+
+    mockServer.simulateTransaction.mockResolvedValue(rawSimSuccess());
+
+    const result = await client.dispute.appealDispute(FAKE_ESCROW_ID, appealResolver);
+
+    expect(result.hash).toBe('appeal-hash');
+    expect(result.successful).toBe(true);
+
+    expect(buildSpy).toHaveBeenCalled();
+    const call = buildSpy.mock.calls[0];
+    expect(call[3]).toBe('appeal_dispute');
+    const args = call[4] as xdr.ScVal[];
+    expect(scValToNative(args[1])).toBe(FAKE_ESCROW_ID);
+    expect(scValToNative(args[2])).toBe(appealResolver);
   });
 });
 
