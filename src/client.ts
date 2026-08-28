@@ -91,7 +91,7 @@ export class VeriTixClient extends EventEmitter {
   public readonly batch: BatchModule;
 
   private server!: SorobanRpc.Server;
-  private readonly keypair: Keypair | undefined;
+  protected readonly keypair: Keypair | undefined;
   private connected = false;
 
   /** Cache for getCurrentLedger — { sequence, fetchedAt } */
