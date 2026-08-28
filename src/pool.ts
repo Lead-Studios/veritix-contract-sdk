@@ -5,9 +5,10 @@
  */
 
 import { Keypair, SorobanRpc } from '@stellar/stellar-sdk';
-import { VeriTixClient } from './client';
+import type { VeriTixClient } from './client';
 import type { NetworkConfig } from './types/index';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
+import { Keypair } from '@stellar/stellar-sdk';
 
 /**
  * Health status of an individual pool member
@@ -56,25 +57,23 @@ export class VeriTixClientPool {
    * @param configs Array of NetworkConfig objects, one for each RPC endpoint
    * @param keypair Optional Keypair to use for all clients in the pool
    */
-  constructor(configs: NetworkConfig[], keypair?: Keypair) {
-    if (configs.length === 0) {
+  constructor(clients: VeriTixClient[]) {
+    if (clients.length === 0) {
       throw new VeriTixError(
         VeriTixErrorCode.InvalidAddress,
-        'VeriTixClientPool: at least one network configuration is required'
+        'VeriTixClientPool: at least one client is required'
       );
     }
 
-    // Create a client for each configuration
-    this.clients = configs.map(config => {
-      const client = new VeriTixClient(config, keypair);
-      // Initialize health status
+    // Store the clients and initialize their health status
+    this.clients = clients;
+    this.clients.forEach(client => {
       this.health.set(client, {
         healthy: true,
         consecutiveErrors: 0,
         totalCalls: 0,
-        config,
+        config: client.config,
       });
-      return client;
     });
   }
 
@@ -209,25 +208,3 @@ export class VeriTixClientPool {
     },
   });
 }
-
-// Add the static pool method to VeriTixClient
-declare module './client' {
-  interface VeriTixClient {
-    // Static method is added to the class, not the instance
-  }
-  
-  namespace VeriTixClient {
-    function pool(configs: NetworkConfig[], keypair?: Keypair): VeriTixClientPool['proxy'];
-  }
-}
-
-/**
- * Static method to create a new VeriTixClientPool
- * @param configs Array of NetworkConfig objects for each RPC endpoint
- * @param keypair Optional Keypair to use for all clients
- * @returns A proxy that acts like a VeriTixClient but distributes calls across the pool
- */
-VeriTixClient.pool = function(configs: NetworkConfig[], keypair?: Keypair) {
-  const pool = new VeriTixClientPool(configs, keypair);
-  return pool.proxy;
-};
