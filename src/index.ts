@@ -18,6 +18,10 @@
 // Client
 // ---------------------------------------------------------------------------
 export { VeriTixClient } from './client';
+export { VeriTixClientExtended } from './client-extended';
+export { createSafeToJSON, createSafeInspect } from './client-security';
+export { VeriTixSDK } from './namespace';
+export { createFromFreighter } from './modules/freighter-factory';
 // NOTE: WatchOptions was previously exported from './client' (deprecated).
 // The canonical export is from './types/index' below.
 // @deprecated importing WatchOptions from './client' — use './types/index' directly.
