@@ -10,8 +10,6 @@ import {
   StrKey,
   Account,
   xdr,
-  scValToNative,
-  nativeToScVal,
 } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
 import {

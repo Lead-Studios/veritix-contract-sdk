@@ -6,7 +6,7 @@
  * arbitration by a pre-designated resolver address.
  */
 
-import { SorobanRpc, Keypair, Account, xdr, scValToNative } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import {
   DisputeRecord,
   DisputeStatus,
