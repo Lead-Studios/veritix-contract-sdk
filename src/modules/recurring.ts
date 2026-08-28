@@ -6,6 +6,13 @@
  * at a fixed interval measured in Stellar ledger count.
  */
 
+/**
+ * @module RecurringModule
+ *
+ * Provides recurring payment subscription methods for the VeriTix platform.
+ * Handles subscription creation, renewal, cancellation, and automated
+ * recurring charge processing for season passes and memberships.
+ */
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, RecurringRecord, RecurringExecutionEntry, TransactionResult } from '../types/index';
 import { addressToScVal, bigintToScVal } from '../utils/scval';

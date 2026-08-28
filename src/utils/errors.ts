@@ -130,6 +130,13 @@ export enum VeriTixErrorCode {
  * }
  * ```
  */
+/**
+ * @module ErrorsUtils
+ *
+ * Provides error handling utilities for the VeriTix SDK.
+ * Defines custom error classes, error codes, and Soroban RPC error parsing
+ * to provide consistent, human-readable error messages across the platform.
+ */
 export class VeriTixError extends Error {
   /** Canonical SDK error code */
   public readonly code: VeriTixErrorCode;

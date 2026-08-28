@@ -6,7 +6,14 @@
  * arbitration by a pre-designated resolver address.
  */
 
-import { SorobanRpc, Keypair, Account, xdr, scValToNative } from '@stellar/stellar-sdk';
+/**
+ * @module DisputeModule
+ *
+ * Provides dispute resolution methods for the VeriTix platform.
+ * Handles dispute creation, evidence submission, resolution votes,
+ * and automated fund distribution based on dispute outcomes.
+ */
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import {
   DisputeRecord,
   DisputeStatus,

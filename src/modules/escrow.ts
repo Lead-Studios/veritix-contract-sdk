@@ -6,13 +6,19 @@
  * condition is met, a resolver adjudicates a dispute, or the escrow expires.
  */
 
-import { SorobanRpc, Keypair, Account, xdr, Address } from '@stellar/stellar-sdk';
+/**
+ * @module EscrowModule
+ *
+ * Provides read and write methods for the VeriTix escrow contract functions.
+ * Handles escrow creation, release, refund, dispute integration, and
+ * bulk settlement operations.
+ */
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type {
   EscrowRecord,
   NetworkConfig,
   TicketEscrowParams,
   TransactionResult,
-  BatchSettlementResult,
 } from '../types/index';
 import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
