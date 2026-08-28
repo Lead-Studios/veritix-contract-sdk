@@ -3,10 +3,9 @@
  * Payment splitter operations exposed by the VeriTix Soroban contract.
  */
 
-import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
-import { addressToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
-import { addressToScVal, scValToBigint, scValToNumber } from '../utils/scval';
-import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
+import { SorobanRpc, Keypair, Account, Address, xdr } from '@stellar/stellar-sdk';
+import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
+import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
 import type {
@@ -230,10 +229,34 @@ export class SplitterModule {
     if (totalBps !== 10_000) {
       throw new VeriTixError(VeriTixErrorCode.SplitInvalidShares, 'Recipient shares must sum to 10 000 basis points.');
     }
-    // TODO: build & submit contract call
-    void simulateTransaction;
-    void submitTransaction;
-    throw new Error('SplitterModule.createSplit: not implemented');
+
+    const recipientsScVal = xdr.ScVal.scvVec(
+      params.recipients.map((r) =>
+        xdr.ScVal.scvMap([
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('address'), val: new Address(r.address).toScVal() }),
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('share_bps'), val: xdr.ScVal.scvU32(r.shareBps) }),
+        ]),
+      ),
+    );
+
+    const totalAmountScVal = bigintToScVal(params.totalAmount, 'i128');
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'create_split',
+      [recipientsScVal, totalAmountScVal],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+    return result;
   }
 
   /**
@@ -311,6 +334,9 @@ export class SplitterModule {
       { address: artist, amount: (totalAmount * BigInt(artistBps)) / 10_000n },
       { address: platform, amount: (totalAmount * BigInt(platformBps)) / 10_000n },
     ];
+  }
+
+  /**
    * Replaces a compromised recipient address in an existing split.
    * Must be called by the split sender.
    *

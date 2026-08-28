@@ -26,8 +26,10 @@
  * ```
  */
 
-import { SorobanRpc, Keypair, Contract, xdr } from '@stellar/stellar-sdk';
-import { SorobanRpc, Keypair, StrKey, xdr } from '@stellar/stellar-sdk';
+import { SorobanRpc, Keypair, Contract, StrKey, xdr } from '@stellar/stellar-sdk';
+
+declare const window: unknown;
+declare const document: unknown;
 
 import type {
   NetworkConfig,
@@ -137,8 +139,8 @@ export class VeriTixClient extends EventEmitter {
   }
 
   /** Redacts the keypair when the client is logged via console/util.inspect. */
-  [Symbol.for('nodejs.util.inspect.custom')](): string {
-    return createSafeInspect()();
+  [Symbol.for('nodejs.util.inspect.custom')](): (depth: number, opts: object) => string {
+    return createSafeInspect();
   }
 
   // -------------------------------------------------------------------------
@@ -337,7 +339,8 @@ export class VeriTixClient extends EventEmitter {
     if (rpcReachable) {
       try {
         await this.server.getContractData(
-          new Contract(this.config.contractId).getAddress().toScVal(),
+          new Contract(this.config.contractId).address(),
+          xdr.ScVal.scvVoid(),
         );
         contractFound = true;
       } catch {

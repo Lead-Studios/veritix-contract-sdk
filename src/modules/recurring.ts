@@ -117,6 +117,82 @@ export class RecurringModule {
   }
 
   /**
+   * Pauses an active recurring payment so future charges are skipped.
+   * Must be called by the payer.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `READ_ONLY_CLIENT` if no keypair is present.
+   *
+   * @example
+   * ```ts
+   * await client.recurring.pauseRecurring(1n);
+   * ```
+   */
+  async pauseRecurring(id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.ReadOnlyClient,
+        'RecurringModule.pauseRecurring: signing keypair required',
+      );
+    }
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'pause_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
+  }
+
+  /**
+   * Resumes a previously paused recurring payment so charges resume.
+   * Must be called by the payer.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `READ_ONLY_CLIENT` if no keypair is present.
+   *
+   * @example
+   * ```ts
+   * await client.recurring.resumeRecurring(1n);
+   * ```
+   */
+  async resumeRecurring(id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new VeriTixError(
+        VeriTixErrorCode.ReadOnlyClient,
+        'RecurringModule.resumeRecurring: signing keypair required',
+      );
+    }
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'resume_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
+  }
+
+  /**
    * Amends an existing recurring payment's amount and/or interval.
    * Must be called by the payer. At least one of `amount` or `interval` must be provided.
    *
