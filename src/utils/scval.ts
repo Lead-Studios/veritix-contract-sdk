@@ -5,12 +5,20 @@
  * Each helper is a thin, focused adapter over the `@stellar/stellar-sdk` XDR
  * types so that module implementations never duplicate conversion logic.
  */
+/**
+ * @module ScValUtils
+ *
+ * Provides Stellar SCV (Soroban Contract Value) conversion utilities for the VeriTix SDK.
+ * Handles conversion between JavaScript types and Soroban's xdr.ScVal type, including
+ * address serialization, bigint conversion, and string/number type transformations.
+ */
 import {
   Address,
   nativeToScVal,
   scValToNative,
   xdr,
 } from '@stellar/stellar-sdk';
+import { VeriTixError, VeriTixErrorCode } from './errors';
 
 // ---------------------------------------------------------------------------
 // TypeScript → ScVal
@@ -63,8 +71,9 @@ export function stringToScVal(value: string): xdr.ScVal {
 export function scValToString(val: xdr.ScVal): string {
   const native = scValToNative(val);
   if (typeof native !== 'string') {
-    throw new Error(
-      `Expected ScVal of type String or Symbol, got switch: ${val.switch().name}`,
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `Expected ScVal of type String or Symbol, got switch: ${val.switch().name}`
     );
   }
   return native;
@@ -74,27 +83,29 @@ export function scValToString(val: xdr.ScVal): string {
  * Extracts a `bigint` from an `ScVal` of any integer type
  * (`i64`, `u64`, `i128`, `u128`, `i256`, `u256`).
  *
- * @throws {Error} if the native value is not a `bigint` or `number`.
+ * @throws {VeriTixError} if the native value is not a `bigint` or `number`.
  */
 export function scValToBigint(val: xdr.ScVal): bigint {
   const native = scValToNative(val);
   if (typeof native === 'bigint') return native;
   if (typeof native === 'number') return BigInt(native);
-  throw new Error(
-    `Expected ScVal to be a numeric type, got switch: ${val.switch().name}`,
+  throw new VeriTixError(
+    VeriTixErrorCode.InvalidInput,
+    `Expected ScVal to be a numeric type, got switch: ${val.switch().name}`
   );
 }
 
 /**
  * Extracts a `boolean` from an `ScVal` of type `Bool`.
  *
- * @throws {Error} if the `ScVal` is not a boolean type.
+ * @throws {VeriTixError} if the `ScVal` is not a boolean type.
  */
 export function scValToBoolean(val: xdr.ScVal): boolean {
   const native = scValToNative(val);
   if (typeof native !== 'boolean') {
-    throw new Error(
-      `Expected ScVal of type Bool, got switch: ${val.switch().name}`,
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `Expected ScVal of type Bool, got switch: ${val.switch().name}`
     );
   }
   return native;
@@ -106,13 +117,14 @@ export function scValToBoolean(val: xdr.ScVal): boolean {
  * > **Warning:** values exceeding `Number.MAX_SAFE_INTEGER` will lose
  * > precision.  For large amounts, prefer {@link scValToBigint}.
  *
- * @throws {Error} if the native value is not numeric.
+ * @throws {VeriTixError} if the native value is not numeric.
  */
 export function scValToNumber(val: xdr.ScVal): number {
   const native = scValToNative(val);
   if (typeof native === 'number') return native;
   if (typeof native === 'bigint') return Number(native);
-  throw new Error(
-    `Expected ScVal to be a numeric type, got switch: ${val.switch().name}`,
+  throw new VeriTixError(
+    VeriTixErrorCode.InvalidInput,
+    `Expected ScVal to be a numeric type, got switch: ${val.switch().name}`
   );
 }

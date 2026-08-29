@@ -3,6 +3,13 @@
  * Token operations exposed by the VeriTix Soroban contract.
  */
 
+/**
+ * @module TokenModule
+ *
+ * Provides token management methods for the VeriTix platform.
+ * Handles ticket token minting, transfers, approvals, balance queries,
+ * and ticket redemption operations for the VeriTix ticket token contract.
+ */
 import {
   SorobanRpc,
   Keypair,
@@ -10,8 +17,6 @@ import {
   StrKey,
   Account,
   xdr,
-  scValToNative,
-  nativeToScVal,
 } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
 import {
