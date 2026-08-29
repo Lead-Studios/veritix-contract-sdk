@@ -50,6 +50,18 @@ describe('TokenModule', () => {
     expect(await client.token.totalSupply()).toBe(1_000_000_000n);
   });
 
+  it('totalHolders() returns a number (u32) from simulation', async () => {
+    mockSimulate.mockResolvedValue(simSuccess(nativeToScVal(42, { type: 'u32' })));
+    const count = await client.token.totalHolders();
+    expect(typeof count).toBe('number');
+    expect(count).toBe(42);
+  });
+
+  it('totalHolders() returns 0 when contract returns no result', async () => {
+    mockSimulate.mockResolvedValue({ result: { retval: undefined }, latestLedger: 1, minResourceFee: '100', transactionData: '', events: [] });
+    await expect(client.token.totalHolders()).resolves.toBe(0);
+  });
+
   // -- Write methods — keypair guard -----------------------------------------
 
   it('mint() throws without keypair', async () => {

@@ -350,18 +350,21 @@ export class TokenModule {
   /**
    * Returns the total number of token holders tracked on-chain.
    *
+   * The contract returns a `u32`, so this is a JavaScript `number`.
+   *
    * @returns Total number of holders (>= 0).
    *
    * @example
    * ```ts
    * const count = await client.token.totalHolders();
-   * console.log('Total holders:', count.toString());
+   * console.log('Total holders:', count);
    * ```
    */
-  async totalHolders(): Promise<bigint> {
+  async totalHolders(): Promise<number> {
     const result = await this.simulateRead('total_holders', []);
-    if (result === null || result === undefined) return 0n;
-    return BigInt(result as bigint);
+    if (result === null || result === undefined) return 0;
+    if (typeof result === 'bigint') return Number(result);
+    return Number(result);
   }
 
   /**

@@ -29,6 +29,14 @@ export interface NetworkConfig {
   retries?: number;
   /** Base delay in ms between retries — doubles each attempt (default 1000) */
   retryDelayMs?: number;
+  /**
+   * Opt-in anonymous telemetry (default false). When `true`, after each
+   * successful transaction the SDK sends a fire-and-forget POST to the
+   * VeriTix analytics endpoint with only `{ method, network, success,
+   * durationMs }`. No addresses, amounts, or keys are ever transmitted, and
+   * the call is silently ignored if the endpoint is unreachable.
+   */
+  telemetry?: boolean;
 }
 
 /**

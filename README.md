@@ -107,6 +107,40 @@ const custom: NetworkConfig = {
 };
 ```
 
+### Anonymous telemetry (opt-in)
+
+Telemetry is **off by default** and strictly optional. To enable it, set
+`telemetry: true` on your `NetworkConfig`:
+
+```ts
+const config: NetworkConfig = {
+  network: 'testnet',
+  contractId: 'C…',
+  rpcUrl: 'https://my-rpc-node.example.com',
+  networkPassphrase: 'Test SDF Network ; September 2015',
+  telemetry: true, // optional anonymous telemetry
+};
+```
+
+When enabled, after each successful transaction the SDK sends a single
+fire-and-forget POST to the VeriTix analytics endpoint
+(`https://analytics.veritix.app/telemetry`) containing only:
+
+```
+{ "method": <contract method>, "network": "testnet|mainnet", "success": true|false, "durationMs": <number> }
+```
+
+No addresses, amounts, secret keys, or other sensitive data are ever
+transmitted. If the endpoint is unreachable, the report is silently ignored —
+telemetry never causes a transaction to fail or throw. A clear log message is
+printed at `connect()` time so you always know it is active:
+
+```
+VeriTix SDK: anonymous telemetry enabled. Disable with telemetry: false.
+```
+
+To disable, either remove `telemetry` from the config or set it to `false`.
+
 ---
 
 ## Read-only Mode

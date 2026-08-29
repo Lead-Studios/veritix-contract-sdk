@@ -26,6 +26,7 @@
  * ```
  */
 
+import { SorobanRpc, Keypair, Contract, StrKey, xdr } from '@stellar/stellar-sdk';
 import { SorobanRpc, Keypair, Contract, StrKey, TransactionBuilder, xdr } from '@stellar/stellar-sdk';
 import type { Transaction } from '@stellar/stellar-sdk';
 import { SorobanRpc, Keypair, Contract, StrKey, xdr } from '@stellar/stellar-sdk';
@@ -108,6 +109,9 @@ export class VeriTixClient extends EventEmitter {
   private ledgerCache: { sequence: number; fetchedAt: number } | null = null;
   private static readonly LEDGER_CACHE_TTL_MS = 5_000;
 
+  /** Fire-and-forget analytics endpoint used only when `telemetry` is enabled. */
+  private static readonly ANALYTICS_ENDPOINT = 'https://analytics.veritix.app/telemetry';
+
   /**
    * Creates a new `VeriTixClient`.
    *
@@ -186,6 +190,8 @@ export class VeriTixClient extends EventEmitter {
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): VeriTixClient {
     // Guard against browser bundles: a statically-inlined secret key would
     // end up shipped to every client. Require an explicit client in browsers.
+    const browserGlobal = globalThis as { window?: unknown; document?: unknown };
+    if (typeof browserGlobal.window !== 'undefined' || typeof browserGlobal.document !== 'undefined') {
     const hasWindow =
       typeof globalThis !== 'undefined' &&
       (globalThis as unknown as { window?: unknown }).window !== undefined;
@@ -400,6 +406,11 @@ export class VeriTixClient extends EventEmitter {
         const latestLedger = await this.server.getLatestLedger();
         this.connected = true;
         this.ledgerCache = { sequence: latestLedger.sequence, fetchedAt: Date.now() };
+        if (this.config.telemetry === true) {
+          console.info(
+            'VeriTix SDK: anonymous telemetry enabled. Disable with telemetry: false.',
+          );
+        }
         this.emit('connected', { ledger: latestLedger.sequence });
         return latestLedger.sequence;
       } catch (err) {
@@ -457,6 +468,8 @@ export class VeriTixClient extends EventEmitter {
           new Contract(this.config.contractId).getFootprint(),
         const contract = new Contract(this.config.contractId);
         await this.server.getContractData(
+          new Contract(this.config.contractId),
+          xdr.ScVal.scvVec([]),
           new Contract(this.config.contractId).address(),
           xdr.ScVal.scvVoid(),
           this.config.contractId,
@@ -730,6 +743,7 @@ export class VeriTixClient extends EventEmitter {
     const intervalMs = options?.intervalMs ?? 2_000;
     const timeoutMs = options?.timeoutMs ?? 60_000;
     const deadline = Date.now() + timeoutMs;
+    const startedAt = Date.now();
 
     return new Promise((resolve, reject) => {
       const poll = async () => {
@@ -741,14 +755,17 @@ export class VeriTixClient extends EventEmitter {
         try {
           const result = await this.server.getTransaction(hash);
           if (result.status === 'SUCCESS') {
-            return resolve({
+            const resolved = {
               hash,
               ledger: (result as { ledger?: number }).ledger ?? 0,
               successful: true,
               returnValue: (result as { returnValue?: unknown }).returnValue,
-            });
+            };
+            this.reportTelemetry('watchTransaction', true, Date.now() - startedAt);
+            return resolve(resolved);
           }
           if (result.status === 'FAILED') {
+            this.reportTelemetry('watchTransaction', false, Date.now() - startedAt);
             return reject(
               new VeriTixError(VeriTixErrorCode.TransactionFailed, `Transaction ${hash} failed`),
             );
@@ -1085,6 +1102,38 @@ export class VeriTixClient extends EventEmitter {
   }
 
   /**
+   * Optional anonymous telemetry (opt-in via `config.telemetry`).
+   *
+   * Sends a fire-and-forget POST to {@link VeriTixClient.ANALYTICS_ENDPOINT}
+   * containing only `{ method, network, success, durationMs }` — never any
+   * addresses, amounts, or keys. If the endpoint is unreachable, or telemetry
+   * is disabled, the report is silently dropped and nothing is thrown.
+   *
+   * @internal
+   */
+  private reportTelemetry(method: string, success: boolean, durationMs: number): void {
+    if (this.config.telemetry !== true) return;
+
+    const shouldFetch = typeof fetch === 'function';
+    if (!shouldFetch) return;
+
+    const payload = {
+      method,
+      network: this.config.network,
+      success,
+      durationMs,
+    };
+
+    fetch(VeriTixClient.ANALYTICS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }).catch(() => {
+      // Endpoint unreachable / non-2xx — silently ignore.
+    });
+  }
+}
    * Creates a new VeriTixClientPool that distributes calls across multiple RPC endpoints
    * @param configs Array of NetworkConfig objects, one for each RPC endpoint
    * @param keypair Optional Keypair to use for all clients in the pool

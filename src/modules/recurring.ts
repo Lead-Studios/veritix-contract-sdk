@@ -614,6 +614,75 @@ export class RecurringModule {
     return submitTransaction(this.server, assembled, this.keypair);
   }
 
+  /**
+   * Pauses an active recurring payment. Must be called by the payer.
+   * A paused payment will not be executed until it is resumed.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   *
+   * @example
+   * ```ts
+   * await client.recurring.pauseRecurring(1n);
+   * ```
+   */
+  async pauseRecurring(id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.pauseRecurring: signing keypair required');
+    }
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'pause_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
+  }
+
+  /**
+   * Resumes a previously paused recurring payment. Must be called by the payer.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   *
+   * @example
+   * ```ts
+   * await client.recurring.resumeRecurring(1n);
+   * ```
+   */
+  async resumeRecurring(id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.resumeRecurring: signing keypair required');
+    }
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'resume_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
+  }
+
   // -------------------------------------------------------------------------
   // History
   // -------------------------------------------------------------------------
