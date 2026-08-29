@@ -178,6 +178,12 @@ export class EscrowModule {
    *
    * @param address - Stellar account address of the depositor.
    * @returns Array of escrow IDs owned by that depositor.
+   *
+   * @example
+   * ```ts
+   * const escrowIds = await client.escrow.getEscrowsByDepositor('GDEPOSITOR…');
+   * console.log('Escrow IDs created by depositor:', escrowIds);
+   * ```
    */
   async getEscrowsByDepositor(address: string): Promise<bigint[]> {
     return this.getEscrowIdsByAddress('escrows_by_depositor', address);
@@ -188,6 +194,12 @@ export class EscrowModule {
    *
    * @param address - Stellar account address of the beneficiary.
    * @returns Array of escrow IDs for that beneficiary.
+   *
+   * @example
+   * ```ts
+   * const escrowIds = await client.escrow.getEscrowsByBeneficiary('GBENEFICIARY…');
+   * console.log('Escrow IDs for beneficiary:', escrowIds);
+   * ```
    */
   async getEscrowsByBeneficiary(address: string): Promise<bigint[]> {
     return this.getEscrowIdsByAddress('escrows_by_beneficiary', address);
@@ -628,7 +640,11 @@ export class EscrowModule {
    * console.log('Beneficiary transferred in tx:', result.hash);
    * ```
    */
-  async transferBeneficiary(escrowId: bigint, newBeneficiary: string): Promise<TransactionResult> {
+  async transferBeneficiary(
+    escrowId: bigint,
+    newBeneficiary: string,
+    currentLedger?: number,
+  ): Promise<TransactionResult> {
     if (!this.keypair) {
       throw new VeriTixError(
         VeriTixErrorCode.ReadOnlyClient,
@@ -654,14 +670,6 @@ export class EscrowModule {
       throw new VeriTixError(
         VeriTixErrorCode.EscrowAlreadySettled,
         'Escrow has already been released or refunded',
-      );
-    }
-
-    const ledger = currentLedger ?? (await this.server.getLatestLedger()).sequence;
-    if (ledger < escrow.expiryLedger) {
-      throw new VeriTixError(
-        VeriTixErrorCode.EscrowNotExpired,
-        'Escrow has not yet reached its expiry ledger',
       );
     }
 
@@ -698,7 +706,6 @@ export class EscrowModule {
       SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
 
     const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
-    const result = await submitTransaction(this.server, assembled, undefined);
     const result = await submitTransaction(this.server, assembled, this.keypair);
 
     return {
