@@ -6,7 +6,14 @@
  * invocation to reduce transaction overhead and fees.
  */
 
-import { SorobanRpc, Keypair, Account, xdr, nativeToScVal } from '@stellar/stellar-sdk';
+/**
+ * @module BatchModule
+ *
+ * Provides batch processing methods for the VeriTix platform.
+ * Handles bulk operations like multi-ticket purchases, mass payouts,
+ * batch escrow settlements, and concurrent contract interactions.
+ */
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, TransactionResult } from '../types/index';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';

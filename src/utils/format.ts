@@ -1,5 +1,11 @@
 /**
- * @module utils/format
+ * @module FormatUtils
+ *
+ * Provides formatting utilities for the VeriTix SDK.
+ * Handles amount formatting, address shortening, date stringification,
+ * and other human-readable output formatting for display purposes.
+ */
+/**
  * XLM ↔ stroop conversion and display-formatting helpers.
  *
  * 1 XLM = 10_000_000 stroops (7 decimal places).

@@ -39,6 +39,9 @@ import type {
   StellarNetwork,
   WatchOptions,
   EscrowRecord,
+  AccountInfo,
+  VeriTixEvent,
+  StreamEventOptions,
 } from './types/index';
 import { buildContractCall, simulateTransaction } from './utils/transaction';
 import { DUMMY_PUBLIC_KEY, getMainnetConfig, getTestnetConfig } from './utils/network';
@@ -93,7 +96,7 @@ export class VeriTixClient extends EventEmitter {
   public readonly batch: BatchModule;
 
   private server!: SorobanRpc.Server;
-  private readonly keypair: Keypair | undefined;
+  protected readonly keypair: Keypair | undefined;
   private connected = false;
 
   /** Cache for getCurrentLedger — { sequence, fetchedAt } */
@@ -179,7 +182,10 @@ export class VeriTixClient extends EventEmitter {
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): VeriTixClient {
     // Guard against browser bundles: a statically-inlined secret key would
     // end up shipped to every client. Require an explicit client in browsers.
-    if (typeof window !== 'undefined' || typeof document !== 'undefined') {
+    if (
+      typeof (globalThis as { window?: unknown }).window !== 'undefined' ||
+      typeof (globalThis as { document?: unknown }).document !== 'undefined'
+    ) {
       throw new VeriTixError(
         VeriTixErrorCode.ReadOnlyClient,
         'VeriTixClient.fromEnvironment is not available in browser contexts; construct a VeriTixClient explicitly and never inline a secret key',
@@ -341,6 +347,8 @@ export class VeriTixClient extends EventEmitter {
         await this.server.getContractData(
           new Contract(this.config.contractId).address(),
           xdr.ScVal.scvVoid(),
+          this.config.contractId,
+          new Contract(this.config.contractId).address().toScVal(),
         );
         contractFound = true;
       } catch {
@@ -397,7 +405,10 @@ export class VeriTixClient extends EventEmitter {
    */
   async simulate(method: string, args: xdr.ScVal[]): Promise<SimulationResult> {
     if (!this.connected) {
-      throw new Error('VeriTixClient: call connect() before simulate()');
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before simulate()'
+      );
     }
 
     try {
@@ -451,7 +462,10 @@ export class VeriTixClient extends EventEmitter {
    */
   async getCurrentLedger(): Promise<number> {
     if (!this.connected || !this.server) {
-      throw new Error('VeriTixClient: call connect() before using module methods');
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using module methods'
+      );
     }
     const now = Date.now();
     if (
@@ -476,7 +490,10 @@ export class VeriTixClient extends EventEmitter {
    */
   async watchTransaction(hash: string, options?: WatchOptions): Promise<TransactionResult> {
     if (!this.connected || !this.server) {
-      throw new Error('VeriTixClient: call connect() before using module methods');
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using module methods'
+      );
     }
     const intervalMs = options?.intervalMs ?? 2_000;
     const timeoutMs = options?.timeoutMs ?? 60_000;
@@ -521,7 +538,10 @@ export class VeriTixClient extends EventEmitter {
    */
   async getContractMetadata(): Promise<ContractMetadata> {
     if (!this.connected || !this.server) {
-      throw new Error('VeriTixClient: call connect() before using module methods');
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using module methods'
+      );
     }
     const [name, symbol, decimal, totalSupply] = await Promise.all([
       this.token.name(),
@@ -537,6 +557,53 @@ export class VeriTixClient extends EventEmitter {
       contractId: this.config.contractId,
       network: this.config.network,
     };
+  }
+
+  /**
+   * Fetches Stellar account information including XLM balance, sequence number, and subentry count.
+   *
+   * @param address - Stellar account address to fetch information for
+   * @returns Promise resolving to AccountInfo with the account details
+   * @throws {VeriTixError} InvalidAddress if the account does not exist or the address is invalid
+   */
+  async getAccountInfo(address: string): Promise<AccountInfo> {
+    if (!this.connected || !this.server) {
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using module methods'
+      );
+    }
+
+    // Validate the address is a valid Stellar public key
+    if (!StrKey.isValidEd25519PublicKey(address)) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        `Invalid Stellar account address: ${address}`
+      );
+    }
+
+    try {
+      const account = await this.server.getAccount(address);
+      
+      // Find the native XLM balance
+      const xlmBalance = account.balances.find(balance => balance.asset_type === 'native')?.balance || '0';
+      
+      // Convert XLM balance (which is in XLM with 7 decimals) to stroops (1 XLM = 10^7 stroops)
+      const xlmBalanceInStroops = (parseFloat(xlmBalance) * 10_000_000).toString();
+      
+      return {
+        address: account.account_id,
+        xlmBalance: xlmBalanceInStroops,
+        sequence: account.sequence,
+        subentryCount: account.subentry_count,
+      };
+    } catch (err) {
+      // If the account doesn't exist or there's an error fetching it, throw InvalidAddress
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        `Account does not exist or could not be fetched: ${address}`
+      );
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -590,6 +657,183 @@ export class VeriTixClient extends EventEmitter {
   /**
    * Returns a proxy `SorobanRpc.Server` that throws a helpful error if
    * `connect()` has not been called yet.  Modules hold a reference to this
+/**
+   * Connects to Horizon Server-Sent Events (SSE) endpoint to stream contract events in real-time.
+   * Automatically reconnects with exponential backoff if the stream drops. Supports cancellation via AbortSignal.
+   * 
+   * @param options - {@link StreamEventOptions} for stream configuration (signal, backoff settings, cursor)
+   * @returns AsyncIterableIterator that yields {@link VeriTixEvent} as they are received
+   * 
+   * @example
+   * ```ts
+   * const controller = new AbortController();
+   * for await (const event of client.streamEvents({ signal: controller.signal })) {
+   *   console.log(`Received event: ${event.type} from ledger ${event.ledger}`);
+   *   if (event.type === 'ticket_purchased') {
+   *     console.log('New ticket sold!', event.data);
+   *   }
+   * }
+   * ```
+   */
+  async *streamEvents(options?: StreamEventOptions): AsyncIterableIterator<VeriTixEvent> {
+    if (!this.connected || !this.server) {
+      throw new VeriTixError(
+        VeriTixErrorCode.ClientNotConnected,
+        'VeriTixClient: call connect() before using streamEvents()'
+      );
+    }
+
+    // Get proper Horizon URL based on network
+    const TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
+    const MAINNET_HORIZON_URL = 'https://horizon.stellar.org';
+    let baseHorizonUrl: string;
+    
+    if (this.config.network === 'testnet') {
+      baseHorizonUrl = TESTNET_HORIZON_URL;
+    } else {
+      baseHorizonUrl = MAINNET_HORIZON_URL;
+    }
+
+    // If user provided a custom RPC URL that's not the default, try to derive Horizon URL from it
+    const isDefaultTestnetRpc = this.config.rpcUrl === 'https://soroban-testnet.stellar.org';
+    const isDefaultMainnetRpc = this.config.rpcUrl === 'https://mainnet.stellar.validationcloud.io/v1/soroban/rpc';
+    
+    if (!isDefaultTestnetRpc && !isDefaultMainnetRpc) {
+      // Try to extract Horizon URL from custom RPC URL
+      baseHorizonUrl = this.config.rpcUrl.replace(/\/soroban\/rpc$/, '');
+    }
+
+    if (!baseHorizonUrl.endsWith('/')) {
+      baseHorizonUrl += '/';
+    }
+
+    const opts = {
+      initialBackoffMs: options?.initialBackoffMs ?? 1000,
+      maxBackoffMs: options?.maxBackoffMs ?? 30000,
+      signal: options?.signal,
+      cursor: options?.cursor,
+    };
+
+    let currentBackoff = opts.initialBackoffMs;
+    let eventQueue: VeriTixEvent[] = [];
+    let queueResolver: (() => void) | null = null;
+    let eventSource: any = null;
+    let isAborted = false;
+
+    // Dynamically import EventSource if in Node.js environment (browser has it globally)
+    let EventSourceImpl: typeof EventSource;
+    if (typeof EventSource === 'undefined') {
+      // Node.js environment - require eventsource package
+      try {
+        const { EventSource: NodeEventSource } = require('eventsource');
+        EventSourceImpl = NodeEventSource;
+      } catch (err) {
+        throw new VeriTixError(
+          VeriTixErrorCode.InvalidConfig,
+          'VeriTixClient: streamEvents() requires the "eventsource" package in Node.js environments. Please install it with npm install eventsource.'
+        );
+      }
+    } else {
+      // Browser environment - use global EventSource
+      EventSourceImpl = EventSource;
+    }
+
+    // Setup abort signal listener
+    if (opts.signal) {
+      opts.signal.addEventListener('abort', () => {
+        isAborted = true;
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (queueResolver) {
+          queueResolver();
+          queueResolver = null;
+        }
+      });
+    }
+
+    // Function to create and connect EventSource
+    const connectStream = () => {
+      if (isAborted) return;
+
+      // Horizon SSE endpoint for contract events: /contract/<contractId>/events
+      const streamUrl = new URL(`contract/${this.config.contractId}/events`, baseHorizonUrl);
+      if (opts.cursor) {
+        streamUrl.searchParams.set('cursor', opts.cursor);
+      }
+
+      try {
+        eventSource = new EventSourceImpl(streamUrl.toString());
+
+        eventSource.onopen = () => {
+          // Reset backoff on successful connection
+          currentBackoff = opts.initialBackoffMs;
+        };
+
+        eventSource.onmessage = (event: any) => {
+          try {
+            const rawEvent = JSON.parse(event.data);
+            // Parse raw Horizon SSE event into VeriTixEvent (Horizon event format: https://developers.stellar.org/docs/data/horizon/api-reference/stream/contract-events)
+            const veriTixEvent: VeriTixEvent = {
+              type: rawEvent.topic?.[0] || 'unknown',
+              ledger: parseInt(rawEvent.ledger, 10),
+              timestamp: parseInt(rawEvent.created_at ? new Date(rawEvent.created_at).getTime() / 1000 : rawEvent.timestamp, 10),
+              topics: rawEvent.topic || [],
+              data: rawEvent.value,
+            };
+            eventQueue.push(veriTixEvent);
+            if (queueResolver) {
+              queueResolver();
+              queueResolver = null;
+            }
+          } catch (parseErr) {
+            // Skip invalid events
+          }
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          // Schedule reconnection with exponential backoff if not aborted
+          if (!isAborted) {
+            setTimeout(() => {
+              currentBackoff = Math.min(currentBackoff * 2, opts.maxBackoffMs);
+              connectStream();
+            }, currentBackoff);
+          }
+        };
+      } catch (err) {
+        // Handle connection errors, schedule reconnection
+        if (!isAborted) {
+          setTimeout(() => {
+            currentBackoff = Math.min(currentBackoff * 2, opts.maxBackoffMs);
+            connectStream();
+          }, currentBackoff);
+        }
+      }
+    };
+
+    // Start initial connection
+    connectStream();
+
+    // Yield events as they come in
+    while (!isAborted) {
+      if (eventQueue.length === 0) {
+        // Wait for new events
+        await new Promise<void>((resolve) => {
+          queueResolver = resolve;
+        });
+      } else {
+        const nextEvent = eventQueue.shift()!;
+        yield nextEvent;
+      }
+    }
+  }
+
+  /**
    * proxy so they surface a clear message instead of a confusing crash.
    *
    * @internal
@@ -598,12 +842,27 @@ export class VeriTixClient extends EventEmitter {
     return new Proxy({} as SorobanRpc.Server, {
       get: (_target, prop) => {
         if (!this.connected || !this.server) {
-          throw new Error(
-            `VeriTixClient: call connect() before using module methods (attempted access to server.${String(prop)})`,
+          throw new VeriTixError(
+            VeriTixErrorCode.ClientNotConnected,
+            `VeriTixClient: call connect() before using module methods (attempted access to server.${String(prop)})`
           );
         }
         return (this.server as unknown as Record<string | symbol, unknown>)[prop];
       },
     });
+  }
+
+  /**
+   * Creates a new VeriTixClientPool that distributes calls across multiple RPC endpoints
+   * @param configs Array of NetworkConfig objects, one for each RPC endpoint
+   * @param keypair Optional Keypair to use for all clients in the pool
+   * @returns A proxy that acts like a VeriTixClient but distributes calls across the pool
+   */
+  static pool(configs: NetworkConfig[], keypair?: Keypair) {
+    const { VeriTixClientPool } = require('./pool');
+    // Create a client for each configuration
+    const clients = configs.map(config => new VeriTixClient(config, keypair));
+    const pool = new VeriTixClientPool(clients);
+    return pool.proxy;
   }
 }

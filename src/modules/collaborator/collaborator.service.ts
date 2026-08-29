@@ -1,3 +1,5 @@
+import { VeriTixError, VeriTixErrorCode } from '../../utils/errors';
+
 /** A person collaborating on an event. */
 export interface Collaborator {
   id: string;
@@ -19,12 +21,15 @@ export class CollaboratorModule {
 
   public add(collaborator: Collaborator): Collaborator {
     if (this.collaborators.has(collaborator.id)) {
-      throw new Error(`Collaborator ${collaborator.id} already exists.`);
+      throw new VeriTixError(
+        VeriTixErrorCode.CollaboratorAlreadyExists,
+        `Collaborator ${collaborator.id} already exists.`
+      );
     }
     if (this.listByEvent(collaborator.eventId).length >= MAX_COLLABORATORS_PER_EVENT) {
-      throw new Error(
-        `Event ${collaborator.eventId} already has the maximum of ` +
-          `${MAX_COLLABORATORS_PER_EVENT} collaborators.`,
+      throw new VeriTixError(
+        VeriTixErrorCode.MaxCollaboratorsReached,
+        `Event ${collaborator.eventId} already has the maximum of ${MAX_COLLABORATORS_PER_EVENT} collaborators.`
       );
     }
     this.collaborators.set(collaborator.id, collaborator);
@@ -46,7 +51,10 @@ export class CollaboratorModule {
   public update(id: string, changes: CollaboratorUpdate): Collaborator {
     const existing = this.collaborators.get(id);
     if (!existing) {
-      throw new Error(`Collaborator ${id} not found.`);
+      throw new VeriTixError(
+        VeriTixErrorCode.CollaboratorNotFound,
+        `Collaborator ${id} not found.`
+      );
     }
     const updated: Collaborator = { ...existing, ...changes };
     this.collaborators.set(id, updated);

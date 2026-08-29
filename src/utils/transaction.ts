@@ -1,11 +1,10 @@
 /// <reference types="node" />
 /**
- * @module utils/transaction
- * Low-level helpers for building, simulating, signing, and submitting
- * Soroban `invokeHostFunction` transactions via the Stellar SDK.
+ * @module TransactionUtils
  *
- * These are thin wrappers around `@stellar/stellar-sdk` that centralise
- * boilerplate so every module does not have to repeat it.
+ * Provides transaction building and execution utilities for the VeriTix SDK.
+ * Handles contract call construction, transaction simulation, submission,
+ * and Soroban RPC communication with the Stellar network.
  */
 
 import {
