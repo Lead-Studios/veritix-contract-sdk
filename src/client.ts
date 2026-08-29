@@ -28,6 +28,9 @@
 
 import { SorobanRpc, Keypair, Contract, StrKey, xdr } from '@stellar/stellar-sdk';
 
+declare const window: unknown;
+declare const document: unknown;
+
 import type {
   NetworkConfig,
   SimulationResult,
@@ -342,6 +345,8 @@ export class VeriTixClient extends EventEmitter {
     if (rpcReachable) {
       try {
         await this.server.getContractData(
+          new Contract(this.config.contractId).address(),
+          xdr.ScVal.scvVoid(),
           this.config.contractId,
           new Contract(this.config.contractId).address().toScVal(),
         );

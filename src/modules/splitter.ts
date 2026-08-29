@@ -3,6 +3,9 @@
  * Payment splitter operations exposed by the VeriTix Soroban contract.
  */
 
+import { SorobanRpc, Keypair, Account, Address, xdr } from '@stellar/stellar-sdk';
+import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
+import { buildContractCall, submitTransaction } from '../utils/transaction';
 /**
  * @module SplitterModule
  *
@@ -241,6 +244,34 @@ export class SplitterModule {
     if (totalBps !== 10_000) {
       throw new VeriTixError(VeriTixErrorCode.SplitInvalidShares, 'Recipient shares must sum to 10 000 basis points.');
     }
+
+    const recipientsScVal = xdr.ScVal.scvVec(
+      params.recipients.map((r) =>
+        xdr.ScVal.scvMap([
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('address'), val: new Address(r.address).toScVal() }),
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('share_bps'), val: xdr.ScVal.scvU32(r.shareBps) }),
+        ]),
+      ),
+    );
+
+    const totalAmountScVal = bigintToScVal(params.totalAmount, 'i128');
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'create_split',
+      [recipientsScVal, totalAmountScVal],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+    return result;
     // TODO: build & submit contract call
     void simulateTransaction;
     void submitTransaction;
