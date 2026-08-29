@@ -414,6 +414,35 @@ describe("parseRecurringRecord", () => {
     expect(record.active).toBe(false);
   });
 
+  it("maps paused = true correctly", () => {
+    const record = parseRecurringRecord(makeRecurringScVal({ paused: true }));
+    expect(record.paused).toBe(true);
+    expect(typeof record.paused).toBe("boolean");
+  });
+
+  it("maps paused = false correctly", () => {
+    const record = parseRecurringRecord(makeRecurringScVal({ paused: false }));
+    expect(record.paused).toBe(false);
+  });
+
+  it("survives the round-trip for paused = true from a raw ScvMap fixture", () => {
+    const entries = [
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("id"), val: nativeToScVal(1n, { type: "u64" }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("payer"), val: nativeToScVal(TEST_PAYER) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("payee"), val: nativeToScVal(TEST_PAYEE) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("amount"), val: nativeToScVal(1_000n, { type: "i128" }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("interval"), val: nativeToScVal(3_600, { type: "u32" }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("active"), val: xdr.ScVal.scvBool(true) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("paused"), val: xdr.ScVal.scvBool(true) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("last_charged_ledger"), val: nativeToScVal(100, { type: "u32" }) }),
+    ];
+
+    const record = parseRecurringRecord(xdr.ScVal.scvMap(entries));
+
+    expect(record.paused).toBe(true);
+    expect(typeof record.paused).toBe("boolean");
+  });
+
   it("maps lastChargedLedger correctly", () => {
     const record = parseRecurringRecord(makeRecurringScVal({ lastChargedLedger: 999_999 }));
     expect(record.lastChargedLedger).toBe(999_999);
@@ -422,7 +451,7 @@ describe("parseRecurringRecord", () => {
   it("returns the full recurring record correctly", () => {
     const record = parseRecurringRecord(makeRecurringScVal({
       id: 20n, payer: TEST_PAYER, payee: TEST_PAYEE, amount: 500_000n,
-      interval: 2_592_000, active: true, lastChargedLedger: 800_000,
+      interval: 2_592_000, active: true, paused: true, lastChargedLedger: 800_000,
     }));
     expect(record).toMatchObject({
       id: 20n,
@@ -431,6 +460,7 @@ describe("parseRecurringRecord", () => {
       amount: 500_000n,
       interval: 2_592_000,
       active: true,
+      paused: true,
       paused: false,
       lastChargedLedger: 800_000,
     });

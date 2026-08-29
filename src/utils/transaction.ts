@@ -94,6 +94,23 @@ export async function buildContractCall(
 }
 
 // ---------------------------------------------------------------------------
+// Assemble
+// ---------------------------------------------------------------------------
+
+/**
+ * Assembles a simulated Soroban transaction back into a signable
+ * `TransactionBuilder` (see {@link SorobanRpc.assembleTransaction}).
+ *
+ * Thin local wrapper so module callers and unit tests can mock `assemble`.
+ */
+export function assembleTransaction(
+  raw: Transaction,
+  simulation: SorobanRpc.Api.SimulateTransactionResponse,
+): TransactionBuilder {
+  return SorobanRpc.assembleTransaction(raw, simulation);
+}
+
+// ---------------------------------------------------------------------------
 // Simulate  (#79)
 // ---------------------------------------------------------------------------
 

@@ -182,6 +182,8 @@ export class VeriTixClient extends EventEmitter {
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): VeriTixClient {
     // Guard against browser bundles: a statically-inlined secret key would
     // end up shipped to every client. Require an explicit client in browsers.
+    const globals = globalThis as { window?: unknown; document?: unknown };
+    if (globals.window !== undefined || globals.document !== undefined) {
     if (typeof globalThis !== 'undefined' &&
         (globalThis as unknown as { window?: unknown }).window !== undefined) {
     if (
@@ -346,6 +348,8 @@ export class VeriTixClient extends EventEmitter {
     let contractFound = false;
     if (rpcReachable) {
       try {
+        const entries = await this.server.getLedgerEntries(
+          new Contract(this.config.contractId).getFootprint(),
         const contract = new Contract(this.config.contractId);
         await this.server.getContractData(
           new Contract(this.config.contractId).address(),
@@ -353,7 +357,7 @@ export class VeriTixClient extends EventEmitter {
           this.config.contractId,
           new Contract(this.config.contractId).address().toScVal(),
         );
-        contractFound = true;
+        contractFound = (entries.entries ?? []).length > 0;
       } catch {
         contractFound = false;
       }
