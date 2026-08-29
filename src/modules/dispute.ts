@@ -493,7 +493,10 @@ export class DisputeModule {
   /**
    * Resolves an open dispute. Must be called by the designated resolver.
    *
-   * @param params - {@link ResolveDisputeParams}
+   * @param disputeId     - Numeric identifier of the dispute to resolve.
+   * @param forBeneficiary - `true` to resolve in favour of the beneficiary (event goes ahead),
+   *                         `false` to resolve in favour of the depositor (refund the depositor).
+   * @param note          - Optional human-readable resolution note (<= 128 bytes).
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `DISPUTE_INVALID_STATE` if already resolved.
    * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not the resolver.
@@ -501,10 +504,7 @@ export class DisputeModule {
    *
    * @example
    * ```ts
-   * await client.dispute.resolveDispute({
-   *   disputeId: 3n,
-   *   resolution: DisputeStatus.ResolvedForBeneficiary,
-   * });
+   * await client.dispute.resolveDispute(3n, true, 'Event was delivered');
    * ```
    */
   async resolveDispute(

@@ -32,6 +32,14 @@ export async function createFromFreighter(
 import { VeriTixClient } from '../client';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
+/**
+ * Creates a Freighter-backed {@link VeriTixClient} for the given network.
+ *
+ * @param network - Stellar network to connect to (e.g. `'testnet'`, `'mainnet'`).
+ *                  Defaults to `'testnet'`.
+ * @returns A new Freighter-backed client instance.
+ * @throws {VeriTixError} With code `FREIGHTER_NOT_FOUND` if the Freighter wallet extension is not installed.
+ */
 export async function createFromFreighter(network: string = 'testnet') {
   try {
     const freighter = (window as any).freighter;
