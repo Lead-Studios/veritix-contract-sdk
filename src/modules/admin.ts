@@ -7,11 +7,18 @@
  * {@link VeriTixErrorCode.AdminUnauthorized}.
  */
 
+/**
+ * @module AdminModule
+ *
+ * Provides administrative methods for the VeriTix platform contract functions.
+ * Handles platform configuration, contract upgrades, fee adjustments, and
+ * privileged operations that require admin authorization.
+ */
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
-import type { NetworkConfig, TransactionResult, BatchSettlementResult } from '../types/index';
+import type { NetworkConfig, TransactionResult } from '../types/index';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
-import { addressToScVal, bigintToScVal, scValToString, stringToScVal } from '../utils/scval';
+import { addressToScVal } from '../utils/scval';
 
 /**
  * Handles all admin-level interactions with the VeriTix contract.
@@ -284,32 +291,8 @@ export class AdminModule {
    * ```
    */
   async forceRefundEscrow(escrowId: bigint): Promise<TransactionResult> {
-    return this.writeCall('force_refund_escrow', [bigintToScVal(escrowId, 'u64'), stringToScVal('admin force refund')]);
-  }
-
-  /**
-   * Distributes a dividend (arbitrary token amount) to a list of recipients
-   * proportionally or as a flat amount per address.
-   *
-   * @param recipients  - Array of Stellar account addresses to receive the dividend.
-   * @param totalAmount - Total amount to distribute (in stroops). Must be > 0.
-   * @returns A {@link TransactionResult} on success.
-   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
-   * @throws {Error} If `totalAmount` is zero or negative.
-   *
-   * @example
-   * ```ts
-   * await client.admin.dividendDistribute(['GABC…', 'GDEF…'], 10_000_000n);
-   * ```
-   */
-  async dividendDistribute(recipients: string[], totalAmount: bigint): Promise<TransactionResult> {
-    if (totalAmount <= 0n) {
-      throw new Error('AdminModule.dividendDistribute: totalAmount must be greater than zero');
-    }
-    const recipientsScVal = xdr.ScVal.scvVec(recipients.map((r) => addressToScVal(r)));
-    return this.writeCall('dividend_distribute', [
-      recipientsScVal,
-      bigintToScVal(totalAmount, 'i128'),
+    return this.writeCall('force_refund_escrow', [
+      bigintToScVal(escrowId, 'u64'),
     ]);
   }
 
@@ -431,5 +414,65 @@ export class AdminModule {
     if (params.symbol !== undefined) args.push(stringToScVal(params.symbol));
     if (params.decimals !== undefined) args.push(xdr.ScVal.scvU32(params.decimals));
     return this.writeCall('update_token_metadata', args);
+  }
+
+  // -------------------------------------------------------------------------
+  // Whitelist management
+  // -------------------------------------------------------------------------
+
+  /**
+   * Enables the whitelist feature on the contract. Must be called by admin.
+   * When enabled, only whitelisted addresses can interact with the contract.
+   *
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.enableWhitelist();
+   * ```
+   */
+  async enableWhitelist(): Promise<TransactionResult> {
+    return this.writeCall('enable_whitelist', []);
+  }
+
+  /**
+   * Adds an address to the whitelist. Must be called by admin.
+   * The contract must have whitelist enabled for this to succeed.
+   *
+   * @param address - Stellar account address to whitelist.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.whitelistAddress('GABC…');
+   * ```
+   */
+  async whitelistAddress(address: string): Promise<TransactionResult> {
+    return this.writeCall('whitelist_address', [addressToScVal(address)]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Dividend distribution
+  // -------------------------------------------------------------------------
+
+  /**
+   * Distributes profits (dividends) to token holders proportionally.
+   * Must be called by admin.
+   *
+   * @param totalAmount - Total dividend amount to distribute (in stroops).
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   *
+   * @example
+   * ```ts
+   * await client.admin.dividendDistribute(1_000_000n);
+   * ```
+   */
+  async dividendDistribute(totalAmount: bigint): Promise<TransactionResult> {
+    return this.writeCall('dividend_distribute', [
+      bigintToScVal(totalAmount, 'i128'),
+    ]);
   }
 }

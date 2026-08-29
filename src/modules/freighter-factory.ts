@@ -1,9 +1,15 @@
 // Factory for creating VeriTixClient from Freighter wallet
+import { VeriTixClient } from '../client';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+
 export async function createFromFreighter(network: string = 'testnet') {
   try {
     const freighter = (window as any).freighter;
     if (!freighter) {
-      throw new Error('Freighter wallet not found');
+      throw new VeriTixError(
+        VeriTixErrorCode.FreighterNotFound,
+        'Freighter wallet not found'
+      );
     }
     const publicKey = await freighter.getPublicKey();
     return new VeriTixClient({

@@ -96,6 +96,20 @@ export enum VeriTixErrorCode {
   WatchTimeout = 'WATCH_TIMEOUT',
   /** Transaction was rejected by the network */
   TransactionFailed = 'TRANSACTION_FAILED',
+  /** Feature or method is not yet implemented */
+  NotImplemented = 'NOT_IMPLEMENTED',
+  /** Collaborator not found */
+  CollaboratorNotFound = 'COLLABORATOR_NOT_FOUND',
+  /** Collaborator already exists */
+  CollaboratorAlreadyExists = 'COLLABORATOR_ALREADY_EXISTS',
+  /** Maximum number of collaborators reached for event */
+  MaxCollaboratorsReached = 'MAX_COLLABORATORS_REACHED',
+  /** Freighter wallet not found in browser */
+  FreighterNotFound = 'FREIGHTER_NOT_FOUND',
+  /** Client not connected - call connect() first */
+  ClientNotConnected = 'CLIENT_NOT_CONNECTED',
+  /** Invalid input parameter */
+  InvalidInput = 'INVALID_INPUT',
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +129,13 @@ export enum VeriTixErrorCode {
  *   }
  * }
  * ```
+ */
+/**
+ * @module ErrorsUtils
+ *
+ * Provides error handling utilities for the VeriTix SDK.
+ * Defines custom error classes, error codes, and Soroban RPC error parsing
+ * to provide consistent, human-readable error messages across the platform.
  */
 export class VeriTixError extends Error {
   /** Canonical SDK error code */

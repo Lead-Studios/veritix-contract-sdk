@@ -6,12 +6,19 @@
  * at a fixed interval measured in Stellar ledger count.
  */
 
+/**
+ * @module RecurringModule
+ *
+ * Provides recurring payment subscription methods for the VeriTix platform.
+ * Handles subscription creation, renewal, cancellation, and automated
+ * recurring charge processing for season passes and memberships.
+ */
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type { NetworkConfig, RecurringRecord, RecurringExecutionEntry, TransactionResult } from '../types/index';
-import { addressToScVal, bigintToScVal } from '../utils/scval';
+import { addressToScVal, bigintToScVal, scValToBigint } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
-import { parseRecurringExecutionEntry } from '../utils/parsers';
+import { parseRecurringExecutionEntry, parseRecurringRecord } from '../utils/parsers';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
 
 /**
@@ -56,14 +63,170 @@ export class RecurringModule {
    * @example
    * ```ts
    * const rec = await client.recurring.getRecurring(5n);
-   * console.log('Active:', rec?.active);
+   * if (rec) {
+   *   console.log(`Active: ${rec.active}, Payer: ${rec.payer}, Payee: ${rec.payee}`);
+   * }
    * ```
    */
-  async getRecurring(_id: bigint): Promise<RecurringRecord | null> {
-    // TODO: implement
-    void this.config;
-    void this.server;
-    throw new Error('RecurringModule.getRecurring: not implemented');
+  async getRecurring(id: bigint): Promise<RecurringRecord | null> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'get_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      return null;
+    }
+
+    return parseRecurringRecord(returnValue);
+  }
+
+  /**
+   * Returns all recurring payment IDs for a given payer address.
+   *
+   * @param payer - Stellar account address of the payer.
+   * @returns Array of numeric recurring payment IDs.
+   *
+   * @example
+   * ```ts
+   * const ids = await client.recurring.getRecurringByPayer('GPAYER…');
+   * console.log('Payer recurring IDs:', ids);
+   * ```
+   */
+  async getRecurringByPayer(payer: string): Promise<bigint[]> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'recurring_by_payer',
+      [addressToScVal(payer)],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      return [];
+    }
+    if (returnValue.switch() !== xdr.ScValType.scvVec()) {
+      return [];
+    }
+    return (returnValue.vec() ?? []).map((item) => scValToBigint(item));
+  }
+
+  /**
+   * Returns all recurring payment IDs for a given payee address.
+   *
+   * @param payee - Stellar account address of the payee.
+   * @returns Array of numeric recurring payment IDs.
+   *
+   * @example
+   * ```ts
+   * const ids = await client.recurring.getRecurringByPayee('GPAYEE…');
+   * console.log('Payee recurring IDs:', ids);
+   * ```
+   */
+  async getRecurringByPayee(payee: string): Promise<bigint[]> {
+    const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'recurring_by_payee',
+      [addressToScVal(payee)],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+    if (!returnValue || returnValue.switch() === xdr.ScValType.scvVoid()) {
+      return [];
+    }
+    if (returnValue.switch() !== xdr.ScValType.scvVec()) {
+      return [];
+    }
+    return (returnValue.vec() ?? []).map((item) => scValToBigint(item));
+  }
+
+  /**
+   * Checks whether a recurring payment is currently active and eligible to be charged.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @param currentLedger - Optional ledger sequence number to evaluate against.
+   * @returns `true` if active and the interval has elapsed since the last charge, `false` otherwise.
+   *
+   * @example
+   * ```ts
+   * const executable = await client.recurring.isExecutable(1n);
+   * if (executable) {
+   *   await client.recurring.execute(1n);
+   * }
+   * ```
+   */
+  async isExecutable(id: bigint, currentLedger?: number): Promise<boolean> {
+    const record = await this.getRecurring(id);
+    if (!record || !record.active) return false;
+    if (record.lastChargedLedger === 0) return true;
+    const ledger = currentLedger ?? (await this.server.getLatestLedger()).sequence;
+    return ledger >= record.lastChargedLedger + record.interval;
+  }
+
+  /**
+   * Computes the execution schedule for a recurring payment.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @param currentLedger - Optional current ledger sequence. If not provided, fetches from the server.
+   * @returns Object containing schedule details (`nextLedger`, `interval`, `lastChargedLedger`, `isDue`), or `null` if not found.
+   *
+   * @example
+   * ```ts
+   * const schedule = await client.recurring.getExecutionSchedule(1n);
+   * if (schedule) {
+   *   console.log(`Next execution due at ledger: ${schedule.nextLedger}, isDue: ${schedule.isDue}`);
+   * }
+   * ```
+   */
+  async getExecutionSchedule(
+    id: bigint,
+    currentLedger?: number,
+  ): Promise<{
+    nextLedger: number;
+    interval: number;
+    lastChargedLedger: number;
+    isDue: boolean;
+  } | null> {
+    const record = await this.getRecurring(id);
+    if (!record) return null;
+    const ledger = currentLedger ?? (await this.server.getLatestLedger()).sequence;
+    const nextLedger = record.lastChargedLedger === 0 ? ledger : record.lastChargedLedger + record.interval;
+    const isDue = record.active && ledger >= nextLedger;
+    return {
+      nextLedger,
+      interval: record.interval,
+      lastChargedLedger: record.lastChargedLedger,
+      isDue,
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -76,20 +239,41 @@ export class RecurringModule {
    *
    * @param params - {@link SetupRecurringParams}
    * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is provided.
    *
    * @example
    * ```ts
-   * await client.recurring.setup({
+   * const result = await client.recurring.setup({
    *   payee: 'GABC…',
    *   amount: 500_000n,     // 0.05 XLM per interval
-   *   interval: 17_280,     // roughly daily
+   *   interval: 17_280,     // roughly daily (~5s per ledger)
    * });
+   * console.log('Recurring payment setup in tx:', result.hash);
    * ```
    */
-  async setup(_params: SetupRecurringParams): Promise<TransactionResult> {
-    // TODO: implement
-    void this.keypair;
-    throw new Error('RecurringModule.setup: not implemented');
+  async setup(params: SetupRecurringParams): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.setup: signing keypair required');
+    }
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'setup_recurring',
+      [
+        addressToScVal(params.payee),
+        bigintToScVal(params.amount, 'i128'),
+        bigintToScVal(BigInt(params.interval), 'u64'),
+      ],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
   }
 
   /**
@@ -99,10 +283,30 @@ export class RecurringModule {
    * @param id - Numeric recurring-payment identifier.
    * @returns A {@link TransactionResult} on success.
    * @throws {VeriTixError} With code `RECURRING_INTERVAL_NOT_ELAPSED` if too soon.
+   *
+   * @example
+   * ```ts
+   * const result = await client.recurring.execute(1n);
+   * console.log('Charge executed in tx:', result.hash);
+   * ```
    */
-  async execute(_id: bigint): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('RecurringModule.execute: not implemented');
+  async execute(id: bigint): Promise<TransactionResult> {
+    const caller = this.keypair ? this.keypair.publicKey() : DUMMY_PUBLIC_KEY;
+    const sourceAccount = new Account(caller, '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'execute_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
   }
 
   /**
@@ -110,10 +314,126 @@ export class RecurringModule {
    *
    * @param id - Numeric recurring-payment identifier.
    * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is provided.
+   *
+   * @example
+   * ```ts
+   * const result = await client.recurring.cancel(1n);
+   * console.log('Cancelled recurring payment in tx:', result.hash);
+   * ```
    */
-  async cancel(_id: bigint): Promise<TransactionResult> {
-    // TODO: implement
-    throw new Error('RecurringModule.cancel: not implemented');
+  async cancel(id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.cancel: signing keypair required');
+    }
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'cancel_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
+  }
+
+  /**
+   * Cancels multiple active recurring payments in batch.
+   *
+   * @param ids - Array of recurring payment identifiers to cancel.
+   * @returns Array of {@link TransactionResult} for each cancelled payment.
+   * @throws {Error} If no signing keypair is provided.
+   *
+   * @example
+   * ```ts
+   * const results = await client.recurring.cancelBatch([1n, 2n, 3n]);
+   * console.log(`Cancelled ${results.length} recurring payments`);
+   * ```
+   */
+  async cancelBatch(ids: bigint[]): Promise<TransactionResult[]> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.cancelBatch: signing keypair required');
+    }
+    const results: TransactionResult[] = [];
+    for (const id of ids) {
+      const res = await this.cancel(id);
+      results.push(res);
+    }
+    return results;
+  }
+
+  /**
+   * Pauses an active recurring payment. Must be called by the payer.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is provided.
+   *
+   * @example
+   * ```ts
+   * const result = await client.recurring.pauseRecurring(1n);
+   * console.log('Paused recurring payment in tx:', result.hash);
+   * ```
+   */
+  async pauseRecurring(id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.pauseRecurring: signing keypair required');
+    }
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'pause_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
+  }
+
+  /**
+   * Resumes a paused recurring payment. Must be called by the payer.
+   *
+   * @param id - Numeric recurring-payment identifier.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is provided.
+   *
+   * @example
+   * ```ts
+   * const result = await client.recurring.resumeRecurring(1n);
+   * console.log('Resumed recurring payment in tx:', result.hash);
+   * ```
+   */
+  async resumeRecurring(id: bigint): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('RecurringModule.resumeRecurring: signing keypair required');
+    }
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'resume_recurring',
+      [bigintToScVal(id, 'u64')],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    return submitTransaction(this.server, assembled, this.keypair);
   }
 
   /**
@@ -128,7 +448,11 @@ export class RecurringModule {
    *
    * @example
    * ```ts
-   * await client.recurring.amendRecurring(1n, { amount: 750_000n });
+   * const result = await client.recurring.amendRecurring(1n, {
+   *   amount: 750_000n,
+   *   interval: 34_560,
+   * });
+   * console.log('Amended recurring payment in tx:', result.hash);
    * ```
    */
   async amendRecurring(
@@ -180,7 +504,8 @@ export class RecurringModule {
    *
    * @example
    * ```ts
-   * await client.recurring.transferPayer(1n, 'GNEW…');
+   * const result = await client.recurring.transferPayer(1n, 'GNEWPAYER…');
+   * console.log('Payer role transferred in tx:', result.hash);
    * ```
    */
   async transferPayer(id: bigint, newPayer: string): Promise<TransactionResult> {
@@ -227,7 +552,7 @@ export class RecurringModule {
    * ```ts
    * const history = await client.recurring.getRecurringHistory(1n);
    * for (const entry of history) {
-   *   console.log(`Ledger ${entry.executedAtLedger}: ${entry.amount} stroops`);
+   *   console.log(`Ledger ${entry.executedAtLedger}: ${entry.amount} stroops, success: ${entry.success}`);
    * }
    * ```
    */
@@ -262,25 +587,6 @@ export class RecurringModule {
     return (returnValue.vec() ?? []).map((item) => parseRecurringExecutionEntry(item));
   }
 
-  // -------------------------------------------------------------------------
-  // Helpers (private)
-  // -------------------------------------------------------------------------
-
-  /** Returns all recurring payment IDs for a payer. @internal */
-  private async getRecurringByPayer(_payer: string): Promise<bigint[]> {
-    // TODO: implement contract call
-    void this.config;
-    void this.server;
-    return [];
-  }
-
-  /** Returns true if the recurring payment is active and due. @internal */
-  private async isExecutable(id: bigint): Promise<boolean> {
-    const record = await this.getRecurring(id);
-    if (!record || !record.active) return false;
-    return true;
-  }
-
   /**
    * Executes all due recurring payments for the given payer.
    * Skips inactive / not-yet-due payments; collects failures without throwing.
@@ -290,8 +596,8 @@ export class RecurringModule {
    *
    * @example
    * ```ts
-   * const { executed, skipped, failed } = await client.recurring.executeAllDue(keypair.publicKey());
-   * console.log(`Executed ${executed.length} payments, ${failed.length} failed`);
+   * const { executed, skipped, failed } = await client.recurring.executeAllDue('GPAYER…');
+   * console.log(`Executed: ${executed.length}, Skipped: ${skipped.length}, Failed: ${failed.length}`);
    * ```
    */
   async executeAllDue(payer: string): Promise<{ executed: bigint[]; skipped: bigint[]; failed: bigint[] }> {

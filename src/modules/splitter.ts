@@ -3,9 +3,18 @@
  * Payment splitter operations exposed by the VeriTix Soroban contract.
  */
 
+/**
+ * @module SplitterModule
+ *
+ * Provides revenue distribution methods for the VeriTix platform.
+ * Handles automated revenue splitting between event organizers, artists,
+ * and the platform, with support for custom BPS configurations.
+ */
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
+import { addressToScVal, scValToBigint, scValToNumber } from '../utils/scval';
+import { buildContractCall } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
 import type {
@@ -53,7 +62,10 @@ export class SplitterModule {
     // TODO: implement
     void this.config;
     void this.server;
-    throw new Error('SplitterModule.getSplit: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.getSplit: not implemented'
+    );
   }
 
   /**
@@ -232,7 +244,10 @@ export class SplitterModule {
     // TODO: build & submit contract call
     void simulateTransaction;
     void submitTransaction;
-    throw new Error('SplitterModule.createSplit: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.createSplit: not implemented'
+    );
   }
 
   /**
@@ -381,7 +396,12 @@ export class SplitterModule {
    * ```
    */
   async distribute(_id: bigint): Promise<TransactionResult> {
-    throw new Error('SplitterModule.distribute: not implemented');
+    void this.server;
+    void _id;
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.distribute: not implemented'
+    );
   }
 
   /**
