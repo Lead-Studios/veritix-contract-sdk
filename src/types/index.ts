@@ -349,6 +349,20 @@ export interface TransactionResult {
 }
 
 /**
+ * Result of building an unsigned transaction via {@link VeriTixClient.buildUnsignedTx}.
+ * The `xdr` payload is ready to be signed externally (e.g. via a hardware wallet
+ * or a browser extension) and then submitted with {@link VeriTixClient.submitSignedTx}.
+ */
+export interface UnsignedTxResult {
+  /** Base64-encoded, assembled (simulated + fee-bumped) unsigned transaction XDR */
+  xdr: string;
+  /** SHA-256 transaction hash of the unsigned transaction (hex-encoded) */
+  hash: string;
+  /** Estimated transaction fee in stroops */
+  estimatedFee: string;
+}
+
+/**
  * Result of a dry-run simulation via {@link VeriTixClient.simulate}.
  */
 export interface SimulationResult {

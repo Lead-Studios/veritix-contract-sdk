@@ -44,6 +44,7 @@ export type {
   RecurringRecord,
   RecurringExecutionEntry,
   TransactionResult,
+  UnsignedTxResult,
   WatchOptions,
   VeriTixEvent,
   StreamEventOptions,

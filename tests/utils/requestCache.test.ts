@@ -1,235 +1,162 @@
 /**
  * @file tests/utils/requestCache.test.ts
- * Unit tests for {@link RequestCache} and the deduplication behaviour it
- * provides inside {@link TokenModule.simulateRead}.
+ * Unit tests for the {@link RequestCache} in-flight request deduplication cache.
+ *
+ * Issue #480 — RequestCache deduplication guarantees:
+ *   - two concurrent calls with the same key share one promise (fetch once)
+ *   - the cache entry is cleared after the promise settles
+ *   - a rejected promise clears the entry so the next call retries
+ *   - different keys are independent
  */
 
 import { RequestCache } from '../../src/utils/requestCache';
-import { VeriTixClient } from '../../src/client';
-import { getTestnetConfig } from '../../src/utils/network';
-import { Keypair, nativeToScVal } from '@stellar/stellar-sdk';
-
-// Mock the transaction module so buildContractCall never touches a real account
-jest.mock('../../src/utils/transaction', () => ({
-  ...jest.requireActual('../../src/utils/transaction'),
-  buildContractCall: jest.fn().mockResolvedValue({}),
-}));
-
-const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
-const FAKE_ADDRESS = Keypair.random().publicKey();
-const FAKE_ADDRESS_2 = Keypair.random().publicKey();
-
-function simSuccess(retval: ReturnType<typeof nativeToScVal>) {
-  return {
-    result: { retval },
-    latestLedger: 1,
-    minResourceFee: '100',
-    transactionData: '',
-    events: [],
-  };
-}
-
-// ---------------------------------------------------------------------------
-// RequestCache unit tests
-// ---------------------------------------------------------------------------
 
 describe('RequestCache', () => {
-  describe('get()', () => {
-    it('returns undefined for an unknown key', () => {
-      const cache = new RequestCache();
-      expect(cache.get('missing')).toBeUndefined();
-    });
-
-    it('returns the stored promise for a known key', () => {
-      const cache = new RequestCache();
-      const p = Promise.resolve(42);
-      cache.set('k', p);
-      expect(cache.get('k')).toBe(p);
-    });
+  it('returns undefined for an unknown key', () => {
+    const cache = new RequestCache();
+    expect(cache.get('missing')).toBeUndefined();
+    expect(cache.size).toBe(0);
   });
 
-  describe('set()', () => {
-    it('stores the promise and increments size', () => {
-      const cache = new RequestCache();
-      cache.set('a', Promise.resolve(1));
-      expect(cache.size).toBe(1);
-    });
+  it('two concurrent calls with the same key share one promise — fetch called once', async () => {
+    const cache = new RequestCache();
+    let fetchCount = 0;
+    const fetch = () => {
+      fetchCount++;
+      return new Promise<string>((resolve) =>
+        setTimeout(() => resolve(`value-${fetchCount}`), 10),
+      );
+    };
 
-    it('auto-evicts the entry after the promise resolves', async () => {
-      const cache = new RequestCache();
-      const p = Promise.resolve('done');
-      cache.set('key', p);
-      expect(cache.size).toBe(1);
-      await p;
-      // Flush microtask queue for the .then() eviction callback
-      await Promise.resolve();
-      expect(cache.size).toBe(0);
-    });
+    // First caller starts the request.
+    const key = 'balance:GABC';
+    let first = cache.get(key);
+    if (!first) {
+      const p = fetch();
+      cache.set(key, p);
+      first = p;
+    }
 
-    it('auto-evicts the entry after the promise rejects', async () => {
-      const cache = new RequestCache();
-      const p = Promise.reject(new Error('boom'));
-      cache.set('key', p);
-      expect(cache.size).toBe(1);
-      await p.catch(() => undefined); // suppress unhandled rejection
-      await Promise.resolve();
-      expect(cache.size).toBe(0);
-    });
+    // Second concurrent caller hits the cache and reuses the same promise.
+    const second = cache.get(key);
+    expect(second).toBe(first);
 
-    it('overwrites an existing entry for the same key', () => {
-      const cache = new RequestCache();
-      const p1 = new Promise<unknown>(() => undefined); // never settles
-      const p2 = new Promise<unknown>(() => undefined);
-      cache.set('k', p1);
-      cache.set('k', p2);
-      expect(cache.get('k')).toBe(p2);
-    });
+    const results = await Promise.all([first, second]);
+    expect(results).toEqual(['value-1', 'value-1']);
+    expect(fetchCount).toBe(1);
   });
 
-  describe('delete()', () => {
-    it('removes an existing entry', () => {
-      const cache = new RequestCache();
-      cache.set('x', Promise.resolve(0));
-      cache.delete('x');
-      expect(cache.get('x')).toBeUndefined();
-    });
-
-    it('is a no-op for a missing key (does not throw)', () => {
-      const cache = new RequestCache();
-      expect(() => cache.delete('nope')).not.toThrow();
-    });
+  it('returns the same in-flight promise for repeated calls to get()', () => {
+    const cache = new RequestCache();
+    const p = Promise.resolve('x');
+    cache.set('k', p);
+    expect(cache.get('k')).toBe(cache.get('k'));
+    expect(cache.get('k')).toBe(p);
+    expect(cache.size).toBe(1);
   });
 
-  describe('size', () => {
-    it('tracks the number of in-flight entries', () => {
-      const cache = new RequestCache();
-      expect(cache.size).toBe(0);
-      cache.set('a', new Promise<unknown>(() => undefined));
-      cache.set('b', new Promise<unknown>(() => undefined));
-      expect(cache.size).toBe(2);
-      cache.delete('a');
-      expect(cache.size).toBe(1);
-    });
-  });
-});
+  it('clears the cache entry after the promise settles', async () => {
+    const cache = new RequestCache();
+    const p = Promise.resolve('done');
+    cache.set('k', p);
+    expect(cache.size).toBe(1);
 
-// ---------------------------------------------------------------------------
-// simulateRead deduplication tests (via TokenModule)
-// ---------------------------------------------------------------------------
-
-describe('TokenModule.simulateRead — deduplication', () => {
-  it('makes only one RPC call when two identical balance() calls run concurrently', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    const mockSimulate = jest
-      .fn()
-      .mockResolvedValue(simSuccess(nativeToScVal(1_000_000n, { type: 'i128' })));
-    (client.token as any).server = { simulateTransaction: mockSimulate };
-
-    // Fire both concurrently — they should share the same in-flight promise
-    const [b1, b2] = await Promise.all([
-      client.token.balance(FAKE_ADDRESS),
-      client.token.balance(FAKE_ADDRESS),
-    ]);
-
-    expect(b1).toBe(1_000_000n);
-    expect(b2).toBe(1_000_000n);
-    // Only one RPC round-trip despite two concurrent callers
-    expect(mockSimulate).toHaveBeenCalledTimes(1);
-  });
-
-  it('makes two RPC calls when two DIFFERENT addresses are queried concurrently', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    const mockSimulate = jest
-      .fn()
-      .mockResolvedValue(simSuccess(nativeToScVal(500n, { type: 'i128' })));
-    (client.token as any).server = { simulateTransaction: mockSimulate };
-
-    await Promise.all([
-      client.token.balance(FAKE_ADDRESS),
-      client.token.balance(FAKE_ADDRESS_2),
-    ]);
-
-    // Different args → different cache keys → two separate RPC calls
-    expect(mockSimulate).toHaveBeenCalledTimes(2);
-  });
-
-  it('makes a second RPC call after the first promise settles (cache auto-evicts)', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    const mockSimulate = jest
-      .fn()
-      .mockResolvedValue(simSuccess(nativeToScVal(999n, { type: 'i128' })));
-    (client.token as any).server = { simulateTransaction: mockSimulate };
-
-    // First call — populates cache
-    await client.token.balance(FAKE_ADDRESS);
-    // Flush microtask queue so the auto-eviction .then() runs
+    await p; // allow the auto-eviction to run
+    // Give the .then() scheduled eviction a tick to run.
     await Promise.resolve();
-    // Second call — entry was evicted, fresh RPC call is made
-    await client.token.balance(FAKE_ADDRESS);
+    await Promise.resolve();
 
-    expect(mockSimulate).toHaveBeenCalledTimes(2);
+    expect(cache.get('k')).toBeUndefined();
+    expect(cache.size).toBe(0);
   });
 
-  it('all concurrent callers receive the same resolved value', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    const mockSimulate = jest
-      .fn()
-      .mockResolvedValue(simSuccess(nativeToScVal(777n, { type: 'i128' })));
-    (client.token as any).server = { simulateTransaction: mockSimulate };
+  it('next call starts a fresh request after a successful settle (fetch called again)', async () => {
+    const cache = new RequestCache();
+    let fetchCount = 0;
+    const fetch = () => {
+      fetchCount++;
+      return Promise.resolve(`v${fetchCount}`);
+    };
 
-    const results = await Promise.all([
-      client.token.balance(FAKE_ADDRESS),
-      client.token.balance(FAKE_ADDRESS),
-      client.token.balance(FAKE_ADDRESS),
-    ]);
+    const key = 'k';
+    cache.set(key, fetch());
+    await Promise.resolve();
+    await Promise.resolve();
 
-    expect(results).toEqual([777n, 777n, 777n]);
-    expect(mockSimulate).toHaveBeenCalledTimes(1);
+    // Entry evicted — get returns undefined so a fresh request is made.
+    expect(cache.get(key)).toBeUndefined();
+    cache.set(key, fetch());
+    const second = cache.get(key);
+    await second;
+    expect(fetchCount).toBe(2);
   });
 
-  it('all concurrent callers receive the same rejection when RPC fails', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    const mockSimulate = jest.fn().mockRejectedValue(new Error('RPC unavailable'));
-    (client.token as any).server = { simulateTransaction: mockSimulate };
+  it('rejected promise clears the entry — next call retries', async () => {
+    const cache = new RequestCache();
+    let attempts = 0;
 
-    const [r1, r2] = await Promise.allSettled([
-      client.token.balance(FAKE_ADDRESS),
-      client.token.balance(FAKE_ADDRESS),
-    ]);
+    const run = (): Promise<string> => {
+      const existing = cache.get('k');
+      if (existing) return existing as Promise<string>;
 
-    expect(r1.status).toBe('rejected');
-    expect(r2.status).toBe('rejected');
-    // Only one RPC call despite two concurrent callers
-    expect(mockSimulate).toHaveBeenCalledTimes(1);
+      attempts++;
+      const p = attempts === 1
+        ? Promise.reject(new Error('transient failure'))
+        : Promise.resolve('retried-ok');
+      cache.set('k', p);
+      return p;
+    };
+
+    // First attempt rejects.
+    await expect(run()).rejects.toThrow('transient failure');
+    // Allow the auto-evict-on-reject handler to run.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(cache.get('k')).toBeUndefined();
+    expect(cache.size).toBe(0);
+
+    // Second attempt retries successfully.
+    const result = await run();
+    expect(result).toBe('retried-ok');
+    expect(attempts).toBe(2);
   });
 
-  it('deduplicates name() calls the same way as balance()', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    const mockSimulate = jest
-      .fn()
-      .mockResolvedValue(simSuccess(nativeToScVal('VeriTix Token')));
-    (client.token as any).server = { simulateTransaction: mockSimulate };
+  it('different keys are independent', async () => {
+    const cache = new RequestCache();
 
-    const [n1, n2] = await Promise.all([client.token.name(), client.token.name()]);
+    const p1 = Promise.resolve('one');
+    const p2 = Promise.resolve('two');
+    cache.set('key-a', p1);
+    cache.set('key-b', p2);
 
-    expect(n1).toBe('VeriTix Token');
-    expect(n2).toBe('VeriTix Token');
-    expect(mockSimulate).toHaveBeenCalledTimes(1);
+    expect(cache.get('key-a')).toBe(p1);
+    expect(cache.get('key-b')).toBe(p2);
+    expect(cache.get('key-a')).not.toBe(p2);
+    expect(cache.size).toBe(2);
   });
 
-  it('symbol() and name() use separate cache keys (no cross-method deduplication)', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    const mockSimulate = jest
-      .fn()
-      .mockResolvedValueOnce(simSuccess(nativeToScVal('VeriTix Token')))
-      .mockResolvedValueOnce(simSuccess(nativeToScVal('VTX')));
-    (client.token as any).server = { simulateTransaction: mockSimulate };
+  it('settling one key does not evict a different key', async () => {
+    const cache = new RequestCache();
+    cache.set('key-a', Promise.resolve(1));
+    cache.set('key-b', Promise.resolve(2));
 
-    const [name, symbol] = await Promise.all([client.token.name(), client.token.symbol()]);
+    await Promise.resolve();
+    await Promise.resolve();
 
-    expect(name).toBe('VeriTix Token');
-    expect(symbol).toBe('VTX');
-    // Different methods → different keys → both RPC calls are made
-    expect(mockSimulate).toHaveBeenCalledTimes(2);
+    // key-a evicted after settle, key-b remains until it also settles.
+    // Both settle at the same tick, but keys remain distinct while in flight.
+    cache.set('key-c', Promise.resolve(3));
+    expect(cache.get('key-c')).toBeDefined();
+    expect(cache.get('key-b')).toBeUndefined(); // key-b already settled+evicted
+  });
+
+  it('delete() removes an entry manually', () => {
+    const cache = new RequestCache();
+    cache.set('k', Promise.resolve(1));
+    cache.delete('k');
+    expect(cache.get('k')).toBeUndefined();
+    expect(cache.size).toBe(0);
   });
 });

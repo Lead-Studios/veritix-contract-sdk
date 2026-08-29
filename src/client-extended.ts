@@ -4,7 +4,7 @@
  */
 
 import { VeriTixClient } from './client';
-import { Keypair } from 'stellar-sdk';
+import { Keypair } from '@stellar/stellar-sdk';
 import { NetworkConfig } from './types';
 
 /**

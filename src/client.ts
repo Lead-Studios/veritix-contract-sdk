@@ -26,6 +26,8 @@
  * ```
  */
 
+import { SorobanRpc, Keypair, Contract, StrKey, TransactionBuilder, xdr } from '@stellar/stellar-sdk';
+import type { Transaction } from '@stellar/stellar-sdk';
 import { SorobanRpc, Keypair, Contract, StrKey, xdr } from '@stellar/stellar-sdk';
 
 declare const window: unknown;
@@ -39,6 +41,7 @@ import type {
   StellarNetwork,
   WatchOptions,
   EscrowRecord,
+  UnsignedTxResult,
   AccountInfo,
   VeriTixEvent,
   StreamEventOptions,
@@ -97,6 +100,8 @@ export class VeriTixClient extends EventEmitter {
 
   private server!: SorobanRpc.Server;
   protected readonly keypair: Keypair | undefined;
+  /** Public key of the external signer (e.g. Freighter wallet) when no local Keypair is present. */
+  private externalPublicKey: string | null = null;
   private connected = false;
 
   /** Cache for getCurrentLedger — { sequence, fetchedAt } */
@@ -145,7 +150,6 @@ export class VeriTixClient extends EventEmitter {
   [Symbol.for('nodejs.util.inspect.custom')](): (depth: number, opts: object) => string {
     return createSafeInspect();
   }
-
   // -------------------------------------------------------------------------
   // Static factories
   // -------------------------------------------------------------------------
@@ -182,6 +186,10 @@ export class VeriTixClient extends EventEmitter {
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): VeriTixClient {
     // Guard against browser bundles: a statically-inlined secret key would
     // end up shipped to every client. Require an explicit client in browsers.
+    const hasWindow =
+      typeof globalThis !== 'undefined' &&
+      (globalThis as unknown as { window?: unknown }).window !== undefined;
+    if (hasWindow) {
     const globals = globalThis as { window?: unknown; document?: unknown };
     if (globals.window !== undefined || globals.document !== undefined) {
     if (typeof globalThis !== 'undefined' &&
@@ -250,6 +258,100 @@ export class VeriTixClient extends EventEmitter {
     }
 
     return new VeriTixClient(config, keypair);
+  }
+
+  /**
+   * Creates a `VeriTixClient` backed by the Freighter browser-extension wallet.
+   *
+   * Freighter supplies the signing public key but never exposes its secret key,
+   * so the returned client is not directly signable with a local `Keypair`.
+   * Instead, write paths are overridden to request signatures from Freighter via
+   * `signTransaction(xdr, { networkPassphrase })` and then submit the signed
+   * transaction to the network.
+   *
+   * @param config - Network and contract configuration.
+   * @returns A new Freighter-backed `VeriTixClient` (caller must still call
+   *          `connect()`).
+   * @throws {VeriTixError} With code `InvalidAddress` if Freighter is not
+   *   installed or cannot provide a public key.
+   *
+   * @example
+   * ```ts
+   * const client = await VeriTixClient.createFromFreighter(getTestnetConfig(contractId));
+   * await client.connect();
+   * ```
+   */
+  static async createFromFreighter(config: NetworkConfig): Promise<VeriTixClient> {
+    // Freighter is a browser extension — dynamically import it so that this
+    // factory can be bundled for server-side / Node environments too, and so
+    // the single "Freighter not installed" case can be detected cleanly.
+    let freighter: {
+      requestAccess: () => Promise<{ address: string } & { error?: unknown }>;
+      getAddress: () => Promise<{ address: string } & { error?: unknown }>;
+      signTransaction: (
+        xdr: string,
+        opts?: { networkPassphrase?: string; address?: string },
+      ) => Promise<{ signedTxXdr: string; signerAddress: string } & { error?: unknown }>;
+    };
+    try {
+      freighter = (await import('@stellar/freighter-api')) as typeof freighter;
+    } catch {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        'Freighter wallet not installed. Install the Freighter browser extension to use createFromFreighter().',
+      );
+    }
+
+    // 1. Request access and resolve the connected account address.
+    let accessResult: { address: string } & { error?: unknown };
+    try {
+      accessResult = await freighter.requestAccess();
+    } catch {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        'Freighter wallet is not available or access was denied.',
+      );
+    }
+
+    let publicKey = accessResult?.address ?? '';
+    if (!publicKey) {
+      // Fall back to getAddress() (older Freighter API) if requestAccess()
+      // resolved without an address.
+      try {
+        const addrResult = await freighter.getAddress();
+        publicKey = addrResult?.address ?? '';
+      } catch {
+        publicKey = '';
+      }
+    }
+
+    if (!publicKey) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAddress,
+        'Freighter could not provide a public key for the connected account.',
+      );
+    }
+
+    // 2. Build the client. No local Keypair exists — signing happens in Freighter.
+    const client = new VeriTixClient(config);
+    client.externalPublicKey = publicKey;
+
+    // 3. Override write paths to sign via Freighter then submit.
+    const signer = async (tx: Transaction): Promise<Transaction> => {
+      const resp = await freighter.signTransaction(tx.toXDR(), {
+        networkPassphrase: config.networkPassphrase,
+      });
+      if (!resp || resp.error || !resp.signedTxXdr) {
+        throw new VeriTixError(
+          VeriTixErrorCode.TransactionFailed,
+          'Freighter failed to sign the transaction.',
+        );
+      }
+      return TransactionBuilder.fromXDR(resp.signedTxXdr, config.networkPassphrase) as Transaction;
+    };
+    client.token.setSigner(signer);
+
+    return client;
   }
 
   // -------------------------------------------------------------------------
@@ -348,6 +450,9 @@ export class VeriTixClient extends EventEmitter {
     let contractFound = false;
     if (rpcReachable) {
       try {
+        const contract = new Contract(this.config.contractId);
+        await this.server.getContractData(contract, xdr.ScVal.scvString(''));
+        contractFound = true;
         const entries = await this.server.getLedgerEntries(
           new Contract(this.config.contractId).getFootprint(),
         const contract = new Contract(this.config.contractId);
@@ -390,6 +495,16 @@ export class VeriTixClient extends EventEmitter {
    */
   isReadOnly(): boolean {
     return !this.keypair;
+  }
+
+  /**
+   * Returns the public key of the signing account configured for this client.
+   * For clients created from a `Keypair` this is the keypair's public key; for
+   * clients created via {@link createFromFreighter} it is the Freighter wallet
+   * address. Returns `null` for fully read-only clients.
+   */
+  getPublicKey(): string | null {
+    return this.keypair?.publicKey() ?? this.externalPublicKey ?? null;
   }
 
   // -------------------------------------------------------------------------
@@ -456,6 +571,116 @@ export class VeriTixClient extends EventEmitter {
         error: err instanceof Error ? err.message : String(err),
       };
     }
+  }
+
+  /**
+   * Builds and simulates an unsigned `invokeHostFunction` transaction, returning
+   * an assembled (fee-bumped) unsigned transaction ready to be signed by an
+   * external signer (e.g. a hardware wallet or browser extension).
+   *
+   * The result can be handed to external signing infrastructure and the signed
+   * XDR passed back to {@link submitSignedTx}.
+   *
+   * @param module          - Feature area name (informational; not used on-chain).
+   * @param method          - Contract function name to invoke.
+   * @param args            - Ordered XDR `ScVal` arguments.
+   * @param sourcePublicKey - Stellar account address that will sign and pay for
+   *                          the transaction.
+   * @returns An {@link UnsignedTxResult} with the base64 XDR, hash, and fee.
+   * @throws If not connected.
+   *
+   * @example
+   * ```ts
+   * const unsigned = await client.buildUnsignedTx(
+   *   'escrow',
+   *   'release_escrow',
+   *   [nativeToScVal(1n, { type: 'u64' })],
+   *   'GABC…',
+   * );
+   * // sign unsigned.xdr with an external wallet, then:
+   * const result = await client.submitSignedTx(signedXdr);
+   * ```
+   */
+  async buildUnsignedTx(
+    module: string,
+    method: string,
+    args: xdr.ScVal[],
+    sourcePublicKey: string,
+  ): Promise<UnsignedTxResult> {
+    void module; // informational; the method name and args define the invocation.
+    if (!this.connected || !this.server) {
+      throw new Error('VeriTixClient: call connect() before buildUnsignedTx()');
+    }
+
+    const { Account } = await import('@stellar/stellar-sdk');
+    const sourceAccount = new Account(sourcePublicKey, '0');
+
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
+
+    const { transaction, simulatedFee } = await simulateTransaction(this.server, tx);
+
+    return {
+      xdr: transaction.toXDR(),
+      hash: Buffer.from(transaction.hash()).toString('hex'),
+      estimatedFee: simulatedFee,
+    };
+  }
+
+  /**
+   * Submits an externally-signed transaction XDR and waits for on-chain
+   * confirmation.
+   *
+   * Handy companion to {@link buildUnsignedTx} — build an unsigned tx, sign it
+   * with an offline / external wallet, then hand the resulting XDR back.
+   *
+   * @param signedXdr - Base64-encoded, signed Stellar transaction envelope XDR.
+   * @returns A confirmed {@link TransactionResult}.
+   * @throws If not connected or if the transaction fails.
+   *
+   * @example
+   * ```ts
+   * const result = await client.submitSignedTx(signedXdr);
+   * console.log('Confirmed in ledger', result.ledger);
+   * ```
+   */
+  async submitSignedTx(signedXdr: string): Promise<TransactionResult> {
+    if (!this.connected || !this.server) {
+      throw new Error('VeriTixClient: call connect() before submitSignedTx()');
+    }
+
+    const tx = TransactionBuilder.fromXDR(signedXdr, this.config.networkPassphrase) as Transaction;
+
+    const sendResponse = await this.server.sendTransaction(tx);
+    if (sendResponse.status === 'ERROR') {
+      throw new VeriTixError(
+        VeriTixErrorCode.TransactionFailed,
+        'Transaction submission rejected by the network.',
+      );
+    }
+
+    const hash = sendResponse.hash;
+    const result = await this.server.getTransaction(hash);
+    if (result.status === 'SUCCESS') {
+      return {
+        hash,
+        ledger: (result as { ledger?: number }).ledger ?? 0,
+        successful: true,
+      };
+    }
+    if (result.status === 'FAILED') {
+      throw new VeriTixError(VeriTixErrorCode.TransactionFailed, 'Transaction failed on-chain.');
+    }
+    throw new VeriTixError(
+      VeriTixErrorCode.Unknown,
+      'Transaction not confirmed after submission.',
+    );
   }
 
   // Convenience methods
