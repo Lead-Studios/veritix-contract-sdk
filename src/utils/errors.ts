@@ -14,8 +14,17 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Canonical error codes produced by {@link parseSorobanError}.
- * Each code maps 1-to-1 to a known contract panic string.
+ * Error codes thrown by the VeriTix SDK.
+ *
+ * Usage guide:
+ * - ReadOnlyClient       — caller tried a write operation without a Keypair
+ * - InvalidAddress       — a Stellar address failed format validation
+ * - InsufficientBalance  — pre-flight balance check failed (saves gas)
+ * - EscrowNotFound       — getEscrow() returned null for the given ID
+ * - BatchTooLarge        — a batch method exceeded its documented limit
+ * - UnknownContractError — the Soroban panic string is not in our error map
+ *
+ * Always throw VeriTixError — never throw raw Error objects.
  */
 export enum VeriTixErrorCode {
   // — Escrow ----------------------------------------------------------------
@@ -96,6 +105,20 @@ export enum VeriTixErrorCode {
   WatchTimeout = 'WATCH_TIMEOUT',
   /** Transaction was rejected by the network */
   TransactionFailed = 'TRANSACTION_FAILED',
+  /** Feature or method is not yet implemented */
+  NotImplemented = 'NOT_IMPLEMENTED',
+  /** Collaborator not found */
+  CollaboratorNotFound = 'COLLABORATOR_NOT_FOUND',
+  /** Collaborator already exists */
+  CollaboratorAlreadyExists = 'COLLABORATOR_ALREADY_EXISTS',
+  /** Maximum number of collaborators reached for event */
+  MaxCollaboratorsReached = 'MAX_COLLABORATORS_REACHED',
+  /** Freighter wallet not found in browser */
+  FreighterNotFound = 'FREIGHTER_NOT_FOUND',
+  /** Client not connected - call connect() first */
+  ClientNotConnected = 'CLIENT_NOT_CONNECTED',
+  /** Invalid input parameter */
+  InvalidInput = 'INVALID_INPUT',
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +138,13 @@ export enum VeriTixErrorCode {
  *   }
  * }
  * ```
+ */
+/**
+ * @module ErrorsUtils
+ *
+ * Provides error handling utilities for the VeriTix SDK.
+ * Defines custom error classes, error codes, and Soroban RPC error parsing
+ * to provide consistent, human-readable error messages across the platform.
  */
 export class VeriTixError extends Error {
   /** Canonical SDK error code */

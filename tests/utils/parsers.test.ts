@@ -137,6 +137,49 @@ describe("parseEscrowRecord", () => {
     const partial = xdr.ScVal.scvMap(entries);
     expect(() => parseEscrowRecord(partial)).toThrow(/depositor|missing/i);
   });
+
+  it("returns a correctly typed EscrowRecord from an ScvMap", () => {
+    const record = parseEscrowRecord(makeEscrowScVal());
+    expect(typeof record.id).toBe("bigint");
+    expect(typeof record.depositor).toBe("string");
+    expect(typeof record.beneficiary).toBe("string");
+    expect(typeof record.amount).toBe("bigint");
+    expect(typeof record.released).toBe("boolean");
+    expect(typeof record.refunded).toBe("boolean");
+    expect(typeof record.expiryLedger).toBe("number");
+    expect(Array.isArray(record.memos)).toBe(true);
+  });
+
+  it("an extra field at position 2 does not corrupt other fields", () => {
+    const base = makeEscrowScVal({
+      id: 7n,
+      depositor: TEST_DEPOSITOR,
+      beneficiary: TEST_BENEFICIARY,
+      amount: 3_000n,
+      released: false,
+      refunded: true,
+      expiryLedger: 777_777,
+      memos: ["a", "b"],
+    });
+    const original = base.map()!;
+    const entries: xdr.ScMapEntry[] = [...original.slice(0, 2)];
+    entries.push(
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("extra_field"), val: xdr.ScVal.scvString("ignored") }),
+    );
+    for (let i = 2; i < original.length; i++) entries.push(original[i]);
+
+    const record = parseEscrowRecord(xdr.ScVal.scvMap(entries));
+    expect(record).toEqual({
+      id: 7n,
+      depositor: TEST_DEPOSITOR,
+      beneficiary: TEST_BENEFICIARY,
+      amount: 3_000n,
+      released: false,
+      refunded: true,
+      expiryLedger: 777_777,
+      memos: ["a", "b"],
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -231,6 +274,23 @@ describe("parseSplitRecord", () => {
   it("throws when passed a non-map ScVal", () => {
     expect(() => parseSplitRecord(xdr.ScVal.scvBool(true))).toThrow("ScvMap");
   });
+
+  it("returns a correctly typed SplitRecord", () => {
+    const recipients = [
+      { address: TEST_RECIPIENT1, shareBps: 6_000 },
+      { address: TEST_RECIPIENT2, shareBps: 4_000 },
+    ];
+    const record = parseSplitRecord(makeSplitScVal({ recipients }));
+    expect(typeof record.id).toBe("bigint");
+    expect(typeof record.sender).toBe("string");
+    expect(typeof record.totalAmount).toBe("bigint");
+    expect(typeof record.distributed).toBe("boolean");
+    expect(typeof record.cancelled).toBe("boolean");
+    expect(Array.isArray(record.recipients)).toBe(true);
+    expect(record.recipients.length).toBe(2);
+    expect(typeof record.recipients[0].address).toBe("string");
+    expect(typeof record.recipients[0].shareBps).toBe("number");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -304,6 +364,12 @@ describe("parseDisputeRecord", () => {
       status: DisputeStatus.Open, openedAt: 900_000,
     });
   });
+
+  it("maps the status string to the correct DisputeStatus enum value", () => {
+    const record = parseDisputeRecord(makeDisputeScVal({ status: "ResolvedForBeneficiary" }));
+    expect(record.status).toBe(DisputeStatus.ResolvedForBeneficiary);
+    expect(record.status).toBe("ResolvedForBeneficiary");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -348,6 +414,35 @@ describe("parseRecurringRecord", () => {
     expect(record.active).toBe(false);
   });
 
+  it("maps paused = true correctly", () => {
+    const record = parseRecurringRecord(makeRecurringScVal({ paused: true }));
+    expect(record.paused).toBe(true);
+    expect(typeof record.paused).toBe("boolean");
+  });
+
+  it("maps paused = false correctly", () => {
+    const record = parseRecurringRecord(makeRecurringScVal({ paused: false }));
+    expect(record.paused).toBe(false);
+  });
+
+  it("survives the round-trip for paused = true from a raw ScvMap fixture", () => {
+    const entries = [
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("id"), val: nativeToScVal(1n, { type: "u64" }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("payer"), val: nativeToScVal(TEST_PAYER) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("payee"), val: nativeToScVal(TEST_PAYEE) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("amount"), val: nativeToScVal(1_000n, { type: "i128" }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("interval"), val: nativeToScVal(3_600, { type: "u32" }) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("active"), val: xdr.ScVal.scvBool(true) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("paused"), val: xdr.ScVal.scvBool(true) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("last_charged_ledger"), val: nativeToScVal(100, { type: "u32" }) }),
+    ];
+
+    const record = parseRecurringRecord(xdr.ScVal.scvMap(entries));
+
+    expect(record.paused).toBe(true);
+    expect(typeof record.paused).toBe("boolean");
+  });
+
   it("maps lastChargedLedger correctly", () => {
     const record = parseRecurringRecord(makeRecurringScVal({ lastChargedLedger: 999_999 }));
     expect(record.lastChargedLedger).toBe(999_999);
@@ -356,7 +451,7 @@ describe("parseRecurringRecord", () => {
   it("returns the full recurring record correctly", () => {
     const record = parseRecurringRecord(makeRecurringScVal({
       id: 20n, payer: TEST_PAYER, payee: TEST_PAYEE, amount: 500_000n,
-      interval: 2_592_000, active: true, lastChargedLedger: 800_000,
+      interval: 2_592_000, active: true, paused: true, lastChargedLedger: 800_000,
     }));
     expect(record).toMatchObject({
       id: 20n,
@@ -365,11 +460,23 @@ describe("parseRecurringRecord", () => {
       amount: 500_000n,
       interval: 2_592_000,
       active: true,
+      paused: true,
+      paused: false,
       lastChargedLedger: 800_000,
     });
   });
 
   it("throws when passed a non-map ScVal", () => {
     expect(() => parseRecurringRecord(xdr.ScVal.scvVoid())).toThrow("ScvMap");
+  });
+
+  it("returns paused:true when the paused field is true", () => {
+    const record = parseRecurringRecord(makeRecurringScVal({ paused: true }));
+    expect(record.paused).toBe(true);
+  });
+
+  it("maps paused = false when the field is not specified", () => {
+    const record = parseRecurringRecord(makeRecurringScVal({ active: true }));
+    expect(record.paused).toBe(false);
   });
 });

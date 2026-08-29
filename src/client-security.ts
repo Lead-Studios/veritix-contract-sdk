@@ -37,6 +37,8 @@ export function createSafeToJSON(obj: any) {
  */
 export function createSafeInspect() {
   return function inspect(this: any, _depth?: number, _opts?: unknown) {
+  return function inspect(this: any, depth?: number, opts?: any) {
+  return function inspect(this: any, _depth?: number, _opts?: any) {
     return 'VeriTixClient { ...config, keypair: [REDACTED], server: [REDACTED] }';
   };
 }

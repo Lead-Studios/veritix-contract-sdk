@@ -3,6 +3,7 @@
 > A TypeScript/JavaScript client SDK for the **VeriTix Soroban smart contract** deployed on the [Stellar](https://stellar.org) network.
 
 [![npm provenance](https://img.shields.io/badge/npm-provenance-blue?logo=npm)](https://www.npmjs.com/package/@veritix/contract-sdk)
+[![node version](https://img.shields.io/badge/node-%E2%89%A520-brightgreen.svg?logo=node.js)](https://nodejs.org)
 [![type-coverage](https://img.shields.io/badge/type--coverage-%E2%89%A595%25-brightgreen)](https://github.com/nicolo-ribaudo/type-coverage)
 
 The SDK wraps every contract entry-point in a typed, promise-based API so you can integrate VeriTix escrow, payment splitting, dispute resolution, and recurring payments into your application without writing Soroban XDR by hand.

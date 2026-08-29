@@ -123,6 +123,7 @@ export interface RecurringFixtureParams {
   amount?:            bigint;
   interval?:          number;
   active?:            boolean;
+  paused?:            boolean;
   lastChargedLedger?: number;
 }
 
@@ -134,16 +135,20 @@ export function makeRecurringScVal(params: RecurringFixtureParams = {}): xdr.ScV
     amount            = 500_000n,
     interval          = 2_592_000,
     active            = true,
+    paused            = false,
     lastChargedLedger = 800_000,
   } = params;
 
-  return scvMap([
+  const entries: xdr.ScMapEntry[] = [
     mapEntry("id",                  bigintToScVal(id, "u64")),
     mapEntry("payer",               stringToScVal(payer)),
     mapEntry("payee",               stringToScVal(payee)),
     mapEntry("amount",              bigintToScVal(amount, "i128")),
     mapEntry("interval",            nativeToScVal(interval, { type: "u32" })),
     mapEntry("active",              boolToScVal(active)),
+    mapEntry("paused",              boolToScVal(paused)),
     mapEntry("last_charged_ledger", nativeToScVal(lastChargedLedger, { type: "u32" })),
-  ]);
+  ];
+
+  return scvMap(entries);
 }
