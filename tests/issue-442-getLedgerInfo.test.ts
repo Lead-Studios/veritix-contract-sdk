@@ -7,19 +7,20 @@
  * `VeriTixClient.getCurrentLedger()` method, so these tests target that.
  */
 
-import { VeriTixClient } from '../src/client';
-import { getTestnetConfig } from '../src/utils/network';
 import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
+import { makeConnectedClient as makeClient, makeMockServer } from './helpers/mocks';
 
-const FAKE_CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
-
+/**
+ * Wraps the shared {@link makeConnectedClient} factory so these tests can pin
+ * a specific ledger sequence and keep a handle on the mock server.
+ */
 function makeConnectedClient(sequence = 100) {
-  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
-  const mockServer = { getLatestLedger: jest.fn().mockResolvedValue({ sequence }) };
+  const mockServer = makeMockServer({
+    getLatestLedger: jest.fn().mockResolvedValue({ sequence }),
+  });
+  const client = makeClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).server = mockServer;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).connected = true;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).ledgerCache = { sequence, fetchedAt: Date.now() };
   return { client, mockServer };

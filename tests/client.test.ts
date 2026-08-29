@@ -14,6 +14,10 @@ import { RecurringModule } from '../src/modules/recurring';
 import { AdminModule } from '../src/modules/admin';
 import { BatchModule } from '../src/modules/batch';
 import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
+import {
+  makeConnectedClient as makeSharedConnectedClient,
+  makeMockServer,
+} from './helpers/mocks';
 
 // Mock the Freighter wallet API for the createFromFreighter unit tests (#482).
 const mockFreighter = {
@@ -40,15 +44,16 @@ jest.mock('../src/utils/transaction', () => ({
 
 const FAKE_CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
 
-// Helper: create a client whose internal server is pre-mocked
+// Helper: create a client whose internal server is pre-mocked.
+// Builds on the shared factories in tests/helpers/mocks.ts, adding only the
+// per-test ledger sequence and the mock-server handle these tests assert on.
 function makeConnectedClient(sequence = 100) {
-  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
-  // Inject a mock server directly
-  const mockServer = { getLatestLedger: jest.fn().mockResolvedValue({ sequence }) };
+  const client = makeSharedConnectedClient();
+  const mockServer = makeMockServer({
+    getLatestLedger: jest.fn().mockResolvedValue({ sequence }),
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).server = mockServer;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).connected = true;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).ledgerCache = { sequence, fetchedAt: Date.now() };
   return { client, mockServer };

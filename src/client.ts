@@ -374,10 +374,31 @@ export class VeriTixClient extends EventEmitter {
   // -------------------------------------------------------------------------
 
   /**
-   * Initialises the Soroban RPC server connection and verifies it is reachable
+   * Establishes a connection to the Soroban RPC and verifies it is reachable
    * by fetching the current ledger sequence.
    *
-   * Retries with exponential backoff up to `config.retries` times (default 3).
+   * Call this once when your application starts. All module method calls
+   * require an active connection — calling them before connect() resolves
+   * throws a {@link VeriTixError} with code `CLIENT_NOT_CONNECTED`, raised by
+   * the lazy server proxy the modules hold.
+   *
+   * Reconnection: call connect() again to re-establish. Note that a connection
+   * dropping mid-session is not detected up-front — `connected` stays true, so
+   * module calls fail with whatever transport error the RPC surfaces rather
+   * than a connection-specific code.
+   *
+   * For read-only usage, connect() is still required to fetch the current ledger.
+   *
+   * Contract existence is NOT checked here — connect() only proves the RPC
+   * endpoint answers. Use {@link healthCheck} to confirm the contract is
+   * actually deployed on the network.
+   *
+   * Lifecycle: `new VeriTixClient(config)` → `connect()` → module calls →
+   * `disconnect()`. {@link disconnect} tears the server down and clears the
+   * ledger cache, putting the client back in the pre-connect state; it is safe
+   * to call `connect()` again afterwards on the same instance. Reconnection is
+   * never automatic — the only retries are the exponential-backoff attempts
+   * made *within* a single `connect()` call (up to `config.retries`, default 3).
    *
    * @returns The current Stellar ledger sequence number.
    * @throws {VeriTixError} With code `CONNECTION_FAILED` if unreachable after all retries.
