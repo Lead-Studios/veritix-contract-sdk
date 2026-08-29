@@ -182,6 +182,8 @@ export class VeriTixClient extends EventEmitter {
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): VeriTixClient {
     // Guard against browser bundles: a statically-inlined secret key would
     // end up shipped to every client. Require an explicit client in browsers.
+    if (typeof globalThis !== 'undefined' &&
+        (globalThis as unknown as { window?: unknown }).window !== undefined) {
     if (
       typeof (globalThis as { window?: unknown }).window !== 'undefined' ||
       typeof (globalThis as { document?: unknown }).document !== 'undefined'
@@ -344,6 +346,7 @@ export class VeriTixClient extends EventEmitter {
     let contractFound = false;
     if (rpcReachable) {
       try {
+        const contract = new Contract(this.config.contractId);
         await this.server.getContractData(
           new Contract(this.config.contractId).address(),
           xdr.ScVal.scvVoid(),

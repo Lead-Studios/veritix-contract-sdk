@@ -3,7 +3,7 @@
  * Unit tests for all ScVal conversion helpers in utils/scval.ts.
  */
 
-import { Keypair, xdr } from "@stellar/stellar-sdk";
+import { Keypair, xdr, scValToNative } from "@stellar/stellar-sdk";
 import {
   addressToScVal,
   bigintToScVal,
@@ -85,4 +85,60 @@ describe("Round-trip conversions", () => {
   it("bool values", () => { expect(scValToBoolean(boolToScVal(true))).toBe(true); expect(scValToBoolean(boolToScVal(false))).toBe(false); });
   it("large i128 round-trip", () => { const big = 170141183460469231731687303715884105727n; expect(scValToBigint(bigintToScVal(big, "i128"))).toBe(big); });
   it("scValToBigint(bigintToScVal(0n, i128)) === 0n", () => { expect(scValToBigint(bigintToScVal(0n, "i128"))).toBe(0n); });
+});
+
+const CONTRACT_ADDRESS = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+const I128_MAX = 170141183460469231731687303715884105727n;
+
+describe("bigintToScVal i128 round-trip", () => {
+  it("encodes then decodes back to the original i128", () => {
+    const v = 123_456_789n;
+    expect(scValToBigint(bigintToScVal(v, "i128"))).toBe(v);
+  });
+
+  it("round-trips a negative i128 (-1n)", () => {
+    expect(scValToBigint(bigintToScVal(-1n, "i128"))).toBe(-1n);
+  });
+
+  it("round-trips i128::MAX", () => {
+    expect(scValToBigint(bigintToScVal(I128_MAX, "i128"))).toBe(I128_MAX);
+  });
+});
+
+describe("addressToScVal round-trip", () => {
+  it("round-trips a G-address", () => {
+    const g = Keypair.random().publicKey();
+    expect(scValToNative(addressToScVal(g))).toBe(g);
+  });
+
+  it("round-trips a C-address", () => {
+    expect(scValToNative(addressToScVal(CONTRACT_ADDRESS))).toBe(CONTRACT_ADDRESS);
+  });
+});
+
+describe("stringToScVal round-trip", () => {
+  it("round-trips a string", () => {
+    const s = "event-ticket-abc";
+    expect(scValToString(stringToScVal(s))).toBe(s);
+  });
+});
+
+describe("boolToScVal round-trip", () => {
+  it("round-trips true", () => {
+    expect(scValToBoolean(boolToScVal(true))).toBe(true);
+  });
+
+  it("round-trips false", () => {
+    expect(scValToBoolean(boolToScVal(false))).toBe(false);
+  });
+});
+
+describe("scValToNumber from u32", () => {
+  it("extracts a number from a u32 ScVal", () => {
+    expect(scValToNumber(xdr.ScVal.scvU32(42))).toBe(42);
+  });
+
+  it("extracts zero from a u32 ScVal", () => {
+    expect(scValToNumber(xdr.ScVal.scvU32(0))).toBe(0);
+  });
 });
