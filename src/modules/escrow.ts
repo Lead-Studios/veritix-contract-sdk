@@ -673,6 +673,13 @@ export class EscrowModule {
       );
     }
 
+    if (escrow.released || escrow.refunded) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowAlreadySettled,
+        'Escrow has already been released or refunded',
+      );
+    }
+
     const caller = this.keypair.publicKey();
     if (caller !== escrow.depositor) {
       throw new VeriTixError(

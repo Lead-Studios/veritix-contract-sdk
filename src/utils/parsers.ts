@@ -191,6 +191,7 @@ export function parseRecurringRecord(val: xdr.ScVal): RecurringRecord {
     amount:             scValToBigint(getField(map, 'amount')),
     interval:           scValToNumber(getField(map, 'interval')),
     active:             scValToBoolean(getField(map, 'active')),
+    paused:             scValToBoolean(getField(map, 'paused')),
     lastChargedLedger:  scValToNumber(getField(map, 'last_charged_ledger')),
   };
 }

@@ -36,7 +36,7 @@ export function createSafeToJSON(obj: any) {
  * console.log(client); // Safe: keypair is redacted in output
  */
 export function createSafeInspect() {
-  return function inspect(this: any, depth: number, opts: any) {
+  return function inspect(this: any, _depth?: number, _opts?: any) {
     return 'VeriTixClient { ...config, keypair: [REDACTED], server: [REDACTED] }';
   };
 }

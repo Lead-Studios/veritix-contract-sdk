@@ -292,8 +292,7 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
     [VeriTixErrorCode.BatchTooLarge]:               'Batch request exceeded maximum allowed size.',
     [VeriTixErrorCode.ReadOnlyClient]:              'This client is read-only. Provide a Keypair to enable write operations.',
-    [VeriTixErrorCode.WatchTimeout]:                'watchEscrow or watchTransaction timed out before the operation was confirmed.',
-    [VeriTixErrorCode.WatchTimeout]:                'Watch timed out before the escrow settled.',
+    [VeriTixErrorCode.WatchTimeout]:                'Watch timed out before the operation was confirmed.',
     [VeriTixErrorCode.TransactionFailed]:           'Transaction was rejected by the Stellar network.',
   };
   return messages[code];
