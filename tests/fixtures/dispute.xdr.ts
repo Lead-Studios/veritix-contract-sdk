@@ -139,7 +139,7 @@ export function makeRecurringScVal(params: RecurringFixtureParams = {}): xdr.ScV
     lastChargedLedger = 800_000,
   } = params;
 
-  return scvMap([
+  const entries: xdr.ScMapEntry[] = [
     mapEntry("id",                  bigintToScVal(id, "u64")),
     mapEntry("payer",               stringToScVal(payer)),
     mapEntry("payee",               stringToScVal(payee)),
@@ -148,5 +148,7 @@ export function makeRecurringScVal(params: RecurringFixtureParams = {}): xdr.ScV
     mapEntry("active",              boolToScVal(active)),
     mapEntry("paused",              boolToScVal(paused)),
     mapEntry("last_charged_ledger", nativeToScVal(lastChargedLedger, { type: "u32" })),
-  ]);
+  ];
+
+  return scvMap(entries);
 }

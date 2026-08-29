@@ -6,7 +6,14 @@
  * arbitration by a pre-designated resolver address.
  */
 
-import { SorobanRpc, Keypair, Account, xdr, scValToNative } from '@stellar/stellar-sdk';
+/**
+ * @module DisputeModule
+ *
+ * Provides dispute resolution methods for the VeriTix platform.
+ * Handles dispute creation, evidence submission, resolution votes,
+ * and automated fund distribution based on dispute outcomes.
+ */
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import {
   DisputeRecord,
   DisputeStatus,
@@ -590,6 +597,80 @@ export class DisputeModule {
   async expireDispute(disputeId: bigint): Promise<TransactionResult> {
     if (!this.keypair) {
       throw new Error('DisputeModule.expireDispute: signing keypair required');
+    }
+
+    const dispute = await this.getDispute(disputeId);
+    if (!dispute) {
+      throw new VeriTixError(VeriTixErrorCode.DisputeNotFound, 'Dispute not found');
+    }
+
+    const dispute = await this.getDispute(disputeId);
+    if (!dispute) {
+      throw new VeriTixError(VeriTixErrorCode.DisputeNotFound, 'Dispute not found');
+    }
+
+    if (dispute.status !== DisputeStatus.Open) {
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeAlreadyResolved,
+        'Dispute already resolved',
+      );
+    }
+
+    const admin = this.keypair.publicKey();
+
+    const tx = await buildContractCall(
+      this.server,
+      new Account(admin, '0'),
+      this.config.contractId,
+      'expire_dispute',
+      [addressToScVal(admin), bigintToScVal(disputeId, 'u64')],
+      this.config.networkPassphrase,
+    );
+
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+
+    const returnValue =
+      SorobanRpc.Api.isSimulationSuccess(raw) && raw.result ? raw.result.retval : undefined;
+
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+
+    return {
+      ...result,
+      returnValue,
+    };
+  }
+
+  /**
+   * Appeals a resolved dispute. Must be called by the original claimant.
+   *
+   * @param disputeId      - The dispute ID to appeal.
+   * @param appealResolver - Stellar account address of the new resolver for the appeal.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {Error} If no signing keypair is available.
+   * @throws {VeriTixError} With code `DISPUTE_NOT_FOUND` if dispute does not exist.
+   * @throws {VeriTixError} With code `DISPUTE_INVALID_STATE` if dispute is still open.
+   * @throws {VeriTixError} With code `DISPUTE_INVALID_STATE` if appealResolver equals the caller.
+   *
+   * @example
+   * ```ts
+   * await client.dispute.appealDispute(3n, 'GARB…');
+   * ```
+   */
+  async appealDispute(disputeId: bigint, appealResolver: string): Promise<TransactionResult> {
+    if (!this.keypair) {
+      throw new Error('DisputeModule.appealDispute: signing keypair required');
+    }
+
+    const claimant = this.keypair.publicKey();
+    if (appealResolver === claimant) {
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeInvalidState,
+        'DisputeModule.appealDispute: appeal resolver cannot be the claimant',
+      );
     }
 
     const dispute = await this.getDispute(disputeId);

@@ -6,13 +6,19 @@
  * condition is met, a resolver adjudicates a dispute, or the escrow expires.
  */
 
-import { SorobanRpc, Keypair, Account, xdr, Address } from '@stellar/stellar-sdk';
+/**
+ * @module EscrowModule
+ *
+ * Provides read and write methods for the VeriTix escrow contract functions.
+ * Handles escrow creation, release, refund, dispute integration, and
+ * bulk settlement operations.
+ */
+import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import type {
   EscrowRecord,
   NetworkConfig,
   TicketEscrowParams,
   TransactionResult,
-  BatchSettlementResult,
 } from '../types/index';
 import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
 import { buildContractCall, submitTransaction } from '../utils/transaction';
@@ -172,6 +178,12 @@ export class EscrowModule {
    *
    * @param address - Stellar account address of the depositor.
    * @returns Array of escrow IDs owned by that depositor.
+   *
+   * @example
+   * ```ts
+   * const escrowIds = await client.escrow.getEscrowsByDepositor('GDEPOSITOR…');
+   * console.log('Escrow IDs created by depositor:', escrowIds);
+   * ```
    */
   async getEscrowsByDepositor(address: string): Promise<bigint[]> {
     return this.getEscrowIdsByAddress('escrows_by_depositor', address);
@@ -182,6 +194,12 @@ export class EscrowModule {
    *
    * @param address - Stellar account address of the beneficiary.
    * @returns Array of escrow IDs for that beneficiary.
+   *
+   * @example
+   * ```ts
+   * const escrowIds = await client.escrow.getEscrowsByBeneficiary('GBENEFICIARY…');
+   * console.log('Escrow IDs for beneficiary:', escrowIds);
+   * ```
    */
   async getEscrowsByBeneficiary(address: string): Promise<bigint[]> {
     return this.getEscrowIdsByAddress('escrows_by_beneficiary', address);
@@ -622,7 +640,11 @@ export class EscrowModule {
    * console.log('Beneficiary transferred in tx:', result.hash);
    * ```
    */
-  async transferBeneficiary(escrowId: bigint, newBeneficiary: string): Promise<TransactionResult> {
+  async transferBeneficiary(
+    escrowId: bigint,
+    newBeneficiary: string,
+    currentLedger?: number,
+  ): Promise<TransactionResult> {
     if (!this.keypair) {
       throw new VeriTixError(
         VeriTixErrorCode.ReadOnlyClient,
