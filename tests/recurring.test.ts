@@ -1,85 +1,299 @@
 /**
  * @file tests/recurring.test.ts
- * Unit tests for RecurringModule.executeAllDue() — issues #119 / #141.
+ * Unit tests for RecurringModule.
+ * Unit tests for RecurringModule — executeAllDue(), amendRecurring(), transferPayer().
+ * Issues #119 / #141 / #263 / #468 / #469.
  */
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
 import { RecurringModule } from '../src/modules/recurring';
-import { Keypair } from '@stellar/stellar-sdk';
+import { Keypair, SorobanDataBuilder } from '@stellar/stellar-sdk';
 import { VeriTixErrorCode } from '../src/utils/errors';
+import * as transactionUtils from '../src/utils/transaction';
+import type { RecurringRecord } from '../src/types/index';
+import { bigintToScVal } from '../src/utils/scval';
+import { Keypair, xdr } from '@stellar/stellar-sdk';
+import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
+import { scValToBigint, scValToNumber } from '../src/utils/scval';
+import * as transactionUtils from '../src/utils/transaction';
+import type { RecurringRecord } from '../src/types/index';
 
 const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
-const FAKE_PAYER    = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+const FAKE_PAYER = Keypair.random().publicKey();
+const PAYEE = Keypair.random().publicKey();
+const OTHER = Keypair.random().publicKey();
 
-describe('RecurringModule', () => {
-  let client: VeriTixClient;
-  let recurring: RecurringModule;
+// A parsed Soroban simulation success that `SorobanRpc.assembleTransaction`
+// can consume (transactionData.build(), result.auth, minResourceFee).
+function parsedSuccess(): Record<string, unknown> {
+  return {
+    _parsed: true,
+    latestLedger: 100,
+    minResourceFee: '100',
+    cost: { cpuInsns: '0', memBytes: '0' },
+    transactionData: new SorobanDataBuilder(),
+    result: { retval: undefined, auth: [] },
+    events: [],
+  };
+}
 
-  beforeEach(() => {
-    client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    recurring = client.recurring;
-    jest.restoreAllMocks();
+function makeRecurringRecord(overrides: Partial<RecurringRecord> = {}): RecurringRecord {
+  return {
+    id: 1n,
+    payer: FAKE_PAYER,
+    payee: PAYEE,
+    amount: 1_000_000n,
+    interval: 100,
+    active: true,
+    paused: false,
+    lastChargedLedger: 0,
+    ...overrides,
+  };
+}
+
+function makeRecurringClient(keypair?: Keypair) {
+  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), keypair);
+  const mockServer = {
+    simulateTransaction: jest.fn().mockResolvedValue(parsedSuccess()),
+    sendTransaction: jest.fn(),
+    getTransaction: jest.fn(),
+    getLatestLedger: jest.fn().mockResolvedValue({ sequence: 100 }),
+  };
+  (client as any).server = mockServer;
+  (client as any).connected = true;
+  return { client, mockServer };
+}
+
+function mockSubmit() {
+  return jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
+    hash: 'tx-hash',
+    ledger: 30,
+    successful: true,
   });
+}
 
-  describe('pauseRecurring()', () => {
-    it('throws ReadOnlyClient when no keypair', async () => {
-      await expect(recurring.pauseRecurring(1n)).rejects.toThrow('signing keypair required');
-    });
+// ---------------------------------------------------------------------------
+// #467 — pauseRecurring / resumeRecurring
+// ---------------------------------------------------------------------------
+describe('RecurringModule.pauseRecurring', () => {
+  beforeEach(() => jest.restoreAllMocks());
 
-    it('returns tx result on success', async () => {
-      const kp = Keypair.random();
-      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
-      const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (c as any).server = mockServer;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (c as any).connected = true;
-
-      const fakeTx = { sign: jest.fn().mockReturnValue([]) };
-      mockServer.simulateTransaction.mockResolvedValue({
-        status: 'SUCCESS',
-        result: { retval: undefined },
-      });
-      mockServer.sendTransaction.mockResolvedValue({ hash: 'txhash', status: 'PENDING' });
-      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 42 });
-
-      const result = await c.recurring.pauseRecurring(5n);
-      expect(result.successful).toBe(true);
-      expect(result.hash).toBe('txhash');
-    });
-  });
-
-  describe('resumeRecurring()', () => {
-    it('throws ReadOnlyClient when no keypair', async () => {
-      await expect(recurring.resumeRecurring(1n)).rejects.toThrow('signing keypair required');
-    });
-
-    it('returns tx result on success', async () => {
-      const kp = Keypair.random();
-      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
-      const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (c as any).server = mockServer;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (c as any).connected = true;
-
-      mockServer.simulateTransaction.mockResolvedValue({
-        status: 'SUCCESS',
-        result: { retval: undefined },
-      });
-      mockServer.sendTransaction.mockResolvedValue({ hash: 'txhash2', status: 'PENDING' });
-      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 43 });
-
-      const result = await c.recurring.resumeRecurring(5n);
-      expect(result.successful).toBe(true);
-      expect(result.hash).toBe('txhash2');
-    });
-  });
-
+  it('throws ReadOnlyClient when no keypair', async () => {
+    const { client } = makeRecurringClient();
+    await expect(client.recurring.pauseRecurring(1n)).rejects.toMatchObject({
+      code: VeriTixErrorCode.ReadOnlyClient,
+  // ---------------------------------------------------------------------
+  // #468 — executeAllDue() categorisation stress testing
+  // ---------------------------------------------------------------------
   describe('executeAllDue()', () => {
-    it('returns empty arrays when no recurring payments exist', async () => {
+    it('returns all empty arrays when the payer has no recurring payments', async () => {
       const result = await recurring.executeAllDue(FAKE_PAYER);
       expect(result).toEqual({ executed: [], skipped: [], failed: [] });
+    });
+
+    it('returns all empty arrays when payer string is empty', async () => {
+      const result = await recurring.executeAllDue('');
+      expect(result).toEqual({ executed: [], skipped: [], failed: [] });
+    });
+
+    it('categorises 100 IDs: 50 due executed, 50 not-due skipped, none failed', async () => {
+      const ids = Array.from({ length: 100 }, (_, i) => BigInt(i + 1));
+      jest.spyOn(recurring as any, 'getRecurringByPayer').mockResolvedValue(ids);
+      jest
+        .spyOn(recurring as any, 'isExecutable')
+        .mockImplementation(async (id: unknown) => (id as bigint) <= 50n);
+      jest.spyOn(recurring, 'execute').mockResolvedValue({ hash: 'h', ledger: 1, successful: true });
+
+      const result = await recurring.executeAllDue(FAKE_PAYER);
+      expect(result.executed).toHaveLength(50);
+      expect(result.skipped).toHaveLength(50);
+      expect(result.failed).toHaveLength(0);
+      expect(result.executed).toEqual(Array.from({ length: 50 }, (_, i) => BigInt(i + 1)));
+      expect(result.skipped).toEqual(Array.from({ length: 50 }, (_, i) => BigInt(i + 51)));
+    });
+
+    it('adds IDs that throw RecurringIntervalNotElapsed to skipped, not failed', async () => {
+      jest.spyOn(recurring as any, 'getRecurringByPayer').mockResolvedValue([7n]);
+      jest.spyOn(recurring as any, 'isExecutable').mockResolvedValue(true);
+      jest.spyOn(recurring, 'execute').mockRejectedValue(
+        new VeriTixError(VeriTixErrorCode.RecurringIntervalNotElapsed, 'interval not elapsed'),
+      );
+
+      const result = await recurring.executeAllDue(FAKE_PAYER);
+      expect(result.skipped).toEqual([7n]);
+      expect(result.failed).toEqual([]);
+      expect(result.executed).toEqual([]);
+    });
+
+  it('submits with the correct recurring_id arg', async () => {
+    const keypair = Keypair.random();
+    const { client } = makeRecurringClient(keypair);
+    const buildCall = jest.spyOn(transactionUtils, 'buildContractCall');
+    mockSubmit();
+
+    const result = await client.recurring.pauseRecurring(5n);
+    expect(result.successful).toBe(true);
+
+    const call = buildCall.mock.calls[0];
+    expect(call[3]).toBe('pause_recurring');
+    expect(call[4]).toHaveLength(1);
+    expect(call[4][0]).toEqual(bigintToScVal(5n, 'u64'));
+  });
+});
+
+describe('RecurringModule.resumeRecurring', () => {
+  beforeEach(() => jest.restoreAllMocks());
+
+  it('throws ReadOnlyClient when no keypair', async () => {
+    const { client } = makeRecurringClient();
+    await expect(client.recurring.resumeRecurring(1n)).rejects.toMatchObject({
+      code: VeriTixErrorCode.ReadOnlyClient,
+    });
+  });
+
+  it('submits with the correct recurring_id arg', async () => {
+    const keypair = Keypair.random();
+    const { client } = makeRecurringClient(keypair);
+    const buildCall = jest.spyOn(transactionUtils, 'buildContractCall');
+    mockSubmit();
+
+    const result = await client.recurring.resumeRecurring(9n);
+    expect(result.successful).toBe(true);
+
+    const call = buildCall.mock.calls[0];
+    expect(call[3]).toBe('resume_recurring');
+    expect(call[4]).toHaveLength(1);
+    expect(call[4][0]).toEqual(bigintToScVal(9n, 'u64'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Existing recurring behaviour kept in clean form
+// ---------------------------------------------------------------------------
+describe('RecurringModule.amendRecurring', () => {
+  beforeEach(() => jest.restoreAllMocks());
+
+  it('throws when neither amount nor interval is provided', async () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    await expect(client.recurring.amendRecurring(1n, {})).rejects.toThrow(
+      'at least one of amount or interval must be provided',
+    );
+  });
+
+  it('throws when no keypair is supplied', async () => {
+    const { client } = makeRecurringClient();
+    await expect(
+      client.recurring.amendRecurring(1n, { amount: 2_000_000n }),
+    ).rejects.toThrow('signing keypair required');
+  });
+
+  it('succeeds when only amount is updated', async () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    jest.spyOn(transactionUtils, 'buildContractCall');
+    mockSubmit();
+
+    const result = await client.recurring.amendRecurring(1n, { amount: 2_000_000n });
+    expect(result.successful).toBe(true);
+    const buildMock = transactionUtils.buildContractCall as jest.Mock;
+    expect(buildMock.mock.calls[0][3]).toBe('amend_recurring');
+  });
+});
+
+describe('RecurringModule.transferPayer', () => {
+  beforeEach(() => jest.restoreAllMocks());
+
+  it('throws when no keypair is supplied', async () => {
+    const { client } = makeRecurringClient();
+    await expect(client.recurring.transferPayer(1n, OTHER)).rejects.toThrow(
+      'signing keypair required',
+    );
+  });
+
+  it('throws when new payer is the same as the current payer', async () => {
+    const keypair = Keypair.random();
+    const { client } = makeRecurringClient(keypair);
+    await expect(client.recurring.transferPayer(1n, keypair.publicKey())).rejects.toThrow(
+      'new payer must differ from the current payer',
+    );
+  });
+
+  it('throws when the recurring payment is inactive', async () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    jest
+      .spyOn(client.recurring, 'getRecurring')
+      .mockResolvedValue(makeRecurringRecord({ active: false }));
+
+    await expect(client.recurring.transferPayer(1n, OTHER)).rejects.toThrow(
+      'recurring payment is inactive',
+    );
+  });
+
+  it('succeeds when payment is active', async () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    jest.spyOn(client.recurring, 'getRecurring').mockResolvedValue(makeRecurringRecord());
+    jest.spyOn(transactionUtils, 'buildContractCall');
+    mockSubmit();
+
+    const result = await client.recurring.transferPayer(1n, OTHER);
+    expect(result.successful).toBe(true);
+    const buildMock = transactionUtils.buildContractCall as jest.Mock;
+    expect(buildMock.mock.calls[0][3]).toBe('transfer_payer');
+  });
+});
+
+describe('RecurringModule.executeAllDue', () => {
+  beforeEach(() => jest.restoreAllMocks());
+
+  it('returns empty arrays when no recurring payments exist', async () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    const result = await client.recurring.executeAllDue(FAKE_PAYER);
+    expect(result).toEqual({ executed: [], skipped: [], failed: [] });
+  });
+
+  it('skips inactive IDs', async () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    jest.spyOn(client.recurring as any, 'getRecurringByPayer').mockResolvedValue([1n]);
+    jest
+      .spyOn(client.recurring, 'getRecurring')
+      .mockResolvedValue(makeRecurringRecord({ active: false }));
+
+    const result = await client.recurring.executeAllDue(FAKE_PAYER);
+    expect(result.skipped).toEqual([1n]);
+  });
+
+  it('adds to executed when execute() succeeds', async () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    jest.spyOn(client.recurring as any, 'getRecurringByPayer').mockResolvedValue([2n]);
+    jest.spyOn(client.recurring, 'getRecurring').mockResolvedValue(makeRecurringRecord({ id: 2n }));
+    jest
+      .spyOn(client.recurring, 'execute')
+      .mockResolvedValue({ hash: 'abc', ledger: 1, successful: true });
+
+    const result = await client.recurring.executeAllDue(FAKE_PAYER);
+    expect(result.executed).toEqual([2n]);
+  });
+
+  it('adds to failed when execute() throws', async () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    jest.spyOn(client.recurring as any, 'getRecurringByPayer').mockResolvedValue([3n]);
+    jest.spyOn(client.recurring, 'getRecurring').mockResolvedValue(makeRecurringRecord({ id: 3n }));
+    jest
+      .spyOn(client.recurring, 'execute')
+      .mockRejectedValue(new Error('interval not elapsed'));
+
+    const result = await client.recurring.executeAllDue(FAKE_PAYER);
+    expect(result.failed).toEqual([3n]);
+  });
+});
+    it('adds IDs that throw a network error to failed, not skipped', async () => {
+      jest.spyOn(recurring as any, 'getRecurringByPayer').mockResolvedValue([8n]);
+      jest.spyOn(recurring as any, 'isExecutable').mockResolvedValue(true);
+      jest.spyOn(recurring, 'execute').mockRejectedValue(new Error('network error'));
+
+      const result = await recurring.executeAllDue(FAKE_PAYER);
+      expect(result.failed).toEqual([8n]);
+      expect(result.skipped).toEqual([]);
+      expect(result.executed).toEqual([]);
     });
 
     it('skips inactive IDs', async () => {
@@ -109,19 +323,6 @@ describe('RecurringModule', () => {
       expect(result.failed).toEqual([]);
     });
 
-    it('adds to failed when execute() throws', async () => {
-      jest.spyOn(recurring as any, 'getRecurringByPayer').mockResolvedValue([3n]);
-      jest.spyOn(recurring as any, 'getRecurring').mockResolvedValue({
-        id: 3n, payer: FAKE_PAYER, payee: 'GXYZ', amount: 100n,
-        interval: 100, active: true, lastChargedLedger: 0,
-      });
-      jest.spyOn(recurring, 'execute').mockRejectedValue(new Error('interval not elapsed'));
-
-      const result = await recurring.executeAllDue(FAKE_PAYER);
-      expect(result.failed).toEqual([3n]);
-      expect(result.executed).toEqual([]);
-    });
-
     it('handles mixed executed/skipped/failed in one call', async () => {
       jest.spyOn(recurring as any, 'getRecurringByPayer').mockResolvedValue([1n, 2n, 3n]);
       jest.spyOn(recurring as any, 'getRecurring').mockImplementation(async (id: unknown) => ({
@@ -138,86 +339,118 @@ describe('RecurringModule', () => {
       expect(result.executed).toEqual([2n]);
       expect(result.failed).toEqual([3n]);
     });
+  });
 
-    // --- Tests mocking isExecutable directly (issue #141) ---
-
-    it('all payments due → all executed, failed: []', async () => {
-      jest.spyOn(recurring as any, 'getRecurringByPayer').mockResolvedValue([10n, 11n]);
-      jest.spyOn(recurring as any, 'isExecutable').mockResolvedValue(true);
-      jest.spyOn(recurring, 'execute').mockResolvedValue({ hash: 'h', ledger: 1, successful: true });
-
-      const result = await recurring.executeAllDue(FAKE_PAYER);
-      expect(result.executed).toEqual([10n, 11n]);
-      expect(result.skipped).toEqual([]);
-      expect(result.failed).toEqual([]);
+  // ---------------------------------------------------------------------
+  // #469 — amendRecurring()
+  // ---------------------------------------------------------------------
+  describe('amendRecurring()', () => {
+    it('throws when neither amount nor interval is provided', async () => {
+      const keypair = Keypair.random();
+      const c = makeRecurringClient(keypair);
+      await expect(c.client.recurring.amendRecurring(1n, {})).rejects.toThrow(
+        'at least one of amount or interval must be provided',
+      );
     });
 
-    it('some not due (isExecutable === false) → correctly skipped', async () => {
-      jest.spyOn(recurring as any, 'getRecurringByPayer').mockResolvedValue([20n, 21n]);
-      jest.spyOn(recurring as any, 'isExecutable').mockImplementation(async (id: unknown) =>
-        (id as bigint) === 20n,
-      );
-      jest.spyOn(recurring, 'execute').mockResolvedValue({ hash: 'h', ledger: 1, successful: true });
+    it('throws ReadOnlyClient when no keypair is supplied', async () => {
+      const c = makeRecurringClient();
+      await expect(
+        c.client.recurring.amendRecurring(1n, { amount: 2_000_000n }),
+      ).rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
+    });
 
-      const result = await recurring.executeAllDue(FAKE_PAYER);
-      expect(result.executed).toEqual([20n]);
-      expect(result.skipped).toEqual([21n]);
-      expect(result.failed).toEqual([]);
+    it('submits only the amount arg when only newAmount is provided', async () => {
+      const c = makeRecurringClient(Keypair.random());
+      const buildMock = jest
+        .spyOn(transactionUtils, 'buildContractCall')
+        .mockRejectedValue(new Error('stop'));
+      await expect(
+        c.client.recurring.amendRecurring(1n, { amount: 2_000_000n }),
+      ).rejects.toThrow('stop');
+
+      expect(buildMock).toHaveBeenCalled();
+      expect(buildMock.mock.calls[0][3]).toBe('amend_recurring');
+      const args = buildMock.mock.calls[0][4] as xdr.ScVal[];
+      expect(args).toHaveLength(2);
+      expect(scValToBigint(args[0])).toBe(1n);
+      expect(scValToBigint(args[1])).toBe(2_000_000n);
+    });
+
+    it('submits only the interval arg when only newInterval is provided', async () => {
+      const c = makeRecurringClient(Keypair.random());
+      const buildMock = jest
+        .spyOn(transactionUtils, 'buildContractCall')
+        .mockRejectedValue(new Error('stop'));
+      await expect(c.client.recurring.amendRecurring(1n, { interval: 200 })).rejects.toThrow('stop');
+
+      expect(buildMock).toHaveBeenCalled();
+      expect(buildMock.mock.calls[0][3]).toBe('amend_recurring');
+      const args = buildMock.mock.calls[0][4] as xdr.ScVal[];
+      expect(args).toHaveLength(2);
+      expect(scValToBigint(args[0])).toBe(1n);
+      expect(scValToNumber(args[1])).toBe(200);
+    });
+
+    it('submits amount and interval args when both fields are provided', async () => {
+      const c = makeRecurringClient(Keypair.random());
+      const buildMock = jest
+        .spyOn(transactionUtils, 'buildContractCall')
+        .mockRejectedValue(new Error('stop'));
+      await expect(
+        c.client.recurring.amendRecurring(1n, { amount: 3_000_000n, interval: 300 }),
+      ).rejects.toThrow('stop');
+
+      expect(buildMock).toHaveBeenCalled();
+      expect(buildMock.mock.calls[0][3]).toBe('amend_recurring');
+      const args = buildMock.mock.calls[0][4] as xdr.ScVal[];
+      expect(args).toHaveLength(3);
+      expect(scValToBigint(args[0])).toBe(1n);
+      expect(scValToBigint(args[1])).toBe(3_000_000n);
+      expect(scValToNumber(args[2])).toBe(300);
     });
   });
 
+  // ---------------------------------------------------------------------
+  // transferPayer()
+  // ---------------------------------------------------------------------
   describe('transferPayer()', () => {
-    it('throws ReadOnlyClient when no keypair', async () => {
-      await expect(recurring.transferPayer(1n, 'GNEW')).rejects.toThrow('signing keypair required');
-  describe('amendRecurring()', () => {
-    it('throws ReadOnlyClient when no keypair', async () => {
-      await expect(recurring.amendRecurring(1n, 100n, 100)).rejects.toThrow('signing keypair required');
+    it('throws when no keypair is supplied', async () => {
+      const c = makeRecurringClient();
+      await expect(
+        c.client.recurring.transferPayer(1n, 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN'),
+      ).rejects.toThrow('signing keypair required');
     });
 
-    it('returns tx result on success', async () => {
-      const kp = Keypair.random();
-      const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
-      const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (c as any).server = mockServer;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (c as any).connected = true;
+    it('throws when new payer is the same as the current payer', async () => {
+      const keypair = Keypair.random();
+      const c = makeRecurringClient(keypair);
+      await expect(c.client.recurring.transferPayer(1n, keypair.publicKey())).rejects.toThrow(
+        'new payer must differ from the current payer',
+      );
+    });
 
-      mockServer.simulateTransaction.mockResolvedValue({
-        status: 'SUCCESS',
-        result: { retval: undefined },
-      });
-      mockServer.sendTransaction.mockResolvedValue({ hash: 'transfer-hash', status: 'PENDING' });
-      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 55 });
+    it('throws when the recurring payment is inactive', async () => {
+      const c = makeRecurringClient(Keypair.random());
+      jest
+        .spyOn(c.client.recurring, 'getRecurring')
+        .mockResolvedValue(makeRecurringRecord({ active: false }));
 
-      const result = await c.recurring.transferPayer(3n, 'GNEWPAYER');
-      expect(result.successful).toBe(true);
-      expect(result.hash).toBe('transfer-hash');
-      mockServer.sendTransaction.mockResolvedValue({ hash: 'amend-hash', status: 'PENDING' });
-      mockServer.getTransaction.mockResolvedValue({ status: 'SUCCESS', successful: true, ledger: 50 });
-
-      const result = await c.recurring.amendRecurring(2n, 500n, 3600);
-      expect(result.successful).toBe(true);
-      expect(result.hash).toBe('amend-hash');
+      await expect(
+        c.client.recurring.transferPayer(1n, 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN'),
+      ).rejects.toThrow('recurring payment is inactive');
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// #263 — RecurringModule.amendRecurring and transferPayer
+// Helpers
 // ---------------------------------------------------------------------------
-
-import { Keypair } from '@stellar/stellar-sdk';
-import * as transactionUtils from '../src/utils/transaction';
-import type { RecurringRecord } from '../src/types/index';
 
 function makeRecurringClient(keypair?: Keypair) {
   const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), keypair);
   const mockServer = {
-    simulateTransaction: jest.fn().mockResolvedValue({
-      status: 'SUCCESS',
-      result: { retval: undefined },
-    }),
+    simulateTransaction: jest.fn().mockResolvedValue({ status: 'SUCCESS', result: { retval: undefined } }),
     sendTransaction: jest.fn(),
     getTransaction: jest.fn(),
     getLatestLedger: jest.fn().mockResolvedValue({ sequence: 100 }),
@@ -235,127 +468,8 @@ function makeRecurringRecord(overrides: Partial<RecurringRecord> = {}): Recurrin
     amount: 1_000_000n,
     interval: 100,
     active: true,
+    paused: false,
     lastChargedLedger: 0,
     ...overrides,
   };
 }
-
-describe('RecurringModule.amendRecurring', () => {
-  beforeEach(() => jest.restoreAllMocks());
-
-  it('throws when neither amount nor interval is provided', async () => {
-    const { client } = makeRecurringClient(Keypair.random());
-    await expect(client.recurring.amendRecurring(1n, {})).rejects.toThrow(
-      'at least one of amount or interval must be provided',
-    );
-  });
-
-  it('throws when no keypair is supplied', async () => {
-    const { client } = makeRecurringClient();
-    await expect(
-      client.recurring.amendRecurring(1n, { amount: 2_000_000n }),
-    ).rejects.toThrow('signing keypair required');
-  });
-
-  it('succeeds when only amount is updated', async () => {
-    const keypair = Keypair.random();
-    const { client } = makeRecurringClient(keypair);
-    jest.spyOn(transactionUtils, 'buildContractCall').mockResolvedValue({} as never);
-    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
-      hash: 'amend-hash',
-      ledger: 10,
-      successful: true,
-    });
-
-    const result = await client.recurring.amendRecurring(1n, { amount: 2_000_000n });
-    expect(result.hash).toBe('amend-hash');
-    expect(result.successful).toBe(true);
-    const buildMock = transactionUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe('amend_recurring');
-  });
-
-  it('succeeds when only interval is updated', async () => {
-    const keypair = Keypair.random();
-    const { client } = makeRecurringClient(keypair);
-    jest.spyOn(transactionUtils, 'buildContractCall').mockResolvedValue({} as never);
-    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
-      hash: 'amend-interval-hash',
-      ledger: 11,
-      successful: true,
-    });
-
-    const result = await client.recurring.amendRecurring(1n, { interval: 200 });
-    expect(result.hash).toBe('amend-interval-hash');
-    const buildMock = transactionUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe('amend_recurring');
-  });
-
-  it('succeeds when both amount and interval are updated', async () => {
-    const keypair = Keypair.random();
-    const { client } = makeRecurringClient(keypair);
-    jest.spyOn(transactionUtils, 'buildContractCall').mockResolvedValue({} as never);
-    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
-      hash: 'amend-both-hash',
-      ledger: 12,
-      successful: true,
-    });
-
-    const result = await client.recurring.amendRecurring(1n, {
-      amount: 3_000_000n,
-      interval: 300,
-    });
-    expect(result.hash).toBe('amend-both-hash');
-  });
-});
-
-describe('RecurringModule.transferPayer', () => {
-  beforeEach(() => jest.restoreAllMocks());
-
-  it('throws when no keypair is supplied', async () => {
-    const { client } = makeRecurringClient();
-    await expect(
-      client.recurring.transferPayer(1n, 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN'),
-    ).rejects.toThrow('signing keypair required');
-  });
-
-  it('throws when new payer is the same as the current payer', async () => {
-    const keypair = Keypair.random();
-    const { client } = makeRecurringClient(keypair);
-    await expect(
-      client.recurring.transferPayer(1n, keypair.publicKey()),
-    ).rejects.toThrow('new payer must differ from the current payer');
-  });
-
-  it('throws when the recurring payment is inactive', async () => {
-    const keypair = Keypair.random();
-    const { client } = makeRecurringClient(keypair);
-    jest
-      .spyOn(client.recurring, 'getRecurring')
-      .mockResolvedValue(makeRecurringRecord({ active: false }));
-
-    await expect(
-      client.recurring.transferPayer(1n, 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN'),
-    ).rejects.toThrow('recurring payment is inactive');
-  });
-
-  it('succeeds when both payer auth is present and payment is active', async () => {
-    const keypair = Keypair.random();
-    const newPayerAddr = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
-    const { client } = makeRecurringClient(keypair);
-    jest
-      .spyOn(client.recurring, 'getRecurring')
-      .mockResolvedValue(makeRecurringRecord({ active: true }));
-    jest.spyOn(transactionUtils, 'buildContractCall').mockResolvedValue({} as never);
-    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
-      hash: 'transfer-payer-hash',
-      ledger: 20,
-      successful: true,
-    });
-
-    const result = await client.recurring.transferPayer(1n, newPayerAddr);
-    expect(result.hash).toBe('transfer-payer-hash');
-    expect(result.successful).toBe(true);
-    const buildMock = transactionUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe('transfer_payer');
-  });
-});

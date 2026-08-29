@@ -33,16 +33,19 @@ Thank you for helping build the VeriTix SDK! This document describes how to pick
 git clone https://github.com/veritix/contract-sdk.git
 cd contract-sdk
 
-# 2. Install dependencies
-npm install
+# 2. Use the pinned Node.js version (.nvmrc)
+nvm use
 
-# 3. Copy the env example and fill in your values
+# 3. Install dependencies (run npm ci after nvm use)
+npm ci
+
+# 4. Copy the env example and fill in your values
 cp .env.example .env
 
-# 4. Build to verify the TypeScript compiles
+# 5. Build to verify the TypeScript compiles
 npm run build
 
-# 5. Run the existing test suite
+# 6. Run the existing test suite
 npm test
 ```
 

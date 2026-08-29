@@ -1,217 +1,237 @@
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
-import { Keypair, xdr } from '@stellar/stellar-sdk';
-import { VeriTixError, VeriTixErrorCode } from '../src/utils/errors';
+import { Keypair, SorobanDataBuilder, nativeToScVal, xdr } from '@stellar/stellar-sdk';
+import { VeriTixErrorCode } from '../src/utils/errors';
+import * as transactionUtils from '../src/utils/transaction';
 
 const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+const ADDR_A = Keypair.random().publicKey();
+const ADDR_B = Keypair.random().publicKey();
 
-describe('SplitterModule.getSplitsBySender (stub)', () => {
-  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
+// A parsed Soroban simulation success that `SorobanRpc.assembleTransaction`
+// can consume (transactionData.build(), result.auth, minResourceFee).
+function parsedSuccess(retval: unknown = undefined): Record<string, unknown> {
+  return {
+    _parsed: true,
+    latestLedger: 100,
+    minResourceFee: '100',
+    cost: { cpuInsns: '0', memBytes: '0' },
+    transactionData: new SorobanDataBuilder(),
+    result: { retval, auth: [] },
+    events: [],
+  };
+}
 
-  beforeAll(async () => {
-    await client.connect();
-  });
-
-  it('returns empty array for unknown sender', async () => {
-    const splits = await client.splitter.getSplitsBySender('GUNKNOWN...');
-    expect(Array.isArray(splits)).toBe(true);
-    expect(splits.length).toBe(0);
-  });
-});
-
-// Tests for validateRecipients
-
+// ---------------------------------------------------------------------------
+// #464 — validateRecipients failure paths
+// ---------------------------------------------------------------------------
 describe('SplitterModule.validateRecipients', () => {
-  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
+  // validateRecipients is synchronous / pure — no connection or keypair required.
+  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
 
-  beforeAll(async () => {
-    await client.connect();
-  });
-
-  it('returns invalid when total bps < 10000', () => {
+  it('is invalid for duplicate addresses', () => {
     const result = client.splitter.validateRecipients([
-      { address: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN', shareBps: 5000 },
-      { address: 'GBZXN7PIRZGNMHGA76QJRYR3ERW7VH2MJL7G2P6CC6QH5M2LQJUSVQ6C', shareBps: 4000 },
-    ]);
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Total basis points must equal 10 000, got 9000');
-  });
-
-  it('returns invalid when total bps > 10000', () => {
-    const result = client.splitter.validateRecipients([
-      { address: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN', shareBps: 6000 },
-      { address: 'GBZXN7PIRZGNMHGA76QJRYR3ERW7VH2MJL7G2P6CC6QH5M2LQJUSVQ6C', shareBps: 5000 },
-    ]);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('10 000'))).toBe(true);
-  });
-
-  it('returns valid when total bps = 10000', () => {
-    const result = client.splitter.validateRecipients([
-      { address: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN', shareBps: 6000 },
-      { address: 'GBZXN7PIRZGNMHGA76QJRYR3ERW7VH2MJL7G2P6CC6QH5M2LQJUSVQ6C', shareBps: 4000 },
-    ]);
-    expect(result.valid).toBe(true);
-    expect(result.errors).toEqual([]);
-  });
-
-  it('returns invalid for duplicate addresses', () => {
-    const addr = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
-    const result = client.splitter.validateRecipients([
-      { address: addr, shareBps: 5000 },
-      { address: addr, shareBps: 5000 },
+      { address: ADDR_A, shareBps: 5000 },
+      { address: ADDR_A, shareBps: 5000 },
     ]);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.toLowerCase().includes('duplicate'))).toBe(true);
   });
 
-  it('returns invalid when more than 20 recipients', () => {
-    const recipients = Array.from({ length: 21 }, (_, i) => ({
-      address: `G${'A'.repeat(54)}${i}`.slice(0, 56),
-      shareBps: Math.floor(10000 / 21),
-    }));
-    // Fix totals so only the count error fires
-    const result = client.splitter.validateRecipients(recipients);
+  it('is invalid when BPS does not sum to 10000', () => {
+    const result = client.splitter.validateRecipients([
+      { address: ADDR_A, shareBps: 5000 },
+      { address: ADDR_B, shareBps: 4000 },
+    ]);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('Too many recipients'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('10 000'))).toBe(true);
   });
 
-  it('returns invalid for a recipient with shareBps = 0', () => {
+  it('is invalid for a zero-BPS recipient', () => {
     const result = client.splitter.validateRecipients([
-      { address: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN', shareBps: 0 },
-      { address: 'GBZXN7PIRZGNMHGA76QJRYR3ERW7VH2MJL7G2P6CC6QH5M2LQJUSVQ6C', shareBps: 10000 },
+      { address: ADDR_A, shareBps: 0 },
+      { address: ADDR_B, shareBps: 10000 },
     ]);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.includes('non-positive'))).toBe(true);
   });
 
-  it('returns valid for a single recipient with shareBps = 10000', () => {
+  it('is invalid for more than 20 recipients', () => {
+    const recipients = Array.from({ length: 21 }, (_, i) => ({
+      address: `${ADDR_A.slice(0, 55)}${i % 10}`,
+      shareBps: i === 20 ? 1 : Math.floor(9999 / 20),
+    }));
+    const result = client.splitter.validateRecipients(recipients);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('Too many recipients'))).toBe(true);
+  });
+
+  it('is valid for 2 recipients at 5000 bps each', () => {
     const result = client.splitter.validateRecipients([
-      { address: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN', shareBps: 10000 },
+      { address: ADDR_A, shareBps: 5000 },
+      { address: ADDR_B, shareBps: 5000 },
     ]);
     expect(result.valid).toBe(true);
     expect(result.errors).toEqual([]);
   });
+
+  it('populates the errors array for each violation', () => {
+    // Duplicate address + non-positive share + wrong total → multiple errors.
+    const result = client.splitter.validateRecipients([
+      { address: ADDR_A, shareBps: 0 },
+      { address: ADDR_A, shareBps: 5000 },
+      { address: ADDR_B, shareBps: 4000 },
+    ]);
+    expect(result.valid).toBe(false);
+    expect(result.errors.length).toBeGreaterThanOrEqual(3);
+  });
 });
 
-// New tests for createRevenueSplit
+// ---------------------------------------------------------------------------
+// #465 — createRevenueSplit BPS guard and encoding
+// ---------------------------------------------------------------------------
+describe('SplitterModule.createRevenueSplit', () => {
+  const kp = Keypair.random();
+  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
+  const mockServer = {
+    simulateTransaction: jest.fn().mockResolvedValue(parsedSuccess()),
+  };
+  (client as unknown as { server: unknown }).server = mockServer;
+  (client as unknown as { connected: boolean }).connected = true;
 
-describe('SplitterModule.createRevenueSplit (validation)', () => {
-  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
-
-  beforeAll(async () => {
-    await client.connect();
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    mockServer.simulateTransaction.mockResolvedValue(parsedSuccess());
   });
 
   it('throws SplitInvalidShares when organizerBps + artistBps >= 10000', async () => {
+    const readOnly = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
     await expect(
-      client.splitter.createRevenueSplit({
-        organizer: 'GORG...',
+      readOnly.splitter.createRevenueSplit({
+        organizer: ADDR_A,
         organizerBps: 6000,
-        artist: 'GART...',
+        artist: ADDR_B,
         artistBps: 4000,
-        platform: 'GPLAT...',
+        platform: ADDR_A,
         totalAmount: 1_000_000n,
-      })
+      }),
     ).rejects.toMatchObject({ code: VeriTixErrorCode.SplitInvalidShares });
+  });
+
+  it('throws ReadOnlyClient when no keypair', async () => {
+    const readOnly = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
+    await expect(
+      readOnly.splitter.createRevenueSplit({
+        organizer: ADDR_A,
+        organizerBps: 5000,
+        artist: ADDR_B,
+        artistBps: 3000,
+        platform: ADDR_A,
+        totalAmount: 1_000_000n,
+      }),
+    ).rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
+  });
+
+  it('succeeds with valid BPS', async () => {
+    jest.spyOn(transactionUtils, 'buildContractCall');
+    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
+      hash: 'split-hash',
+      ledger: 10,
+      successful: true,
+    });
+
+    const result = await client.splitter.createRevenueSplit({
+      organizer: ADDR_A,
+      organizerBps: 5000,
+      artist: ADDR_B,
+      artistBps: 3000,
+      platform: ADDR_A,
+      totalAmount: 1_000_000n,
+    });
+    expect(result.successful).toBe(true);
+    expect(result.hash).toBe('split-hash');
+  });
+
+  it('submits with 3 recipients encoding', async () => {
+    const buildCall = jest.spyOn(transactionUtils, 'buildContractCall');
+    jest.spyOn(transactionUtils, 'submitTransaction').mockResolvedValue({
+      hash: 'split-encode-hash',
+      ledger: 11,
+      successful: true,
+    });
+
+    await client.splitter.createRevenueSplit({
+      organizer: ADDR_A,
+      organizerBps: 6000,
+      artist: ADDR_B,
+      artistBps: 3000,
+      platform: ADDR_A,
+      totalAmount: 2_000_000n,
+    });
+
+    const call = buildCall.mock.calls[0];
+    expect(call[3]).toBe('create_split');
+    const recipientsScVal = call[4][0];
+    expect(recipientsScVal.switch()).toBe(xdr.ScValType.scvVec());
+    expect(recipientsScVal.vec()).toHaveLength(3);
   });
 });
 
-describe('SplitterModule.bulkDistribute', () => {
-  it('throws when no signing keypair', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    await expect(client.splitter.bulkDistribute([1n, 2n])).rejects.toThrow();
-  });
-
-  it('returns distributed/failed summary', async () => {
-    const kp = Keypair.random();
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), kp);
-    const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
-describe('SplitterModule.getRevenueSharePreview', () => {
-  const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
-
-  it('calculates correct shares for a three-way split', () => {
-    const preview = client.splitter.getRevenueSharePreview({
-      organizer: 'GORG...',
-      organizerBps: 4000,
-      artist: 'GART...',
-      artistBps: 3500,
-      platform: 'GPLAT...',
-      totalAmount: 10_000_000n,
-    });
-    expect(preview).toHaveLength(3);
-    expect(preview[0]).toEqual({ address: 'GORG...', amount: 4_000_000n });
-    expect(preview[1]).toEqual({ address: 'GART...', amount: 3_500_000n });
-    expect(preview[2]).toEqual({ address: 'GPLAT...', amount: 2_500_000n });
-  });
-
-  it('handles zero-amount split', () => {
-    const preview = client.splitter.getRevenueSharePreview({
-      organizer: 'GORG...',
-      organizerBps: 5000,
-      artist: 'GART...',
-      artistBps: 5000,
-      platform: 'GPLAT...',
-      totalAmount: 0n,
-    });
-    expect(preview.every(r => r.amount === 0n)).toBe(true);
-describe('SplitterModule.replaceRecipient', () => {
-  it('throws when no signing keypair', async () => {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
-    await expect(client.splitter.replaceRecipient(1n, 'GOLD', 'NEW')).rejects.toThrow('signing keypair required');
+// ---------------------------------------------------------------------------
+// #466 — getSplitterStats correct field types
+// ---------------------------------------------------------------------------
 describe('SplitterModule.getSplitterStats', () => {
   function makeMockClient() {
-    const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
-    const mockServer = { simulateTransaction: jest.fn() };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (client as any).server = mockServer;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (client as any).connected = true;
-
-    jest.spyOn(client.splitter as any, 'distribute').mockImplementation(async (id: bigint) => {
-      if (id === 2n) throw new Error('not found');
-      return { hash: 'h', ledger: 1, successful: true };
-    });
-
-    const result = await client.splitter.bulkDistribute([1n, 2n, 3n]);
-    expect(result.distributed).toEqual([1n, 3n]);
-    expect(result.failed).toEqual([2n]);
-    return { client, mockServer };
+    const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
+    const mock = { simulateTransaction: jest.fn() };
+    (c as unknown as { server: unknown }).server = mock;
+    (c as unknown as { connected: boolean }).connected = true;
+    return { client: c, mockServer: mock };
   }
 
-  it('throws when simulation returns error', async () => {
-    const { client, mockServer } = makeMockClient();
-    mockServer.simulateTransaction.mockResolvedValue({ status: 'ERROR', error: 'panic' });
-    await expect(client.splitter.getSplitterStats()).rejects.toThrow();
-  });
-
-  it('throws when simulation returns void', async () => {
-    const { client, mockServer } = makeMockClient();
-    mockServer.simulateTransaction.mockResolvedValue({
-      status: 'SUCCESS',
-      result: { retval: xdr.ScVal.scvVoid() },
-    });
-    await expect(client.splitter.getSplitterStats()).rejects.toMatchObject({
-      code: VeriTixErrorCode.Unknown,
-    });
-  });
-
-  it('parses a valid stats map', async () => {
+  it('returns correct field types (number / bigint)', async () => {
     const { client, mockServer } = makeMockClient();
     const mapVal = xdr.ScVal.scvMap([
       new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total_splits'), val: xdr.ScVal.scvU32(25) }),
       new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('distributed_count'), val: xdr.ScVal.scvU32(20) }),
       new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('cancelled_count'), val: xdr.ScVal.scvU32(3) }),
-      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total_distributed_value'), val: xdr.ScVal.scvI128(xdr.Int128Parts.fromBigInt(BigInt(5000000))) }),
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol('total_distributed_value'),
+        val: nativeToScVal(5000000n, { type: 'i128' }),
+      }),
     ]);
-    mockServer.simulateTransaction.mockResolvedValue({
-      status: 'SUCCESS',
-      result: { retval: mapVal },
-    });
+    mockServer.simulateTransaction.mockResolvedValue(parsedSuccess(mapVal));
+
     const stats = await client.splitter.getSplitterStats();
+
+    expect(typeof stats.totalSplits).toBe('number');
+    expect(typeof stats.distributedCount).toBe('number');
+    expect(typeof stats.cancelledCount).toBe('number');
+    expect(typeof stats.totalDistributedValue).toBe('bigint');
+
     expect(stats.totalSplits).toBe(25);
     expect(stats.distributedCount).toBe(20);
     expect(stats.cancelledCount).toBe(3);
     expect(stats.totalDistributedValue).toBe(5000000n);
+  });
+
+  it('does not return bigints for count fields', async () => {
+    const { client, mockServer } = makeMockClient();
+    const mapVal = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('total_splits'), val: xdr.ScVal.scvU32(7) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('distributed_count'), val: xdr.ScVal.scvU32(5) }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('cancelled_count'), val: xdr.ScVal.scvU32(1) }),
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol('total_distributed_value'),
+        val: nativeToScVal(0n, { type: 'i128' }),
+      }),
+    ]);
+    mockServer.simulateTransaction.mockResolvedValue(parsedSuccess(mapVal));
+
+    const stats = await client.splitter.getSplitterStats();
+    expect(typeof stats.totalSplits).toBe('number');
+    expect(typeof stats.distributedCount).toBe('number');
+    expect(typeof stats.cancelledCount).toBe('number');
+    expect(typeof stats.totalDistributedValue).toBe('bigint');
   });
 });

@@ -1,9 +1,9 @@
 /**
- * @module utils/network
- * Network configuration helpers for Testnet and Mainnet Stellar / Soroban.
+ * @module NetworkUtils
  *
- * Use these helpers to build a {@link NetworkConfig} that can be passed
- * directly to {@link VeriTixClient}.
+ * Provides Stellar network configuration utilities for the VeriTix SDK.
+ * Handles network parameter management, RPC endpoint configuration,
+ * and environment detection for mainnet, testnet, and local development.
  */
 
 import { StrKey } from '@stellar/stellar-sdk';

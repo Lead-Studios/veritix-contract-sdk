@@ -3,9 +3,21 @@
  * Payment splitter operations exposed by the VeriTix Soroban contract.
  */
 
+import { SorobanRpc, Keypair, Account, Address, xdr } from '@stellar/stellar-sdk';
+import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
+import { buildContractCall, submitTransaction } from '../utils/transaction';
+/**
+ * @module SplitterModule
+ *
+ * Provides revenue distribution methods for the VeriTix platform.
+ * Handles automated revenue splitting between event organizers, artists,
+ * and the platform, with support for custom BPS configurations.
+ */
 import { SorobanRpc, Keypair, Account, xdr } from '@stellar/stellar-sdk';
 import { addressToScVal, bigintToScVal, scValToBigint, scValToNumber, stringToScVal } from '../utils/scval';
 import { buildContractCall, simulateTransaction, submitTransaction } from '../utils/transaction';
+import { addressToScVal, scValToBigint, scValToNumber } from '../utils/scval';
+import { buildContractCall } from '../utils/transaction';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { DUMMY_PUBLIC_KEY } from '../utils/network';
 import type {
@@ -53,7 +65,10 @@ export class SplitterModule {
     // TODO: implement
     void this.config;
     void this.server;
-    throw new Error('SplitterModule.getSplit: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.getSplit: not implemented'
+    );
   }
 
   /**
@@ -229,10 +244,41 @@ export class SplitterModule {
     if (totalBps !== 10_000) {
       throw new VeriTixError(VeriTixErrorCode.SplitInvalidShares, 'Recipient shares must sum to 10 000 basis points.');
     }
+
+    const recipientsScVal = xdr.ScVal.scvVec(
+      params.recipients.map((r) =>
+        xdr.ScVal.scvMap([
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('address'), val: new Address(r.address).toScVal() }),
+          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol('share_bps'), val: xdr.ScVal.scvU32(r.shareBps) }),
+        ]),
+      ),
+    );
+
+    const totalAmountScVal = bigintToScVal(params.totalAmount, 'i128');
+
+    const sourceAccount = new Account(this.keypair.publicKey(), '0');
+    const tx = await buildContractCall(
+      this.server,
+      sourceAccount,
+      this.config.contractId,
+      'create_split',
+      [recipientsScVal, totalAmountScVal],
+      this.config.networkPassphrase,
+    );
+    const raw = await this.server.simulateTransaction(tx);
+    if (SorobanRpc.Api.isSimulationError(raw)) {
+      throw parseSorobanError(raw.error);
+    }
+    const assembled = SorobanRpc.assembleTransaction(tx, raw).build();
+    const result = await submitTransaction(this.server, assembled, this.keypair);
+    return result;
     // TODO: build & submit contract call
     void simulateTransaction;
     void submitTransaction;
-    throw new Error('SplitterModule.createSplit: not implemented');
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.createSplit: not implemented'
+    );
   }
 
   /**
@@ -381,7 +427,12 @@ export class SplitterModule {
    * ```
    */
   async distribute(_id: bigint): Promise<TransactionResult> {
-    throw new Error('SplitterModule.distribute: not implemented');
+    void this.server;
+    void _id;
+    throw new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'SplitterModule.distribute: not implemented'
+    );
   }
 
   /**

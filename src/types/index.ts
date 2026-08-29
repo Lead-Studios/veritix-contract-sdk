@@ -98,6 +98,21 @@ export interface TicketEscrowParams {
 export interface BatchSettlementResult {
   /** Number of escrows successfully settled */
   settled: number;
+}
+
+/**
+ * Stellar account information returned by {@link VeriTixClient.getAccountInfo}.
+ */
+export interface AccountInfo {
+  /** Stellar account address */
+  address: string;
+  /** XLM balance of the account (in stroops as string) */
+  xlmBalance: string;
+  /** Account sequence number */
+  sequence: string;
+  /** Number of subentries associated with the account */
+  subentryCount: number;
+}
   /** Escrow IDs that failed to settle */
   failed: bigint[];
   /** Transaction hashes for all submitted settlement transactions */
@@ -253,6 +268,70 @@ export interface WatchOptions {
   intervalMs?: number;
   /** Maximum time to wait for a state change in milliseconds (default 60000) */
   timeoutMs?: number;
+}
+
+/**
+ * Represents a contract event emitted by the VeriTix contract.
+ */
+export interface VeriTixEvent {
+  /** Type of the event (contract-specific event name) */
+  type: string;
+  /** Ledger sequence number where the event was emitted */
+  ledger: number;
+  /** Unix timestamp (in seconds) when the ledger was closed */
+  timestamp: number;
+  /** Array of topic strings associated with the event */
+  topics: string[];
+  /** Decoded event data from the contract */
+  data: unknown;
+}
+
+/**
+ * Options for {@link VeriTixClient.streamEvents}.
+ */
+export interface StreamEventOptions {
+  /** AbortSignal to cancel the event stream */
+  signal?: AbortSignal;
+  /** Initial backoff delay in milliseconds for reconnections (default 1000) */
+  initialBackoffMs?: number;
+  /** Maximum backoff delay in milliseconds (default 30000) */
+  maxBackoffMs?: number;
+  /** Whether to include events from ledgers before the current one (default false) */
+  history?: boolean;
+  /** Cursor to start streaming from a specific ledger sequence */
+  cursor?: string;
+}
+
+/**
+ * Represents a decoded Soroban contract event emitted by the VeriTix contract.
+ */
+export interface VeriTixEvent {
+  /** Event type/name as emitted by the contract */
+  type: string;
+  /** Ledger sequence number when the event was emitted */
+  ledger: number;
+  /** Unix timestamp (seconds since epoch) when the event was emitted */
+  timestamp: number;
+  /** Array of topic values associated with the event */
+  topics: string[];
+  /** Decoded event data payload */
+  data: unknown;
+}
+
+/**
+ * Options for {@link VeriTixClient.streamEvents}.
+ */
+export interface StreamEventOptions {
+  /** AbortSignal to cancel the event stream */
+  signal?: AbortSignal;
+  /** Initial backoff delay in milliseconds before first reconnection attempt (default 1000) */
+  initialBackoffMs?: number;
+  /** Maximum backoff delay in milliseconds (default 30000) */
+  maxBackoffMs?: number;
+  /** Whether to use exponential backoff for reconnections (default true) */
+  useExponentialBackoff?: boolean;
+  /** Horizon URL to use for SSE events (defaults to network-specific Horizon) */
+  horizonUrl?: string;
 }
 
 /**

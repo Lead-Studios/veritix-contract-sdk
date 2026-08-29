@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `.nvmrc` to pin Node.js version to 20 for contributors and README badge (#509)
+- JSDoc `@example` blocks for all read methods in `TokenModule` (#512)
+- JSDoc `@example` blocks for all read methods in `EscrowModule` (#513)
+- JSDoc `@example` blocks and lifecycle methods in `RecurringModule` (#515)
 - `isValidStellarAddress(address)` — validates a Stellar Ed25519 public key (#150)
 - `assertValidAddress(address, fieldName)` — throws `VeriTixError(INVALID_ADDRESS)` for invalid addresses (#150)
 - `VeriTixClient.watchTransaction(hash, options?)` — polls RPC for transaction confirmation (#154)
