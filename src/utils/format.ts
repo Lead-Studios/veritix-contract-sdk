@@ -6,9 +6,14 @@
  * and other human-readable output formatting for display purposes.
  */
 /**
- * XLM ↔ stroop conversion and display-formatting helpers.
+ * Stellar uses "stroops" as its smallest unit (like satoshis for Bitcoin).
+ * 1 XLM = 10,000,000 stroops (7 decimal places).
  *
- * 1 XLM = 10_000_000 stroops (7 decimal places).
+ * The VeriTix token uses the same 7-decimal precision.
+ * All token amounts in the SDK are expressed in stroops as `bigint`
+ * to avoid floating-point precision loss.
+ *
+ * Use stroopsToXLM() and xlmToStroops() to convert for display.
  */
 
 const STROOPS_PER_XLM = 10_000_000n;

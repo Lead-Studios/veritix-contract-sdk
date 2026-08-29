@@ -14,8 +14,17 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Canonical error codes produced by {@link parseSorobanError}.
- * Each code maps 1-to-1 to a known contract panic string.
+ * Error codes thrown by the VeriTix SDK.
+ *
+ * Usage guide:
+ * - ReadOnlyClient       — caller tried a write operation without a Keypair
+ * - InvalidAddress       — a Stellar address failed format validation
+ * - InsufficientBalance  — pre-flight balance check failed (saves gas)
+ * - EscrowNotFound       — getEscrow() returned null for the given ID
+ * - BatchTooLarge        — a batch method exceeded its documented limit
+ * - UnknownContractError — the Soroban panic string is not in our error map
+ *
+ * Always throw VeriTixError — never throw raw Error objects.
  */
 export enum VeriTixErrorCode {
   // — Escrow ----------------------------------------------------------------
