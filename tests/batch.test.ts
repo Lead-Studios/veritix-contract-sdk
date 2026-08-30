@@ -38,16 +38,20 @@ function makeClient(keypair?: Keypair) {
   return client;
 }
 
+function makeReadOnlyClient() {
+  return makeClient();
+}
+
 function addr() { return Keypair.random().publicKey(); }
 
 beforeEach(() => jest.clearAllMocks());
 
 describe("BatchModule.mintBatch -- validation", () => {
 describe("BatchModule.transferBatch() — validation", () => {
-  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+  it("throws READ_ONLY_CLIENT when no keypair provided", async () => {
     const client = makeClient();
     await expect(client.batch.transferBatch([{ address: addr(), amount: 1n }]))
-      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+      .rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
   });
 
   it("throws for empty recipients array", async () => {
@@ -76,10 +80,10 @@ describe("BatchModule.transferBatch() — validation", () => {
   });
 });
 
-  it("throws AdminUnauthorized when no keypair", async () => {
+  it("throws ReadOnlyClient when no keypair", async () => {
     const client = makeClient();
     await expect(client.batch.mintBatch([{ to: addr(), amount: 1n }]))
-      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+      .rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
   });
 
   it("throws for empty entries array", async () => {
@@ -129,10 +133,10 @@ describe("BatchModule.transferBatch() — successful call", () => {
 });
 
 describe("BatchModule.transferBatchWithMemo() — validation", () => {
-  it("throws ADMIN_UNAUTHORIZED when no keypair provided", async () => {
+  it("throws READ_ONLY_CLIENT when no keypair provided", async () => {
     const client = makeClient();
     await expect(client.batch.transferBatchWithMemo([{ address: addr(), amount: 1n, memo: "x" }]))
-      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+      .rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
   });
 
   it("throws for empty recipients array", async () => {
@@ -207,10 +211,10 @@ describe("BatchModule.burnFromBatch()", () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it("throws AdminUnauthorized when no keypair", async () => {
+  it("throws ReadOnlyClient when no keypair", async () => {
     const client = makeClient();
     await expect(client.batch.burnFromBatch([{ from: addr(), amount: 100n }]))
-      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+      .rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
   });
 
   it("throws for empty entries array", async () => {
@@ -252,11 +256,18 @@ describe("BatchModule.burnFromBatch()", () => {
 });
 
 describe("BatchModule.unfreezeBatch()", () => {
-  it("throws AdminUnauthorized when no keypair", async () => {
-    const client = makeClient();
-    await expect(client.batch.unfreezeBatch([addr()]))
-      .rejects.toMatchObject({ code: VeriTixErrorCode.AdminUnauthorized });
+  it("unfreezeBatch method exists on BatchModule", () => {
+    const client = makeClient(Keypair.random());
+    expect(typeof client.batch.unfreezeBatch).toBe("function");
   });
+
+  it("unfreezeBatch throws ReadOnlyClient when no keypair", async () => {
+    const readOnlyClient = makeReadOnlyClient();
+    await expect(readOnlyClient.batch.unfreezeBatch(["GA..."]))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
+  });
+
+
 
   it("throws BatchTooLarge when over 50 addresses", async () => {
     const client = makeClient(Keypair.random());

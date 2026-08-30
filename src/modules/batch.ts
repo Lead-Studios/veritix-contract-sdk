@@ -75,8 +75,8 @@ export class BatchModule {
   private async writeCall(method: string, args: xdr.ScVal[]): Promise<TransactionResult> {
     if (!this.keypair) {
       throw new VeriTixError(
-        VeriTixErrorCode.AdminUnauthorized,
-        'A Keypair is required for this operation.',
+        VeriTixErrorCode.ReadOnlyClient,
+        'This client is read-only. Provide a Keypair to enable write operations.',
       );
     }
 
