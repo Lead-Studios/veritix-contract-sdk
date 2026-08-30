@@ -85,6 +85,12 @@ export enum VeriTixErrorCode {
   /** Beneficiary must not be the same as the depositor */
   InvalidBeneficiary = 'INVALID_BENEFICIARY',
 
+  // — Soroban host ---------------------------------------------------------
+  /** The host function evaluation failed in the Soroban VM */
+  HostError = 'HOST_ERROR',
+  /** The Soroban VM trapped during execution */
+  TrappedVmError = 'TRAPPED_VM_ERROR',
+
   // — Catch-all and client-side validation --------------------------------
   /** Raw panic string could not be mapped to a known code */
   InsufficientAllowance = 'INSUFFICIENT_ALLOWANCE',
@@ -93,7 +99,10 @@ export enum VeriTixErrorCode {
   /** Caller is not authorized */
   Unauthorized = 'UNAUTHORIZED',
 
+  /** Deprecated alias of {@link UnknownContractError} — kept for backward compatibility */
   Unknown = 'UNKNOWN',
+  /** Raw panic string could not be mapped to a known code */
+  UnknownContractError = 'UNKNOWN',
   /** RPC endpoint was unreachable after all retries */
   ConnectionFailed = 'CONNECTION_FAILED',
   /** Batch request exceeded maximum allowed size */
@@ -105,6 +114,8 @@ export enum VeriTixErrorCode {
   WatchTimeout = 'WATCH_TIMEOUT',
   /** Transaction was rejected by the network */
   TransactionFailed = 'TRANSACTION_FAILED',
+  /** Transaction hash returned by the RPC differs from the signed envelope hash */
+  UnexpectedTransactionHash = 'UNEXPECTED_TRANSACTION_HASH',
   /** Feature or method is not yet implemented */
   NotImplemented = 'NOT_IMPLEMENTED',
   /** Collaborator not found */
@@ -151,12 +162,18 @@ export class VeriTixError extends Error {
   public readonly code: VeriTixErrorCode;
   /** The original panic string returned by the Soroban RPC, if available */
   public readonly rawMessage: string | undefined;
+  /** Alias of {@link rawMessage} — the raw value that was wrapped, if any */
+  public readonly raw: string | undefined;
+  /** The original error that was wrapped, when one was provided */
+  public readonly cause: unknown;
 
-  constructor(code: VeriTixErrorCode, message: string, rawMessage?: string) {
+  constructor(code: VeriTixErrorCode, message: string, rawMessage?: string, cause?: unknown) {
     super(message);
     this.name = 'VeriTixError';
     this.code = code;
     this.rawMessage = rawMessage;
+    this.raw = rawMessage;
+    this.cause = cause;
 
     // Maintain correct prototype chain in environments that transpile classes
     Object.setPrototypeOf(this, VeriTixError.prototype);
@@ -196,6 +213,9 @@ const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
   // Recurring
   ['recurring not found',     VeriTixErrorCode.RecurringNotFound],
   ['interval not elapsed',    VeriTixErrorCode.RecurringIntervalNotElapsed],
+  // Contract pause state — "contract not paused" must precede the generic
+  // "not paused" alias so contract-specific phrasing is disambiguated.
+  ['contract not paused',     VeriTixErrorCode.ContractNotPaused],
   ['already paused',          VeriTixErrorCode.RecurringAlreadyPaused],
   ['not paused',              VeriTixErrorCode.RecurringNotPaused],
 
@@ -213,6 +233,33 @@ const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
   // and "admin unauthorized" entries so those match first.
   ['insufficient balance',    VeriTixErrorCode.InsufficientBalance],
   ['not authorized',          VeriTixErrorCode.Unauthorized],
+
+  // Token validation
+  ['invalid amount',          VeriTixErrorCode.InvalidAmount],
+  ['invalid expiry ledger',   VeriTixErrorCode.InvalidExpiryLedger],
+  ['invalid address',         VeriTixErrorCode.InvalidAddress],
+  ['invalid beneficiary',     VeriTixErrorCode.InvalidBeneficiary],
+
+  // Collaborators
+  ['collaborator not found',     VeriTixErrorCode.CollaboratorNotFound],
+  ['collaborator already exists', VeriTixErrorCode.CollaboratorAlreadyExists],
+  ['max collaborators reached',  VeriTixErrorCode.MaxCollaboratorsReached],
+
+  // Client-side validation & generic guards
+  ['invalid input',           VeriTixErrorCode.InvalidInput],
+  ['invalidinput',            VeriTixErrorCode.InvalidInput],
+  ['not implemented',         VeriTixErrorCode.NotImplemented],
+  ['transaction failed',      VeriTixErrorCode.TransactionFailed],
+  ['watch timed out',         VeriTixErrorCode.WatchTimeout],
+  ['connection failed',       VeriTixErrorCode.ConnectionFailed],
+  ['batch too large',         VeriTixErrorCode.BatchTooLarge],
+  ['read-only client',        VeriTixErrorCode.ReadOnlyClient],
+  ['freighter not found',     VeriTixErrorCode.FreighterNotFound],
+  ['client not connected',    VeriTixErrorCode.ClientNotConnected],
+
+  // Soroban host-level failures
+  ['HostError',               VeriTixErrorCode.HostError],
+  ['TrappedVmError',          VeriTixErrorCode.TrappedVmError],
 ];
 
 // ---------------------------------------------------------------------------
@@ -237,19 +284,24 @@ const PANIC_MAP: ReadonlyArray<[pattern: string, code: VeriTixErrorCode]> = [
  * ```
  */
 export function parseSorobanError(raw: unknown): VeriTixError {
+  // Do not double-wrap an error that has already been normalised.
+  if (raw instanceof VeriTixError) return raw;
+
   const rawStr = extractRawString(raw);
   const normalised = rawStr.toLowerCase();
+  const cause = raw instanceof Error ? raw : undefined;
 
   for (const [pattern, code] of PANIC_MAP) {
     if (normalised.includes(pattern.toLowerCase())) {
-      return new VeriTixError(code, buildMessage(code, rawStr), rawStr);
+      return new VeriTixError(code, buildMessage(code, rawStr), rawStr, cause);
     }
   }
 
   return new VeriTixError(
-    VeriTixErrorCode.Unknown,
+    VeriTixErrorCode.UnknownContractError,
     `Unrecognised contract error: ${rawStr}`,
     rawStr,
+    cause,
   );
 }
 
@@ -297,12 +349,23 @@ function buildMessage(code: VeriTixErrorCode, rawStr: string): string {
     [VeriTixErrorCode.InvalidExpiryLedger]:         'Expiry ledger must be greater than the current ledger.',
     [VeriTixErrorCode.InvalidAddress]:              'Supplied address is not a valid Stellar Ed25519 public key.',
     [VeriTixErrorCode.InvalidBeneficiary]:          'Beneficiary must not be the same as the depositor.',
+    [VeriTixErrorCode.HostError]:                   'The Soroban host function evaluation failed.',
+    [VeriTixErrorCode.TrappedVmError]:              'The Soroban VM trapped during execution.',
     [VeriTixErrorCode.Unknown]:                     `Unrecognised contract error: ${rawStr}`,
+    [VeriTixErrorCode.UnknownContractError]:        `Unrecognised contract error: ${rawStr}`,
     [VeriTixErrorCode.ConnectionFailed]:            'Failed to connect to the Soroban RPC endpoint.',
     [VeriTixErrorCode.BatchTooLarge]:               'Batch request exceeded maximum allowed size.',
     [VeriTixErrorCode.ReadOnlyClient]:              'This client is read-only. Provide a Keypair to enable write operations.',
     [VeriTixErrorCode.WatchTimeout]:                'Watch timed out before the operation was confirmed.',
     [VeriTixErrorCode.TransactionFailed]:           'Transaction was rejected by the Stellar network.',
+    [VeriTixErrorCode.UnexpectedTransactionHash]:   'Transaction hash returned by the RPC differs from the signed envelope hash.',
+    [VeriTixErrorCode.NotImplemented]:              'This feature or method is not yet implemented.',
+    [VeriTixErrorCode.CollaboratorNotFound]:        'Collaborator not found for this event.',
+    [VeriTixErrorCode.CollaboratorAlreadyExists]:   'Collaborator already exists for this event.',
+    [VeriTixErrorCode.MaxCollaboratorsReached]:     'Maximum number of collaborators reached for this event.',
+    [VeriTixErrorCode.FreighterNotFound]:           'Freighter wallet was not found in the browser.',
+    [VeriTixErrorCode.ClientNotConnected]:          'Client is not connected — call connect() first.',
+    [VeriTixErrorCode.InvalidInput]:                'Invalid input parameter.',
   };
   return messages[code];
 }

@@ -329,7 +329,7 @@ export async function submitTransaction(
   const expectedHash = Buffer.from(tx.hash()).toString('hex');
   if (!hash || hash !== expectedHash) {
     throw new VeriTixError(
-      VeriTixErrorCode.Unknown,
+      VeriTixErrorCode.UnexpectedTransactionHash,
       `Transaction hash mismatch: expected ${expectedHash}, got ${hash}`,
     );
   }
