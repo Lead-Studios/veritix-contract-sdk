@@ -90,6 +90,7 @@ export class TokenModule {
    *
    * @param signer - Function that signs a transaction and returns the signed
    *                 transaction.
+   * @returns `void` — the signer is stored for future write operations.
    */
   setSigner(signer: (tx: Transaction) => Promise<Transaction>): void {
     this.signer = signer;
@@ -219,6 +220,7 @@ export class TokenModule {
    * Throws `BATCH_TOO_LARGE` if more than 100 addresses are supplied.
    *
    * @param addresses - Array of Stellar account addresses (max 100).
+   * @returns Array of token balances in stroops, in the same order as `addresses`.
    *
    * @example
    * ```ts
@@ -292,6 +294,8 @@ export class TokenModule {
   /**
    * Returns the token name.
    *
+   * @returns The on-chain token name.
+   *
    * @example
    * ```ts
    * const tokenName = await client.token.name();
@@ -306,6 +310,8 @@ export class TokenModule {
 
   /**
    * Returns the token ticker symbol.
+   *
+   * @returns The on-chain token ticker symbol (e.g. `'VTX'`).
    *
    * @example
    * ```ts
@@ -322,6 +328,8 @@ export class TokenModule {
   /**
    * Returns the number of decimal places used by the token.
    *
+   * @returns The number of decimal places used by the token (typically 7).
+   *
    * @example
    * ```ts
    * const dec = await client.token.decimals();
@@ -335,6 +343,8 @@ export class TokenModule {
 
   /**
    * Returns the total token supply in the smallest denomination (stroops).
+   *
+   * @returns The total token supply in stroops (smallest denomination; 10 000 000 = 1 VTX).
    *
    * @example
    * ```ts
@@ -552,8 +562,9 @@ export class TokenModule {
    * Memo must be <= 64 bytes (UTF-8 encoded).
    *
    * @param to     - Recipient Stellar account address.
-   * @param amount - Amount in stroops.
+   * @param amount - Amount in stroops (7 decimal places; 10 000 000 = 1 VTX).
    * @param memo   - On-chain memo string (<= 64 bytes UTF-8).
+   * @returns A {@link TransactionResult} on success.
    */
   async transferWithMemo(to: string, amount: bigint, memo: string): Promise<TransactionResult> {
     const memoBytes = Buffer.from(memo, 'utf8');

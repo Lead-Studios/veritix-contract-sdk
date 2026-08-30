@@ -172,10 +172,25 @@ export class AdminModule {
   // Account freeze / unfreeze
   // -------------------------------------------------------------------------
 
+  /**
+   * Freezes a Stellar account, preventing it from sending or receiving tokens
+   * via this contract.
+   *
+   * @param _address - Stellar G-address of the account to freeze.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   */
   async freeze(_address: string): Promise<TransactionResult> {
     throw new Error('AdminModule.freeze: not implemented');
   }
 
+  /**
+   * Unfreezes a previously frozen Stellar account.
+   *
+   * @param _address - Stellar G-address of the account to unfreeze.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if caller is not admin.
+   */
   async unfreeze(_address: string): Promise<TransactionResult> {
     throw new Error('AdminModule.unfreeze: not implemented');
   }

@@ -106,6 +106,13 @@ export class BatchModule {
 
   /**
    * Mints tokens to multiple recipients in a single contract invocation.
+   *
+   * @param entries - Array of mint instructions, each specifying a recipient address and amount.
+   *                  Maximum 50 entries per batch.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `ADMIN_UNAUTHORIZED` if no admin Keypair is provided.
+   * @throws {VeriTixError} With code `BATCH_TOO_LARGE` if more than 50 entries are provided.
+   * @throws {VeriTixError} With code `INVALID_AMOUNT` if any entry amount is <= 0.
    */
   async mintBatch(entries: BatchMintEntry[]): Promise<TransactionResult> {
     if (!this.keypair) {
@@ -177,6 +184,12 @@ export class BatchModule {
 
   /**
    * Distributes tokens to multiple recipients.
+   *
+   * @param recipients - Array of transfer recipients, each specifying an address and amount.
+   *                     Maximum 50 recipients per batch.
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `BATCH_TOO_LARGE` if more than 50 recipients are provided.
+   * @throws {VeriTixError} With code `INVALID_AMOUNT` if any transfer amount is <= 0.
    */
   async transferBatch(recipients: BatchTransferRecipient[]): Promise<TransactionResult> {
     if (recipients.length === 0) {
@@ -213,6 +226,13 @@ export class BatchModule {
 
   /**
    * Distributes tokens with individual memos.
+   *
+   * @param recipients - Array of transfer recipients, each specifying an address, amount, and memo.
+   *                     Maximum 50 recipients per batch; memos must be <= 64 bytes (UTF-8).
+   * @returns A {@link TransactionResult} on success.
+   * @throws {VeriTixError} With code `BATCH_TOO_LARGE` if more than 50 recipients are provided.
+   * @throws {VeriTixError} With code `INVALID_AMOUNT` if any transfer amount is <= 0.
+   * @throws {Error} If any memo exceeds 64 bytes.
    */
   async transferBatchWithMemo(
     recipients: BatchTransferWithMemoRecipient[],
