@@ -115,6 +115,24 @@ describe('EscrowModule (stubs)', () => {
     });
   });
 
+  it("getEscrow returns an object with the correct field types", async () => {
+    const { client, mockServer } = makeConnectedClient();
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.fromXDR(ESCROW_RECORD_XDR, 'base64'),
+      },
+    });
+
+    const escrow = await client.escrow.getEscrow(1n);
+    expect(typeof escrow!.depositor).toBe("string");
+    expect(typeof escrow!.beneficiary).toBe("string");
+    expect(typeof escrow!.amount).toBe("bigint");
+    expect(typeof escrow!.expiryLedger).toBe("number");
+    expect(typeof escrow!.released).toBe("boolean");
+    expect(typeof escrow!.refunded).toBe("boolean");
+  });
+
   it('returns escrow IDs for a depositor', async () => {
     const { client, mockServer } = makeConnectedClient();
     mockServer.simulateTransaction.mockResolvedValue({

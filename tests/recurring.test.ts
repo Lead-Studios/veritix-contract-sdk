@@ -701,6 +701,65 @@ describe('RecurringModule.executeAllDue', () => {
 });
 
 // ---------------------------------------------------------------------------
+// #470 — paused field correctly parsed from contract records
+// ---------------------------------------------------------------------------
+describe('RecurringModule.getRecurring paused field parsing', () => {
+  // First, add the mapEntry helper we need to create valid ScvMap entries
+  function mapEntry(key: string, val: xdr.ScVal): xdr.ScMapEntry {
+    return new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol(key),
+      val,
+    });
+  }
+
+  it("getRecurring returns paused:true when the contract record is paused", async () => {
+    const { client, mockServer } = makeRecurringClient();
+    // Create a recurring record with paused: true in the raw ScvMap
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvMap([
+          mapEntry('id', nativeToScVal(1n, { type: 'u64' })),
+          mapEntry('payer', xdr.ScVal.scvString(FAKE_PAYER)),
+          mapEntry('payee', xdr.ScVal.scvString('GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN')),
+          mapEntry('amount', nativeToScVal(1_000_000n, { type: 'i128' })),
+          mapEntry('interval', nativeToScVal(100, { type: 'u32' })),
+          mapEntry('active', xdr.ScVal.scvBool(true)),
+          mapEntry('paused', xdr.ScVal.scvBool(true)),
+          mapEntry('last_charged_ledger', nativeToScVal(0, { type: 'u32' })),
+        ]),
+      },
+    });
+    
+    const record = await client.recurring.getRecurring(1n);
+    expect(record!.paused).toBe(true);
+  });
+
+  it("getRecurring returns paused:false for an active recurring record", async () => {
+    const { client, mockServer } = makeRecurringClient();
+    // Create a recurring record with paused: false in the raw ScvMap
+    mockServer.simulateTransaction.mockResolvedValue({
+      status: 'SUCCESS',
+      result: {
+        retval: xdr.ScVal.scvMap([
+          mapEntry('id', nativeToScVal(2n, { type: 'u64' })),
+          mapEntry('payer', xdr.ScVal.scvString(FAKE_PAYER)),
+          mapEntry('payee', xdr.ScVal.scvString('GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN')),
+          mapEntry('amount', nativeToScVal(1_000_000n, { type: 'i128' })),
+          mapEntry('interval', nativeToScVal(100, { type: 'u32' })),
+          mapEntry('active', xdr.ScVal.scvBool(true)),
+          mapEntry('paused', xdr.ScVal.scvBool(false)),
+          mapEntry('last_charged_ledger', nativeToScVal(0, { type: 'u32' })),
+        ]),
+      },
+    });
+    
+    const record = await client.recurring.getRecurring(2n);
+    expect(record!.paused).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

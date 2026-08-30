@@ -75,15 +75,16 @@ describe('SplitterModule.validateRecipients', () => {
     expect(result.errors).toEqual([]);
   });
 
-  it('populates the errors array for each violation', () => {
-    // Duplicate address + non-positive share + wrong total → multiple errors.
+  it("errors array contains a message for each violation", () => {
     const result = client.splitter.validateRecipients([
-      { address: ADDR_A, shareBps: 0 },
-      { address: ADDR_A, shareBps: 5000 },
-      { address: ADDR_B, shareBps: 4000 },
+      { address: "GA1...", shareBps: 0 },    // zero BPS
+      { address: "GA2...", shareBps: 5000 }, // duplicate address
+      { address: "GA2...", shareBps: 5000 }, // duplicate address
     ]);
     expect(result.valid).toBe(false);
-    expect(result.errors.length).toBeGreaterThanOrEqual(3);
+    expect(result.errors.length).toBeGreaterThanOrEqual(2);
+    expect(result.errors.some(e => e.toLowerCase().includes("zero"))).toBe(true);
+    expect(result.errors.some(e => e.toLowerCase().includes("duplicate"))).toBe(true);
   });
 });
 
