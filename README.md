@@ -5,6 +5,7 @@
 [![npm provenance](https://img.shields.io/badge/npm-provenance-blue?logo=npm)](https://www.npmjs.com/package/@veritix/contract-sdk)
 [![node version](https://img.shields.io/badge/node-%E2%89%A520-brightgreen.svg?logo=node.js)](https://nodejs.org)
 [![type-coverage](https://img.shields.io/badge/type--coverage-%E2%89%A595%25-brightgreen)](https://github.com/nicolo-ribaudo/type-coverage)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 The SDK wraps every contract entry-point in a typed, promise-based API so you can integrate VeriTix escrow, payment splitting, dispute resolution, and recurring payments into your application without writing Soroban XDR by hand.
 
@@ -297,4 +298,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to pick up a module
 
 ## License
 
-MIT © VeriTix Contributors
+Apache-2.0 © VeriTix Contributors
