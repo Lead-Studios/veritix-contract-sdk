@@ -26,6 +26,21 @@ describe('VeriTixError', () => {
     const err = new VeriTixError(VeriTixErrorCode.Unknown, 'msg');
     expect(err.name).toBe('VeriTixError');
   });
+
+  // Property-structure regression guard — name / prototype chain / code / message
+  // are the four things consumers pattern-match on, so pin all four.
+  it('VeriTixError has name VeriTixError', () => {
+    const err = new VeriTixError(VeriTixErrorCode.ReadOnlyClient, 'test');
+    expect(err.name).toBe('VeriTixError');
+    expect(err instanceof Error).toBe(true);
+    expect(err instanceof VeriTixError).toBe(true);
+  });
+
+  it('VeriTixError.code is the enum value', () => {
+    const err = new VeriTixError(VeriTixErrorCode.EscrowNotFound, 'not found');
+    expect(err.code).toBe(VeriTixErrorCode.EscrowNotFound);
+    expect(err.message).toBe('not found');
+  });
 });
 
 describe('parseSorobanError', () => {
