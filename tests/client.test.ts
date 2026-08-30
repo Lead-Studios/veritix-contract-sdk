@@ -289,6 +289,45 @@ describe('VeriTixClient', () => {
 });
 
 // ---------------------------------------------------------------------------
+// read-only client guard
+// ---------------------------------------------------------------------------
+
+describe("read-only client guard", () => {
+  function makeReadOnlyClient() {
+    return new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
+  }
+
+  it("throws ReadOnlyClient on token.mint()", async () => {
+    const client = makeReadOnlyClient();
+    await expect(client.token.mint({ to: "GA_________________________________________GA", amount: 100n }))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
+  });
+
+  it("throws ReadOnlyClient on escrow.createEscrow()", async () => {
+    const client = makeReadOnlyClient();
+    await expect(client.escrow.createEscrow({
+      beneficiary: "GA_________________________________________GA",
+      amount: 100n,
+      expiryLedger: 10000000
+    })).rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
+  });
+
+  it("does NOT throw on token.balance() — reads are always allowed", async () => {
+    const client = makeReadOnlyClient();
+    // We need to mock the server to prevent actual network calls, since balance is a read operation
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).server = { getLatestLedger: jest.fn().mockResolvedValue({ sequence: 100 }) };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (client as any).connected = true;
+    // Mock the simulateRead to return a balance
+    jest.spyOn(client.token as any, 'simulateRead').mockResolvedValue(500n);
+    
+    const balance = await client.token.balance("GA_________________________________________GA");
+    expect(balance).toBe(500n);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // #264 — VeriTixClient event emitter: connected, disconnected, retry, error
 // ---------------------------------------------------------------------------
 
