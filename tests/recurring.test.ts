@@ -64,6 +64,10 @@ function makeRecurringClient(keypair?: Keypair) {
   return { client, mockServer };
 }
 
+function makeReadOnlyClient() {
+  return makeRecurringClient();
+}
+
 function makeRecurringRecord(overrides: Partial<RecurringRecord> = {}): RecurringRecord {
   return {
     id: 1n,
@@ -159,6 +163,22 @@ function mockSubmit() {
 // ---------------------------------------------------------------------------
 describe('RecurringModule.pauseRecurring', () => {
   beforeEach(() => jest.restoreAllMocks());
+
+  it("pauseRecurring method exists on RecurringModule", () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    expect(typeof client.recurring.pauseRecurring).toBe("function");
+  });
+
+  it("resumeRecurring method exists on RecurringModule", () => {
+    const { client } = makeRecurringClient(Keypair.random());
+    expect(typeof client.recurring.resumeRecurring).toBe("function");
+  });
+
+  it("pauseRecurring throws ReadOnlyClient when no keypair", async () => {
+    const { client: readOnlyClient } = makeReadOnlyClient();
+    await expect(readOnlyClient.recurring.pauseRecurring(1n))
+      .rejects.toMatchObject({ code: VeriTixErrorCode.ReadOnlyClient });
+  });
 
   it('throws ReadOnlyClient when no keypair', async () => {
     const { client } = makeRecurringClient();
