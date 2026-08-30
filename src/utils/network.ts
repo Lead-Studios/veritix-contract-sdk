@@ -203,23 +203,43 @@ export function isValidStellarAddress(address: string): boolean {
 }
 
 /**
+ * Options for {@link assertValidAddress}.
+ */
+export interface AddressValidationOptions {
+  /**
+   * When `true`, a valid Soroban contract ID (starts with `C`) is accepted in
+   * addition to Stellar account addresses.  Default `false`.
+   */
+  allowContract?: boolean;
+}
+
+/**
  * Throws a {@link VeriTixError} with code `INVALID_ADDRESS` if the address
  * is not a valid Stellar public key.
  *
  * @param address   - The address string to validate.
  * @param fieldName - Human-readable field name used in the error message.
+ * @param options   - Optional {@link AddressValidationOptions}.
  */
-export function assertValidAddress(address: string, fieldName: string): void {
+export function assertValidAddress(
+  address: string,
+  fieldName: string,
+  options: AddressValidationOptions = {},
+): void {
+  if (isValidStellarAddress(address)) {
+    return;
+  }
+  if (options.allowContract && StrKey.isValidContract(address)) {
+    return;
+  }
   if (StrKey.isValidContract(address)) {
     throw new VeriTixError(
       VeriTixErrorCode.InvalidAddress,
       `${fieldName} must be a Stellar account address, not a Soroban contract ID: "${address}"`,
     );
   }
-  if (!isValidStellarAddress(address)) {
-    throw new VeriTixError(
-      VeriTixErrorCode.InvalidAddress,
-      `${fieldName} is not a valid Stellar address: "${address}"`,
-    );
-  }
+  throw new VeriTixError(
+    VeriTixErrorCode.InvalidAddress,
+    `${fieldName} is not a valid Stellar address: "${address}"`,
+  );
 }

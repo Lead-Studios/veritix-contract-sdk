@@ -105,3 +105,33 @@ describe('formatXLM', () => {
     expect(() => formatXLM(10_000_000n, -1)).toThrow(TypeError);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Round-trip and boundary behaviour (#479)
+// ---------------------------------------------------------------------------
+
+describe('stroopsToXLM / xlmToStroops round-trip', () => {
+  it('round-trips xlmToStroops(stroopsToXLM(n)) === n for 1000 random values', () => {
+    for (let i = 0; i < 1000; i++) {
+      const n =
+        BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)) * 1_000_000n +
+        BigInt(Math.floor(Math.random() * 10_000_000));
+
+      expect(xlmToStroops(stroopsToXLM(n))).toBe(n);
+    }
+  });
+
+  it('round-trips the required boundary values', () => {
+    expect(stroopsToXLM(10_000_000n)).toBe('1.0000000');
+    expect(stroopsToXLM(0n)).toBe('0.0000000');
+    expect(xlmToStroops('1')).toBe(10_000_000n);
+    expect(xlmToStroops('0.0000001')).toBe(1n);
+  });
+
+  it('does not use scientific notation above Number.MAX_SAFE_INTEGER', () => {
+    const result = stroopsToXLM(BigInt(Number.MAX_SAFE_INTEGER) + 1n);
+    expect(result).toBe('900719925.4740992');
+    expect(result).toMatch(/^\d+\.\d{7}$/);
+    expect(result).not.toMatch(/[eE]/);
+  });
+});
