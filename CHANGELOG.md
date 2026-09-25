@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `VeriTixClient.getCurrentLedger()` with a 5-second ledger cache and `getContractMetadata()` returning token name, symbol, decimals, and contract version (#612)
+- `VeriTixClient.getAccountInfo(address)` — returns `{ address, balance, sequence }`, throwing `ACCOUNT_NOT_FOUND` instead of a zeroed object when the account is missing (#613)
 - `.nvmrc` to pin Node.js version to 20 for contributors and README badge (#509)
 - JSDoc `@example` blocks for all read methods in `TokenModule` (#512)
 - JSDoc `@example` blocks for all read methods in `EscrowModule` (#513)
