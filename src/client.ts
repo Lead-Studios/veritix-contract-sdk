@@ -19,6 +19,7 @@ import {
 } from '@stellar/stellar-sdk';
 import type { Transaction } from '@stellar/stellar-sdk';
 
+import { TokenModule } from './modules/token';
 import type { EscrowRecord, TransactionResult } from './types';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
 import { DUMMY_PUBLIC_KEY, assertValidAddress } from './utils/network';
@@ -84,6 +85,7 @@ export class VeriTixClient {
   server: WatchServer | null = null;
   ledgerCache: { sequence: number; fetchedAt: number } | null = null;
 
+  readonly token: TokenModule;
   private readonly keypair?: Keypair;
   private readonly listeners = new Map<string, Set<ClientListener>>();
 
@@ -95,6 +97,7 @@ export class VeriTixClient {
   constructor(config: NetworkConfig, keypair?: Keypair) {
     this.config = config;
     this.keypair = keypair;
+    this.token = new TokenModule(config, keypair);
   }
 
   /**

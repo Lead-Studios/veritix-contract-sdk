@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `VeriTixClientExtended` — `withKeypair(keypair)` deriving a new signing client that shares the config (leaving the original unchanged), plus `canSign()` (#618)
+- `TokenModule.name()`, `symbol()`, and `decimals()` — simulated reads decoding to `string`/`string`/`number`, cached through `RequestCache` (#620)
 - `VeriTixClient.watchTransaction(hash, options?)` — polls RPC for transaction confirmation with a configurable interval and timeout (#614)
 - `VeriTixClient.watchEscrow(id, options?)` — async iterator over escrow state changes, completing once the escrow settles and stopping cleanly when the consumer breaks out (#615)
 - `VeriTixClient.getCurrentLedger()` with a 5-second ledger cache and `getContractMetadata()` returning token name, symbol, decimals, and contract version (#612)
