@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `VeriTixClient.healthCheck()` — returns `rpcReachable`, `contractFound`, and `latencyMs`, resolving rather than throwing when the network is down (#607)
+- `VeriTixClient` connection state helpers — `disconnect()`, `isConnected()`, `isReadOnly()`, and `getPublicKey()` returning `null` when no keypair is configured (#608)
 - `.nvmrc` to pin Node.js version to 20 for contributors and README badge (#509)
 - JSDoc `@example` blocks for all read methods in `TokenModule` (#512)
 - JSDoc `@example` blocks for all read methods in `EscrowModule` (#513)
