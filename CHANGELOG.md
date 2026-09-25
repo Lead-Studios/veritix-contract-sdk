@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `VeriTixClient.watchTransaction(hash, options?)` — polls RPC for transaction confirmation with a configurable interval and timeout (#614)
+- `VeriTixClient.watchEscrow(id, options?)` — async iterator over escrow state changes, completing once the escrow settles and stopping cleanly when the consumer breaks out (#615)
 - `.nvmrc` to pin Node.js version to 20 for contributors and README badge (#509)
 - JSDoc `@example` blocks for all read methods in `TokenModule` (#512)
 - JSDoc `@example` blocks for all read methods in `EscrowModule` (#513)
