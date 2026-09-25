@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `src/utils/polling/` — `PollingService` with a configurable interval, timeout, and abort signal, plus `PollStatus`, `PollStatusResult`, `PollingOptions`, `PollingTimeoutError`, and `PollingAbortedError` types (#602)
+- `src/utils/validation/` — `MemoValidationService` validating memo type and 28-byte length, with `MemoValidationOptions`, `MemoValidationResult`, and `MemoTooLongError` (#603)
 - `TokenModule.balanceOfBatch(addresses)` — returns balances in input order with one shared read path, validating every address up front and rejecting batches above 100 as `BATCH_TOO_LARGE` (#622)
 - `TokenModule.isFrozen(address)` — returns the frozen status from the contract, short-circuiting to `false` for non-holder addresses (such as the contract ID) without an RPC call (#625)
 - `VeriTixClientExtended` — `withKeypair(keypair)` deriving a new signing client that shares the config (leaving the original unchanged), plus `canSign()` (#618)
