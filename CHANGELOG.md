@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `VeriTixClientExtended` — `withKeypair(keypair)` deriving a new signing client that shares the config (leaving the original unchanged), plus `canSign()` (#618)
+- `TokenModule.name()`, `symbol()`, and `decimals()` — simulated reads decoding to `string`/`string`/`number`, cached through `RequestCache` (#620)
 - `.nvmrc` to pin Node.js version to 20 for contributors and README badge (#509)
 - JSDoc `@example` blocks for all read methods in `TokenModule` (#512)
 - JSDoc `@example` blocks for all read methods in `EscrowModule` (#513)
