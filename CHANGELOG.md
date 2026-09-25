@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `TokenModule.balanceOfBatch(addresses)` — returns balances in input order with one shared read path, validating every address up front and rejecting batches above 100 as `BATCH_TOO_LARGE` (#622)
+- `TokenModule.isFrozen(address)` — returns the frozen status from the contract, short-circuiting to `false` for non-holder addresses (such as the contract ID) without an RPC call (#625)
 - `.nvmrc` to pin Node.js version to 20 for contributors and README badge (#509)
 - JSDoc `@example` blocks for all read methods in `TokenModule` (#512)
 - JSDoc `@example` blocks for all read methods in `EscrowModule` (#513)
