@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `src/utils/polling/` — `PollingService` with a configurable interval, timeout, and abort signal, plus `PollStatus`, `PollStatusResult`, `PollingOptions`, `PollingTimeoutError`, and `PollingAbortedError` types (#602)
+- `src/utils/validation/` — `MemoValidationService` validating memo type and 28-byte length, with `MemoValidationOptions`, `MemoValidationResult`, and `MemoTooLongError` (#603)
 - `.nvmrc` to pin Node.js version to 20 for contributors and README badge (#509)
 - JSDoc `@example` blocks for all read methods in `TokenModule` (#512)
 - JSDoc `@example` blocks for all read methods in `EscrowModule` (#513)
