@@ -118,3 +118,53 @@ export interface TransactionResult {
   /** Optional decoded return value from the contract invocation */
   returnValue?: unknown;
 }
+
+// ---------------------------------------------------------------------------
+// Token module — params for token write operations
+// ---------------------------------------------------------------------------
+
+/** Parameters for {@code mint(to, amount)}. */
+export interface MintParams {
+  /** Stellar account address that receives the freshly minted tokens */
+  to: string;
+  /** Token amount to mint (in stroops / smallest denomination) */
+  amount: bigint;
+}
+
+/** Parameters for {@code transfer(from, to, amount)}. */
+export interface TransferParams {
+  /** Stellar account address that sends the tokens */
+  from: string;
+  /** Stellar account address that receives the tokens */
+  to: string;
+  /** Token amount to transfer (in stroops) */
+  amount: bigint;
+}
+
+/** Parameters for {@code approve(from, spender, amount, expirationLedger)}. */
+export interface ApproveParams {
+  /** Stellar account address granting the allowance */
+  from: string;
+  /** Stellar account address that is allowed to spend */
+  spender: string;
+  /** Allowance amount (in stroops) */
+  amount: bigint;
+  /** Ledger sequence number after which the allowance expires */
+  expirationLedger: number;
+}
+
+/** Parameters for {@code burn(amount)}. */
+export interface BurnParams {
+  /** Token amount to destroy from the caller's own balance (in stroops) */
+  amount: bigint;
+}
+
+/** Estimated fee details returned by simulation helpers. */
+export interface FeeEstimate {
+  /** Estimated fee in stroops */
+  feeLumens: string;
+  /** Formatted XLM fee string */
+  feeXLM: string;
+  /** Ledger sequence number when fee was estimated */
+  estimatedLedger: number;
+}
