@@ -281,14 +281,23 @@ export class VeriTixClient {
 
     for (;;) {
       const record = await this.escrow.getEscrow(id);
+      if (!record) {
+        if (Date.now() >= deadline) {
+          throw new VeriTixError(VeriTixErrorCode.WatchTimeout, `Timed out watching escrow ${id}`);
+        }
+        await sleep(intervalMs);
+        continue;
+      }
       if (record.released || record.refunded) {
         yield record;
         return;
       }
-      if (last && escrowChanged(record, last)) {
+      if (record && last && escrowChanged(record, last)) {
         yield record;
       }
-      last = record;
+      if (record) {
+        last = record;
+      }
       if (Date.now() >= deadline) {
         throw new VeriTixError(VeriTixErrorCode.WatchTimeout, `Timed out watching escrow ${id}`);
       }

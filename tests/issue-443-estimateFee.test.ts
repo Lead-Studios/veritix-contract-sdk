@@ -17,8 +17,7 @@ const FAKE_CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABS
 function makeConnectedClient() {
   const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID));
   const mockServer = { simulateTransaction: jest.fn() };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).connected = true;
   return { client, mockServer };

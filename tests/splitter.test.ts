@@ -97,7 +97,7 @@ describe('SplitterModule.createRevenueSplit', () => {
   const mockServer = {
     simulateTransaction: jest.fn().mockResolvedValue(parsedSuccess()),
   };
-  (client as unknown as { server: unknown }).server = mockServer;
+  (client as any).setServer(mockServer);
   (client as unknown as { connected: boolean }).connected = true;
 
   beforeEach(() => {
@@ -185,7 +185,7 @@ describe('SplitterModule.getSplitterStats', () => {
   function makeMockClient() {
     const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), Keypair.random());
     const mock = { simulateTransaction: jest.fn() };
-    (c as unknown as { server: unknown }).server = mock;
+    (c as any).setServer(mock);
     (c as unknown as { connected: boolean }).connected = true;
     return { client: c, mockServer: mock };
   }

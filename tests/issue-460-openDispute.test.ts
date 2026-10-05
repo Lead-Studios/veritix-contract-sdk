@@ -14,8 +14,7 @@ const FAKE_ESCROW_ID = 123n;
 function makeConnectedClient(keypair?: Keypair) {
   const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT_ID), keypair);
   const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).connected = true;
   return { client, mockServer };

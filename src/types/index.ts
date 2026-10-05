@@ -168,3 +168,15 @@ export interface FeeEstimate {
   /** Ledger sequence number when fee was estimated */
   estimatedLedger: number;
 }
+
+// ---------------------------------------------------------------------------
+// Escrow module — params and results for escrow operations
+// ---------------------------------------------------------------------------
+
+export type {
+  CreateEscrowParams,
+  CreateEscrowResult,
+  TicketEscrowParams,
+  BatchSettlementResult,
+  EscrowStats,
+} from '../modules/escrow';

@@ -23,7 +23,7 @@ describe('TokenModule.balanceOfBatch()', () => {
     client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
     mockSimulate = jest.fn();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (client.token as any).server = { simulateTransaction: mockSimulate };
+    (client as any).setServer({ simulateTransaction: mockSimulate });
   });
 
   it('returns balances in input address order', async () => {

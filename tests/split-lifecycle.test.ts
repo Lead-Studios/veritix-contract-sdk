@@ -19,8 +19,7 @@ function makeMockClient(keypair?: Keypair) {
     getTransaction: jest.fn(),
     getLatestLedger: jest.fn().mockResolvedValue({ sequence: 100 }),
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).connected = true;
   return { client, mockServer };

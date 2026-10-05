@@ -19,8 +19,7 @@ function makeConnectedClient(sequence = 100) {
     getLatestLedger: jest.fn().mockResolvedValue({ sequence }),
   });
   const client = makeClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).ledgerCache = { sequence, fetchedAt: Date.now() };
   return { client, mockServer };

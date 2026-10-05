@@ -36,13 +36,13 @@ describe('TokenModule.mint()', () => {
     const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), keypair);
     const to = Keypair.random().publicKey();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (client.token as any).server = {
+    (client as any).setServer({
       getAccount: jest.fn().mockResolvedValue({
         accountId: () => keypair.publicKey(),
         sequenceNumber: () => '0',
         incrementSequenceNumber: () => {},
       }),
-    };
+    });
 
     const result = await client.token.mint({ to, amount: 5_000_000n });
 
