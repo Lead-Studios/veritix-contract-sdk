@@ -67,7 +67,7 @@ export function createMockClient(
   const client = new VeriTixClient(config);
   const mockServer = createMockServer(overrides);
   // Inject directly — mirrors the pattern used in client.test.ts
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   (client as any).connected = true;
   (client as any).ledgerCache = { sequence: 1000, fetchedAt: Date.now() };
   return client;
@@ -172,7 +172,7 @@ export function mockSimulationResult(
  */
 function attachMockServer(client: VeriTixClient, server: jest.Mocked<SorobanRpc.Server>): void {
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  (client as any).server = server;
+  client.setServer(server as any);
   (client as any).connected = true;
   (client as any).ledgerCache = { sequence: 1000, fetchedAt: Date.now() };
   /* eslint-enable @typescript-eslint/no-explicit-any */

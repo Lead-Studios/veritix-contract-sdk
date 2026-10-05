@@ -21,9 +21,9 @@ import * as txUtils from '../src/utils/transaction';
 
 function makeClient(keypair?: Keypair) {
   const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), keypair);
-  (client as any).server = {
+  client.setServer({
     getAccount: jest.fn().mockResolvedValue({ accountId: () => keypair?.publicKey(), sequenceNumber: () => '0', incrementSequenceNumber: () => {} }),
-  };
+  } as any);
   return client;
 }
 

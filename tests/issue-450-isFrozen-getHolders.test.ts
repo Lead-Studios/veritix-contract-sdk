@@ -22,7 +22,7 @@ describe('TokenModule isFrozen/getHolders/totalHolders', () => {
   beforeEach(() => {
     client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
     mockSimulate = jest.fn();
-    (client.token as any).server = { simulateTransaction: mockSimulate };
+    (client as any).setServer({ simulateTransaction: mockSimulate });
   });
 
   it('isFrozen() returns true for a frozen address', async () => {

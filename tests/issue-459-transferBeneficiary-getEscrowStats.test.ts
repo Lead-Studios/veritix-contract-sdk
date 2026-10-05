@@ -16,8 +16,7 @@ const FAKE_ADDRESS = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
 function makeConnectedClient(keypair?: Keypair) {
   const client = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT), keypair);
   const mockServer = { simulateTransaction: jest.fn(), sendTransaction: jest.fn(), getTransaction: jest.fn() };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).connected = true;
   return { client, mockServer };

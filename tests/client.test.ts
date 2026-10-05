@@ -52,8 +52,7 @@ function makeConnectedClient(sequence = 100) {
   const mockServer = makeMockServer({
     getLatestLedger: jest.fn().mockResolvedValue({ sequence }),
   });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).ledgerCache = { sequence, fetchedAt: Date.now() };
   return { client, mockServer };
@@ -244,8 +243,7 @@ describe('VeriTixClient', () => {
           return Promise.resolve(res);
         }),
       };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (c as any).server = mockServer;
+      c.setServer(mockServer as any);
       return { c, mockServer };
     }
 
@@ -315,8 +313,7 @@ describe("read-only client guard", () => {
   it("does NOT throw on token.balance() — reads are always allowed", async () => {
     const client = makeReadOnlyClient();
     // We need to mock the server to prevent actual network calls, since balance is a read operation
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (client as any).server = { getLatestLedger: jest.fn().mockResolvedValue({ sequence: 100 }) };
+    client.setServer({ getLatestLedger: jest.fn().mockResolvedValue({ sequence: 100 }) } as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (client as any).connected = true;
     // Mock the simulateRead to return a balance
@@ -604,8 +601,7 @@ describe('VeriTixClient.buildUnsignedTx / submitSignedTx', () => {
     it('builds and simulates an unsigned tx, returning xdr, hash, and estimated fee', async () => {
       const c = new VeriTixClient(getTestnetConfig(FAKE_CONTRACT));
       const tx = makeTx();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (c as any).server = { getLatestLedger: jest.fn() };
+      c.setServer({ getLatestLedger: jest.fn() } as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (c as any).connected = true;
 
@@ -642,8 +638,7 @@ describe('VeriTixClient.buildUnsignedTx / submitSignedTx', () => {
         sendTransaction: jest.fn().mockResolvedValue({ status: 'PENDING', hash: expectedHash }),
         getTransaction: jest.fn().mockResolvedValue({ status: 'SUCCESS', ledger: 200 }),
       };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (c as any).server = mockServer;
+      c.setServer(mockServer as any);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (c as any).connected = true;
 

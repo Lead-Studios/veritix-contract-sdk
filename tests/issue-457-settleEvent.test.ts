@@ -17,8 +17,7 @@ function makeConnectedClient(keypair?: Keypair) {
     sendTransaction: jest.fn(),
     getTransaction: jest.fn(),
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (client as any).connected = true;
   return { client, mockServer };

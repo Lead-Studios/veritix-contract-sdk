@@ -19,8 +19,7 @@ function makeConnectedClient(keypair?: Keypair, currentLedger = 100) {
     getTransaction: jest.fn(),
     getLatestLedger: jest.fn().mockResolvedValue({ sequence: currentLedger }),
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   return { client, mockServer };
 }
 

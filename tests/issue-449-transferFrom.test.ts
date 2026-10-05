@@ -25,7 +25,7 @@ function makeClient(keypair?: Keypair) {
     simulateTransaction: jest.fn(),
     getAccount: jest.fn().mockResolvedValue({ accountId: () => keypair?.publicKey(), sequenceNumber: () => '0', incrementSequenceNumber: () => {} }),
   };
-  (client as any).server = mockServer;
+  client.setServer(mockServer as any);
   return { client, mockServer };
 }
 
