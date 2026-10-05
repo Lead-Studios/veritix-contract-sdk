@@ -91,17 +91,6 @@ export class VeriTixClient {
   private readonly keypair?: Keypair;
   private readonly listeners = new Map<string, Set<ClientListener>>();
 
-  /**
-   * Sets the RPC server and synchronizes it with all modules.
-   * Tests use this to inject mocks without calling connect().
-   */
-  setServer(server: WatchServer | null): void {
-    this.server = server;
-    // Cast to the module server type since WatchServer has optional methods
-    this.token.server = server as any;
-    this.escrow.server = server as any;
-  }
-
   constructor(config: NetworkConfig, keypair?: Keypair) {
     this.config = config;
     this.keypair = keypair;
@@ -313,6 +302,33 @@ export class VeriTixClient {
         throw new VeriTixError(VeriTixErrorCode.WatchTimeout, `Timed out watching escrow ${id}`);
       }
       await sleep(intervalMs);
+    }
+  }
+
+  /**
+   * Connects to the Soroban RPC server and initializes module connections.
+   */
+  async connect(): Promise<void> {
+    if (this.connected) return;
+
+    const { Server } = await import('@stellar/stellar-sdk');
+    this.server = new Server(this.config.rpcUrl, {
+      allowHttp: this.config.rpcUrl.startsWith('http://'),
+    }) as unknown as WatchServer;
+
+    try {
+      await this.server.getLatestLedger();
+      this.connected = true;
+      this.token.server = this.escrow.server = this.server as EscrowModule['server'];
+      this.emit('connected', { ledger: await this.getCurrentLedger() });
+    } catch (err) {
+      this.server = null;
+      throw new VeriTixError(
+        VeriTixErrorCode.ConnectionFailed,
+        `Failed to connect to ${this.config.rpcUrl}`,
+        undefined,
+        err,
+      );
     }
   }
 
