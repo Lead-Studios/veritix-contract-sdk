@@ -16,7 +16,6 @@ import {
   Account as StellarAccount,
   Contract,
   Keypair,
-  StrKey,
   TransactionBuilder,
   nativeToScVal,
   scValToNative,
@@ -123,18 +122,18 @@ export class TokenModule {
 
   /**
    * Returns the total number of distinct token holders.
-   * Returns `0` when the contract returns no result or simulation errors.
+   *
+   * Fails closed: typed errors propagate instead of being reported as `0`, so an
+   * outage is never mistaken for "no holders" (#793).
+   *
+   * @throws {VeriTixError} when the RPC call or simulation fails.
    */
-  async totalHolders(): Promise<number | bigint> {
-    try {
-      const raw = await this.read('total_holders', []);
-      if (raw === undefined || raw === null) return 0;
-      if (typeof raw === 'bigint') return raw;
-      if (typeof raw === 'number') return raw;
-      return Number(raw);
-    } catch {
-      return 0;
-    }
+  async totalHolders(): Promise<number> {
+    const raw = await this.read('total_holders', []);
+    if (raw === undefined || raw === null) return 0;
+    // #624 specified `number`; a bigint is narrowed here rather than widening
+    // the public signature to `number | bigint`.
+    return Number(raw);
   }
 
   /**
@@ -197,24 +196,21 @@ export class TokenModule {
   /**
    * Reports whether `address` is frozen (`true` when the contract says so).
    *
-   * Returns `false` without any RPC call for values that cannot be a token
-   * holder (for example the contract ID itself), and also defaults to `false`
-   * if the simulation errors — a frozen status must never block an unrelated
-   * UI read.
+   * Fails closed: only an explicit `false` from the contract reports "not
+   * frozen". An unreachable RPC, a rejected simulation or a malformed address
+   * raises a typed error rather than reporting `false`, because a compliance
+   * check that reads "not frozen" during an outage is unsafe (#792).
+   *
+   * @throws {InvalidAddressError} when `address` is not a valid strkey.
+   * @throws {VeriTixError} when the RPC call or simulation fails.
    */
   async isFrozen(address: string): Promise<boolean> {
-    if (address === this.config.contractId) {
-      return false;
-    }
-    if (!StrKey.isValidEd25519PublicKey(address)) {
-      return false;
-    }
-    try {
-      const raw = await this.read('is_frozen', [addressToScVal(address)]);
-      return raw === true;
-    } catch {
-      return false;
-    }
+    // Accepts G… accounts *and* C… contract ids; the previous
+    // StrKey.isValidEd25519PublicKey check silently reported every valid
+    // contract address as "not frozen".
+    assertValidAddress(address, 'address');
+    const raw = await this.read('is_frozen', [addressToScVal(address)]);
+    return raw === true;
   }
 
   /**
