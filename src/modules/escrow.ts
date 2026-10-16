@@ -18,11 +18,12 @@ import {
 } from '@stellar/stellar-sdk';
 import type { Transaction } from '@stellar/stellar-sdk';
 
-import type { EscrowRecord, TransactionResult } from '../types';
+import type { EscrowRecord, TicketEscrowParams, TransactionResult } from '../types';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import {
   DUMMY_PUBLIC_KEY,
   assertValidAddress,
+  ledgersFromDate,
 } from '../utils/network';
 import type { NetworkConfig } from '../utils/network';
 import { addressToScVal, bigintToScVal } from '../utils/scval';
@@ -238,6 +239,203 @@ export class EscrowModule {
     }
 
     return await this.writeCall('auto_release', [bigintToScVal(id, 'u64')]);
+  }
+
+  /**
+   * Creates a ticket-backed escrow for a purchase flow (#777).
+   *
+   * Calls contract method:
+   * `ticket_escrow(buyer, organizer, token, ticket_price: i128, event_ledger: u32, ticket_ref: Bytes) -> u32`
+   *
+   * @param params - Ticket escrow creation parameters.
+   * @returns Escrow ID (bigint).
+   */
+  async createTicketEscrow(params: TicketEscrowParams): Promise<bigint> {
+    this.assertSignerConfigured('createTicketEscrow');
+    const buyer = params.buyer ?? (this.keypair ? this.keypair.publicKey() : this.sourceForWrite());
+    assertValidAddress(buyer, 'buyer');
+    assertValidAddress(params.organizer, 'organizer');
+    assertValidAddress(params.token, 'token');
+
+    let eventLedger: number;
+    if (params.eventLedger !== undefined) {
+      eventLedger = params.eventLedger;
+    } else if (params.eventDate !== undefined) {
+      const currentLedger = await this.fetchLatestLedger();
+      eventLedger = ledgersFromDate(params.eventDate, currentLedger);
+    } else {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidInput,
+        'createTicketEscrow: either eventLedger or eventDate must be provided',
+      );
+    }
+
+    const ticketRefBytes =
+      typeof params.ticketRef === 'string'
+        ? Buffer.from(params.ticketRef, 'utf8')
+        : Buffer.from(params.ticketRef);
+
+    const result = await this.writeCall('ticket_escrow', [
+      addressToScVal(buyer),
+      addressToScVal(params.organizer),
+      addressToScVal(params.token),
+      bigintToScVal(params.ticketPrice, 'i128'),
+      nativeToScVal(eventLedger, { type: 'u32' }),
+      xdr.ScVal.scvBytes(ticketRefBytes),
+    ]);
+
+    if (result.returnValue !== undefined && result.returnValue !== null) {
+      return typeof result.returnValue === 'bigint'
+        ? result.returnValue
+        : BigInt(String(result.returnValue));
+    }
+
+    return 0n;
+  }
+
+  /**
+   * Tops up an existing escrow with additional funds (#776).
+   *
+   * Calls contract method:
+   * `topup_escrow(depositor, escrow_id: u32, amount: i128)`
+   *
+   * @param id - Escrow ID to top up.
+   * @param amount - Amount to add in stroops (> 0).
+   * @throws {VeriTixError} with code `InvalidAmount` when amount <= 0.
+   * @throws {VeriTixError} with code `ReadOnlyClient` when no signer is configured.
+   */
+  async topUpEscrow(id: bigint, amount: bigint): Promise<TransactionResult> {
+    this.assertSignerConfigured('topUpEscrow');
+    if (amount <= 0n) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidAmount,
+        'topUpEscrow: amount must be greater than zero',
+      );
+    }
+
+    const depositor = this.keypair ? this.keypair.publicKey() : this.sourceForWrite();
+    return await this.writeCall('topup_escrow', [
+      addressToScVal(depositor),
+      nativeToScVal(Number(id), { type: 'u32' }),
+      bigintToScVal(amount, 'i128'),
+    ]);
+  }
+
+  /** Alias for {@link topUpEscrow} for backward compatibility. */
+  topupEscrow = this.topUpEscrow.bind(this);
+
+  /**
+   * Releases an escrow to its beneficiary (#774).
+   *
+   * Calls contract method:
+   * `release_escrow(caller, escrow_id: u32)`
+   *
+   * @param id - Escrow ID to release.
+   * @throws {VeriTixError} with code `EscrowNotFound` if escrow does not exist.
+   * @throws {VeriTixError} with code `EscrowAlreadySettled` if escrow is released or refunded.
+   * @throws {VeriTixError} with code `DisputeAlreadyOpen` if escrow has an open dispute.
+   * @throws {VeriTixError} with code `ReadOnlyClient` when no signer is configured.
+   */
+  async releaseEscrow(id: bigint): Promise<TransactionResult> {
+    this.assertSignerConfigured('releaseEscrow');
+
+    const escrow = await this.getEscrow(id);
+    if (!escrow) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowNotFound,
+        `Escrow ${id} not found in contract storage`,
+      );
+    }
+    if (escrow.released || escrow.refunded) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowAlreadySettled,
+        'Cannot release escrow: escrow has already been settled',
+      );
+    }
+
+    const caller = this.keypair ? this.keypair.publicKey() : this.sourceForWrite();
+    try {
+      return await this.writeCall('release_escrow', [
+        addressToScVal(caller),
+        nativeToScVal(Number(id), { type: 'u32' }),
+      ]);
+    } catch (err: unknown) {
+      const errStr = this.extractErrorString(err);
+      if (errStr.includes('escrow already settled') || errStr.includes('already settled')) {
+        throw new VeriTixError(
+          VeriTixErrorCode.EscrowAlreadySettled,
+          'Cannot release escrow: escrow has already been settled',
+          errStr,
+          err,
+        );
+      }
+      if (errStr.includes('dispute')) {
+        throw new VeriTixError(
+          VeriTixErrorCode.DisputeAlreadyOpen,
+          'Cannot release escrow: escrow has an open dispute',
+          errStr,
+          err,
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Refunds an escrow back to its depositor (#775).
+   *
+   * Calls contract method:
+   * `refund_escrow(caller, escrow_id: u32)`
+   *
+   * @param id - Escrow ID to refund.
+   * @throws {VeriTixError} with code `EscrowNotFound` if escrow does not exist.
+   * @throws {VeriTixError} with code `EscrowAlreadySettled` if escrow is released or refunded.
+   * @throws {VeriTixError} with code `DisputeAlreadyOpen` if escrow has an open dispute.
+   * @throws {VeriTixError} with code `ReadOnlyClient` when no signer is configured.
+   */
+  async refundEscrow(id: bigint): Promise<TransactionResult> {
+    this.assertSignerConfigured('refundEscrow');
+
+    const escrow = await this.getEscrow(id);
+    if (!escrow) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowNotFound,
+        `Escrow ${id} not found in contract storage`,
+      );
+    }
+    if (escrow.released || escrow.refunded) {
+      throw new VeriTixError(
+        VeriTixErrorCode.EscrowAlreadySettled,
+        'Cannot refund escrow: escrow has already been settled',
+      );
+    }
+
+    const caller = this.keypair ? this.keypair.publicKey() : this.sourceForWrite();
+    try {
+      return await this.writeCall('refund_escrow', [
+        addressToScVal(caller),
+        nativeToScVal(Number(id), { type: 'u32' }),
+      ]);
+    } catch (err: unknown) {
+      const errStr = this.extractErrorString(err);
+      if (errStr.includes('escrow already settled') || errStr.includes('already settled')) {
+        throw new VeriTixError(
+          VeriTixErrorCode.EscrowAlreadySettled,
+          'Cannot refund escrow: escrow has already been settled',
+          errStr,
+          err,
+        );
+      }
+      if (errStr.includes('dispute')) {
+        throw new VeriTixError(
+          VeriTixErrorCode.DisputeAlreadyOpen,
+          'Cannot refund escrow: escrow has an open dispute',
+          errStr,
+          err,
+        );
+      }
+      throw err;
+    }
   }
 
   // -------------------------------------------------------------------------

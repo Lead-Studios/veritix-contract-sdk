@@ -187,9 +187,22 @@ export interface CreateEscrowResult {
   txHash: string;
 }
 
-/** Parameters for creating a ticket-backed escrow. */
-export interface TicketEscrowParams extends CreateEscrowParams {
-  ticketId: bigint;
+/** Parameters for creating a ticket-backed escrow via {@link EscrowModule.createTicketEscrow}. */
+export interface TicketEscrowParams {
+  /** Stellar account address of the buyer/depositor (defaults to caller when omitted) */
+  buyer?: string;
+  /** Stellar account address of the organizer (beneficiary) */
+  organizer: string;
+  /** Stellar account address of the payment token */
+  token: string;
+  /** Ticket price in stroops (i128) */
+  ticketPrice: bigint;
+  /** Ledger sequence corresponding to the event */
+  eventLedger?: number;
+  /** Wall-clock date of the event (converted to ledger sequence via ledgersFromDate) */
+  eventDate?: Date;
+  /** Unique ticket reference or identifier string/Buffer/Uint8Array attached as bytes */
+  ticketRef: string | Uint8Array;
 }
 
 /** Result of settling a batch of escrows. */
