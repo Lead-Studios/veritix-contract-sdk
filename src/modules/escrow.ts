@@ -119,6 +119,36 @@ export class EscrowModule {
   }
 
   /**
+   * Reports whether an escrow has been settled (released or refunded).
+   *
+   * One `is_escrow_settled` round trip instead of fetching the whole record and
+   * inspecting `released`/`refunded` client-side.
+   *
+   * @param id - Escrow ID to query.
+   * @returns `true` when the contract reports the escrow as settled.
+   */
+  async isSettled(id: bigint): Promise<boolean> {
+    const result = await this.read('is_escrow_settled', [bigintToScVal(id, 'u64')]);
+    return result === true;
+  }
+
+  /**
+   * Returns the total value currently escrowed by `depositor`.
+   *
+   * @param depositor - Stellar address to total as depositor.
+   * @returns Total escrowed amount in stroops (0n when nothing is escrowed).
+   * @throws {InvalidAddressError} when `depositor` is not a valid strkey.
+   */
+  async getEscrowedValueForDepositor(depositor: string): Promise<bigint> {
+    assertValidAddress(depositor, 'depositor');
+    const result = await this.read('escrowed_value_for_depositor', [
+      addressToScVal(depositor),
+    ]);
+    if (result === undefined || result === null) return 0n;
+    return typeof result === 'bigint' ? result : BigInt(String(result));
+  }
+
+  /**
    * Returns aggregate statistics for all escrows.
    *
    * Provides total count, active count, settled count, and total value locked
