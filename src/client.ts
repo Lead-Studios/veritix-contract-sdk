@@ -132,6 +132,13 @@ export class VeriTixClient {
   /** Marks the client disconnected and emits the `disconnected` event. */
   disconnect(): void {
     this.connected = false;
+    // #787 — dropping only the flag left `server` wired into both modules, so
+    // `client.token.balance(...)` still reached the network after disconnect()
+    // and a reconnect inside the ledger TTL could serve a stale cached ledger.
+    this.server = null;
+    this.token.server = null;
+    this.escrow.server = null;
+    this.ledgerCache = null;
     this.emit('disconnected');
   }
 
@@ -396,7 +403,23 @@ export class VeriTixClient {
     const set = this.listeners.get(event);
     if (!set) return;
     for (const listener of set) {
-      listener(...args);
+      try {
+        listener(...args);
+      } catch (err) {
+        // #786 — a listener must never decide the caller's outcome. `connect()`
+        // emits `connected` inside its own try block, so an unguarded throw here
+        // turned a successful connect into `ConnectionFailed` and discarded the
+        // server. Failures are reported on `error` instead, and the guard stops a
+        // throwing `error` listener from recursing.
+        if (event !== 'error') {
+          this.emit(
+            'error',
+            err instanceof VeriTixError
+              ? err
+              : new VeriTixError(VeriTixErrorCode.HostError, String(err)),
+          );
+        }
+      }
     }
   }
 
