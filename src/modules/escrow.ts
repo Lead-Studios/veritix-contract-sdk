@@ -46,6 +46,9 @@ export interface EscrowStats {
 
 type Signer = (tx: Transaction) => Promise<Transaction>;
 
+/** Upper bound on {@link EscrowModule.getEscrowsBatch}, one `u32` per argument. */
+export const MAX_ESCROW_BATCH_SIZE = 100;
+
 export class EscrowModule {
   /** Soroban RPC server; tests inject a mock on this field. */
   server: {
@@ -149,17 +152,46 @@ export class EscrowModule {
    */
   async getEscrow(id: bigint): Promise<EscrowRecord> {
     const result = await this.read('get_escrow', [bigintToScVal(id, 'u64')]);
-    const native = result as Record<string, unknown>;
-    return {
-      id: typeof native.id === 'bigint' ? native.id : BigInt(String(native.id ?? id)),
-      depositor: String(native.depositor ?? ''),
-      beneficiary: String(native.beneficiary ?? ''),
-      amount: typeof native.amount === 'bigint' ? native.amount : BigInt(String(native.amount ?? '0')),
-      released: Boolean(native.released),
-      refunded: Boolean(native.refunded),
-      expiryLedger: Number(native.expiry_ledger ?? native.expiryLedger ?? 0),
-      memos: Array.isArray(native.memos) ? native.memos.map(String) : [],
-    };
+    return this.toEscrowRecord(result, id);
+  }
+
+  /**
+   * Returns the age of an escrow in ledgers.
+   *
+   * @param id - Escrow ID to query.
+   * @returns Ledgers elapsed since the escrow was created.
+   */
+  async getEscrowAge(id: bigint): Promise<number> {
+    const result = await this.read('get_escrow_age', [bigintToScVal(id, 'u64')]);
+    return Number(result ?? 0);
+  }
+
+  /**
+   * Reads several escrows in one RPC round trip.
+   *
+   * @param ids - Escrow IDs to fetch.
+   * @returns One entry per input id, in input order; `null` where no escrow exists.
+   * @throws {VeriTixError} with code `BatchTooLarge` above {@link MAX_ESCROW_BATCH_SIZE}.
+   */
+  async getEscrowsBatch(ids: bigint[]): Promise<(EscrowRecord | null)[]> {
+    if (ids.length > MAX_ESCROW_BATCH_SIZE) {
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `getEscrowsBatch accepts at most ${MAX_ESCROW_BATCH_SIZE} ids, got ${ids.length}`,
+      );
+    }
+    if (ids.length === 0) return [];
+
+    const result = await this.read('get_escrows_batch', [
+      xdr.ScVal.scvVec(ids.map((id) => xdr.ScVal.scvU32(Number(id)))),
+    ]);
+
+    if (!Array.isArray(result)) return ids.map(() => null);
+    return ids.map((id, i) => {
+      const native = result[i];
+      if (!native || typeof native !== 'object') return null;
+      return this.toEscrowRecord(native, id);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -243,6 +275,21 @@ export class EscrowModule {
   // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------
+
+  /** Normalises one decoded contract record, shared by getEscrow/getEscrowsBatch. */
+  private toEscrowRecord(raw: unknown, fallbackId: bigint): EscrowRecord {
+    const native = raw as Record<string, unknown>;
+    return {
+      id: typeof native.id === 'bigint' ? native.id : BigInt(String(native.id ?? fallbackId)),
+      depositor: String(native.depositor ?? ''),
+      beneficiary: String(native.beneficiary ?? ''),
+      amount: typeof native.amount === 'bigint' ? native.amount : BigInt(String(native.amount ?? '0')),
+      released: Boolean(native.released),
+      refunded: Boolean(native.refunded),
+      expiryLedger: Number(native.expiry_ledger ?? native.expiryLedger ?? 0),
+      memos: Array.isArray(native.memos) ? native.memos.map(String) : [],
+    };
+  }
 
   private assertSignerConfigured(action: string): void {
     if (!this.keypair && !this.signer) {
