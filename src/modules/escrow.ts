@@ -169,18 +169,21 @@ export class EscrowModule {
     // The exposed entrypoint is `escrow_stats()` (#842); `get_escrow_stats` is
     // only an internal contract helper and is not callable from the host.
     const result = await this.read('escrow_stats', []);
-    if (typeof result !== 'object' || result === null) {
-      return { total: 0, active: 0, settled: 0, totalValue: 0n };
+    if (typeof result !== 'object' || result === null || Array.isArray(result)) {
+      throw new VeriTixError(
+        VeriTixErrorCode.SimulationFailed,
+        `getEscrowStats: escrow_stats returned an unexpected shape — expected a map, got ${describeValue(result)}`,
+      );
     }
 
     const native = result as Record<string, unknown>;
-    const released = Number(native.released ?? 0);
-    const refunded = Number(native.refunded ?? 0);
+    const released = this.statsCount(native.released ?? 0, 'released');
+    const refunded = this.statsCount(native.refunded ?? 0, 'refunded');
     return {
-      total: Number(native.total ?? 0),
-      active: Number(native.active ?? 0),
-      settled: Number(native.settled ?? released + refunded),
-      totalValue: typeof native.total_value === 'bigint' ? native.total_value : BigInt(String(native.total_value ?? '0')),
+      total: this.statsCount(native.total, 'total'),
+      active: this.statsCount(native.active, 'active'),
+      settled: native.settled === undefined ? released + refunded : this.statsCount(native.settled, 'settled'),
+      totalValue: this.statsTotalValue(native.total_value),
     };
   }
 
@@ -551,6 +554,26 @@ export class EscrowModule {
     };
   }
 
+  /** Decodes a required numeric `escrow_stats` field, naming it when malformed. */
+  private statsCount(value: unknown, field: string): number {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'bigint') return Number(value);
+    throw new VeriTixError(
+      VeriTixErrorCode.SimulationFailed,
+      `getEscrowStats: escrow_stats field "${field}" is missing or not a number (got ${describeValue(value)})`,
+    );
+  }
+
+  /** Decodes the required `total_value` field, naming it when malformed. */
+  private statsTotalValue(value: unknown): bigint {
+    if (typeof value === 'bigint') return value;
+    if (typeof value === 'number' && Number.isInteger(value)) return BigInt(value);
+    throw new VeriTixError(
+      VeriTixErrorCode.SimulationFailed,
+      `getEscrowStats: escrow_stats field "total_value" is missing or not an integer (got ${describeValue(value)})`,
+    );
+  }
+
   private assertSignerConfigured(action: string): void {
     if (!this.keypair && !this.signer) {
       throw new VeriTixError(
@@ -686,4 +709,13 @@ export class EscrowModule {
       return String(err);
     }
   }
+}
+
+/** Compact, log-safe rendering of a decoded value for error messages. */
+function describeValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'bigint') return `${value}n`;
+  if (typeof value === 'object') return Array.isArray(value) ? 'array' : 'object';
+  return `${typeof value} ${String(value)}`;
 }
