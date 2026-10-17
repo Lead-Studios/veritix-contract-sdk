@@ -300,7 +300,18 @@ export class EscrowModule {
       );
     }
 
-    return await this.writeCall('auto_release', [bigintToScVal(id, 'u64')]);
+    if (id < 0n || id > 0xffff_ffffn) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidInput,
+        `triggerAutoRelease: escrow id ${id} is out of range for u32`,
+      );
+    }
+
+    // The contract entrypoint is `trigger_auto_release(escrow_id: u32)`; there
+    // is no `auto_release` function, so the previous name failed on-chain (#839).
+    return await this.writeCall('trigger_auto_release', [
+      nativeToScVal(Number(id), { type: 'u32' }),
+    ]);
   }
 
   /**

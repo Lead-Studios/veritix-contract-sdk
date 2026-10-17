@@ -67,5 +67,14 @@ describe('EscrowModule.triggerAutoRelease — pre-flight ledger check (#455)', (
     const result = await client.escrow.triggerAutoRelease(1n, EXPIRY_LEDGER);
 
     expect(result).toMatchObject({ hash: 'auto-release-hash', successful: true });
+    // #839: the invoked method must be the contract's `trigger_auto_release`.
+    expect(transactionUtils.buildContractCall).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      FAKE_CONTRACT,
+      'trigger_auto_release',
+      expect.any(Array),
+      expect.anything(),
+    );
   });
 });
