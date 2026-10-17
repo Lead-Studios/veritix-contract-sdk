@@ -250,7 +250,11 @@ export async function submitTransaction(
 
   // 3. Poll until confirmed
   for (let attempt = 0; attempt < maxPollAttempts; attempt++) {
-    await sleep(POLL_INTERVAL_MS);
+    // Check the current status first; only wait between attempts so a
+    // transaction that is already in a ledger is confirmed without delay.
+    if (attempt > 0) {
+      await sleep(POLL_INTERVAL_MS);
+    }
 
     const response = await server.getTransaction(hash);
 
