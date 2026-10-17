@@ -93,17 +93,18 @@ export class PollingService {
     const intervalMs = options.intervalMs ?? this.intervalMs;
     const deadline = Date.now() + (options.timeoutMs ?? this.timeoutMs);
 
-    let cancelled = false;
+    let cancelled = options.signal?.aborted === true;
     const detach = attachAbort(options.signal, () => {
       cancelled = true;
     });
 
     try {
       for (;;) {
+        if (cancelled) throw new PollingAbortedError(hash);
+
         const result = await this.checkStatus(hash);
         onTick?.(result);
         if (result.status === PollStatus.SUCCESS) return result;
-        if (cancelled) throw new PollingAbortedError(hash);
         if (Date.now() >= deadline) throw new PollingTimeoutError(hash, options.timeoutMs ?? this.timeoutMs);
         await sleep(intervalMs);
       }
