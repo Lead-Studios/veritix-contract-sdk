@@ -315,7 +315,7 @@ describe('TokenModule', () => {
       const buildMock = txUtils.buildContractCall as jest.Mock;
       expect(buildMock).toHaveBeenCalledTimes(1);
       expect(buildMock.mock.calls[0][3]).toBe('mint');
-      expect(buildMock.mock.calls[0][4]).toHaveLength(2); // [to, amount]
+      expect(buildMock.mock.calls[0][4]).toHaveLength(3); // [admin, to, amount]
     });
 
     it('transfer() builds correct arguments', async () => {

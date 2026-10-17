@@ -191,7 +191,7 @@ export class EscrowModule {
    * @returns EscrowRecord with full escrow details.
    */
   async getEscrow(id: bigint): Promise<EscrowRecord> {
-    const result = await this.read('get_escrow', [bigintToScVal(id, 'u64')]);
+    const result = await this.read('get_escrow', [bigintToScVal(id, 'u32')]);
     return this.toEscrowRecord(result, id);
   }
 
@@ -321,7 +321,7 @@ export class EscrowModule {
       );
     }
 
-    return await this.writeCall('auto_release', [bigintToScVal(id, 'u64')]);
+    return await this.writeCall('auto_release', [bigintToScVal(id, 'u32')]);
   }
 
   /**
