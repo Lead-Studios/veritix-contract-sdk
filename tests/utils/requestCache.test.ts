@@ -152,6 +152,37 @@ describe('RequestCache', () => {
     expect(cache.get('key-b')).toBeUndefined(); // key-b already settled+evicted
   });
 
+  it('a stale promise does not delete a newer entry for the same key (#817)', async () => {
+    const cache = new RequestCache();
+
+    let resolveFirst!: (value: string) => void;
+    let resolveSecond!: (value: string) => void;
+    const first = new Promise<string>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const second = new Promise<string>((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    cache.set('k', first);
+    cache.set('k', second); // replaces first before it settles
+    expect(cache.get('k')).toBe(second);
+
+    // Settling the stale promise must not evict the newer entry.
+    resolveFirst('first');
+    await first;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(cache.get('k')).toBe(second);
+
+    // The current entry still evicts itself when it settles.
+    resolveSecond('second');
+    await second;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(cache.get('k')).toBeUndefined();
+  });
+
   it('delete() removes an entry manually', () => {
     const cache = new RequestCache();
     cache.set('k', Promise.resolve(1));
