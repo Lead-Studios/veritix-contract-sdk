@@ -6,9 +6,9 @@
  * The immutable metadata reads (`name()`, `symbol()`, `decimals()`) are
  * cached through {@link RequestCache} since they never change on-chain.
  *
- * Because a holder table rendering 50 rows must never fan out into 50 RPC
- * calls, {@link TokenModule.balanceOfBatch} fans sequential reads through a
- * single shared read helper while returning results strictly in input order.
+ * {@link TokenModule.balanceOfBatch} issues its reads concurrently (bounded by
+ * {@link MAX_BATCH_SIZE}) instead of one sequential round trip per address,
+ * while returning results strictly in input order.
  * {@link TokenModule.isFrozen} short-circuits to `false` for the contract
  * itself so status UIs never probe it.
  */
@@ -172,15 +172,16 @@ export class TokenModule {
     return (await this.read('balance', [addressToScVal(address)])) as bigint;
   }
 
-  /**
-   * Returns balances for many holders, in input order.
-   *
-   * Validates every address up front and rejects (rather than truncating)
-   * batches above {@link MAX_BATCH_SIZE}.
-   *
-   * @throws {VeriTixError} with code `BatchTooLarge` for batches over
-   *   {@link MAX_BATCH_SIZE} entries.
-   */
+    /**
+     * Returns balances for many holders, in input order.
+     *
+     * Validates every address up front, rejects (rather than truncating)
+     * batches above {@link MAX_BATCH_SIZE}, and issues the reads concurrently
+     * so N addresses no longer cost N sequential round trips.
+     *
+     * @throws {VeriTixError} with code `BatchTooLarge` for batches over
+     *   {@link MAX_BATCH_SIZE} entries.
+     */
   async balanceOfBatch(addresses: string[]): Promise<bigint[]> {
     if (addresses.length > MAX_BATCH_SIZE) {
       throw new VeriTixError(
@@ -192,11 +193,7 @@ export class TokenModule {
       assertValidAddress(address, 'owner');
     }
 
-    const balances: bigint[] = [];
-    for (const address of addresses) {
-      balances.push(await this.balance(address));
-    }
-    return balances;
+    return Promise.all(addresses.map((address) => this.balance(address)));
   }
 
   /**
@@ -258,6 +255,8 @@ export class TokenModule {
    * @param durationSeconds - Time from now in seconds.
    * @param currentLedger   - Optional base ledger sequence number.
    * @returns Calculated expiration ledger sequence.
+   * @throws {VeriTixError} when the latest ledger cannot be fetched, instead
+   *   of falling back to a ledger of `0` and producing a past expiration.
    */
   async expirationLedgerFromDuration(
     durationSeconds: number,
@@ -719,15 +718,23 @@ export class TokenModule {
   }
 
   private async fetchLatestLedger(): Promise<number> {
-    if (this.server && typeof this.server.getLatestLedger === 'function') {
-      try {
-        const info = await this.server.getLatestLedger();
-        return info.sequence;
-      } catch {
-        return 0;
-      }
+    if (!this.server || typeof this.server.getLatestLedger !== 'function') {
+      throw new VeriTixError(
+        VeriTixErrorCode.NotConnected,
+        'RPC server does not expose getLatestLedger(); pass currentLedger explicitly',
+      );
     }
-    return 0;
+    try {
+      const info = await this.server.getLatestLedger();
+      return info.sequence;
+    } catch (err) {
+      throw new VeriTixError(
+        VeriTixErrorCode.RpcUnreachable,
+        'Failed to fetch the latest ledger sequence',
+        (err as Error)?.message,
+        err,
+      );
+    }
   }
 
   private async cachedRead(key: string, method: string, args: xdr.ScVal[] = []): Promise<unknown> {

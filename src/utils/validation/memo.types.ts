@@ -16,7 +16,7 @@ export type MemoType = 'text' | 'none' | 'hash' | 'return';
 export interface MemoValidationOptions {
   /** The memo value supplied by the user. */
   memo: string;
-  /** When `true`, reject memos whose UTF-8 byte length exceeds 28. */
+  /** When `false`, skip the 28-byte length check. Defaults to `true`. */
   enforceMaxLength?: boolean;
   /** When `true`, enforce the memo type. Defaults to `'text'`. */
   type?: MemoType;
