@@ -426,7 +426,7 @@ describe('EscrowModule.transferBeneficiary', () => {
     });
   });
 
-  it('submits the transfer_beneficiary transaction successfully', async () => {
+  it('submits the transfer_escrow_beneficiary transaction successfully', async () => {
     const keypair = Keypair.random();
     const { client, mockServer } = makeConnectedClient(keypair);
     const fakeTx = { id: 'unsigned' } as never;
@@ -452,7 +452,7 @@ describe('EscrowModule.transferBeneficiary', () => {
 
     expect(result).toMatchObject({ hash: 'transfer-hash', ledger: 200, successful: true });
     expect(transactionUtils.buildContractCall).toHaveBeenCalledWith(
-      mockServer, expect.anything(), FAKE_CONTRACT, 'transfer_beneficiary',
+      mockServer, expect.anything(), FAKE_CONTRACT, 'transfer_escrow_beneficiary',
       expect.any(Array), getTestnetConfig(FAKE_CONTRACT).networkPassphrase,
     );
   });
