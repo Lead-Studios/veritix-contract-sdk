@@ -107,25 +107,32 @@ export function boolToScVal(value: boolean): xdr.ScVal {
 }
 
 /**
- * Converts an `ScVal` of type `Bool` back to a JavaScript `boolean`.
+ * Converts an integer `ScVal` back to a JavaScript `number`.
  *
- * The read counterpart of {@link boolToScVal}, used to decode contract return
- * values (for example an `is_frozen` result) without going through
- * `scValToNative` at each call site.
+ * The read counterpart of {@link bigintToScVal} for call sites that expect a
+ * small integer (for example a u32 id or a decimals value).
  *
  * @param val - The `ScVal` to decode.
  * @throws {VeriTixError} with code `InvalidInput` when the decoded value is not
- *   a boolean, rather than coercing an unexpected shape.
+ *   a number, or is a `bigint` outside the safe-integer range (in which case
+ *   converting would silently lose precision).
  */
-export function scValToBoolean(val: xdr.ScVal): boolean {
+export function scValToNumber(val: xdr.ScVal): number {
   const native = scValToNative(val);
-  if (typeof native !== 'boolean') {
-    throw new VeriTixError(
-      VeriTixErrorCode.InvalidInput,
-      `scValToBoolean: expected a Bool ScVal, got ${typeof native}`,
-    );
+  if (typeof native === 'number') return native;
+  if (typeof native === 'bigint') {
+    if (native > BigInt(Number.MAX_SAFE_INTEGER) || native < BigInt(Number.MIN_SAFE_INTEGER)) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidInput,
+        `scValToNumber: ${native} is outside the safe-integer range and would lose precision`,
+      );
+    }
+    return Number(native);
   }
-  return native;
+  throw new VeriTixError(
+    VeriTixErrorCode.InvalidInput,
+    `scValToNumber: expected an integer ScVal, got ${typeof native}`,
+  );
 }
 
 /**
