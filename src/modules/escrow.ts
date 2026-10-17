@@ -305,6 +305,8 @@ export class EscrowModule {
    * @param currentLedger - Optional current ledger sequence (queried from RPC if omitted).
    * @throws {VeriTixError} with code `ReadOnlyClient` when no signer is configured.
    * @throws {VeriTixError} with code `EscrowNotExpired` when deadline has not passed.
+   * @throws {VeriTixError} with code `RpcUnreachable` when the latest ledger
+   *   cannot be fetched, rather than misreporting the remaining ledgers.
    */
   async triggerAutoRelease(id: bigint, currentLedger?: number): Promise<TransactionResult> {
     this.assertSignerConfigured('triggerAutoRelease');
@@ -634,15 +636,23 @@ export class EscrowModule {
   }
 
   private async fetchLatestLedger(): Promise<number> {
-    if (this.server && typeof this.server.getLatestLedger === 'function') {
-      try {
-        const info = await this.server.getLatestLedger();
-        return info.sequence;
-      } catch {
-        return 0;
-      }
+    if (!this.server || typeof this.server.getLatestLedger !== 'function') {
+      throw new VeriTixError(
+        VeriTixErrorCode.NotConnected,
+        'RPC server does not expose getLatestLedger(); pass currentLedger explicitly',
+      );
     }
-    return 0;
+    try {
+      const info = await this.server.getLatestLedger();
+      return info.sequence;
+    } catch (err) {
+      throw new VeriTixError(
+        VeriTixErrorCode.RpcUnreachable,
+        'Failed to fetch the latest ledger sequence',
+        (err as Error)?.message,
+        err,
+      );
+    }
   }
 
   private async read(method: string, args: xdr.ScVal[]): Promise<unknown> {
