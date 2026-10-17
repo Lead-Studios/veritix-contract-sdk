@@ -15,15 +15,16 @@ export class MemoValidationService {
   /**
    * Validates `options.memo`.
    *
-   * When the memo exceeds the 28-byte limit (and `enforceMaxLength` is set),
-   * the result is marked invalid with an error naming the limit and the memo
-   * is truncated to the first 28 bytes, keeping `sanitizedMemo` usable.
+   * The 28-byte limit is enforced by default; set `enforceMaxLength: false` to
+   * opt out explicitly. When the memo exceeds the limit the result is marked
+   * invalid with an error naming the limit and the memo is truncated to the
+   * first 28 bytes, keeping `sanitizedMemo` usable.
    */
   validate(options: MemoValidationOptions): MemoValidationResult {
     const memo = typeof options.memo === 'string' ? options.memo : '';
     const bytes = utf8ByteLength(memo);
 
-    if (options.enforceMaxLength && bytes > MEMO_MAX_BYTES) {
+    if (options.enforceMaxLength !== false && bytes > MEMO_MAX_BYTES) {
       return {
         isValid: false,
         sanitizedMemo: truncateToBytes(memo, MEMO_MAX_BYTES),
