@@ -10,7 +10,7 @@
  * Depends on the `@stellar/stellar-sdk` peer dependency (>=12.3.0) restored
  * for the rebuild in issue #574.
  */
-import { Address, nativeToScVal, StrKey, xdr } from '@stellar/stellar-sdk';
+import { Address, nativeToScVal, scValToNative, StrKey, xdr } from '@stellar/stellar-sdk';
 
 import { VeriTixError, VeriTixErrorCode } from './errors';
 
@@ -104,6 +104,28 @@ export function boolToScVal(value: boolean): xdr.ScVal {
     throw new TypeError('boolToScVal: value must be a boolean');
   }
   return xdr.ScVal.scvBool(value);
+}
+
+/**
+ * Converts an `ScVal` of type `Bool` back to a JavaScript `boolean`.
+ *
+ * The read counterpart of {@link boolToScVal}, used to decode contract return
+ * values (for example an `is_frozen` result) without going through
+ * `scValToNative` at each call site.
+ *
+ * @param val - The `ScVal` to decode.
+ * @throws {VeriTixError} with code `InvalidInput` when the decoded value is not
+ *   a boolean, rather than coercing an unexpected shape.
+ */
+export function scValToBoolean(val: xdr.ScVal): boolean {
+  const native = scValToNative(val);
+  if (typeof native !== 'boolean') {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `scValToBoolean: expected a Bool ScVal, got ${typeof native}`,
+    );
+  }
+  return native;
 }
 
 /**
