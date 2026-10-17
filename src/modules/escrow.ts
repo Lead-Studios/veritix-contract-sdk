@@ -85,41 +85,46 @@ export class EscrowModule {
   /**
    * Returns escrow IDs where the given address is the depositor.
    *
-   * Validates the address and returns an empty array when there are no
-   * escrows for that depositor.
+   * Reads `get_escrows_by_depositor(depositor) -> Vec<u32>`, the entrypoint the
+   * contract actually exposes (#840). Failures propagate rather than being
+   * reported as an empty list, so a contract or RPC problem is never mistaken
+   * for "this depositor has no escrows".
    *
    * @param address - Stellar address to query as depositor.
    * @returns Array of escrow IDs (bigint).
    */
-  async getDepositorEscrows(address: string): Promise<bigint[]> {
+  async getEscrowsByDepositor(address: string): Promise<bigint[]> {
     assertValidAddress(address, 'depositor');
-    try {
-      const result = await this.read('get_depositor_escrows', [addressToScVal(address)]);
-      if (!Array.isArray(result)) return [];
-      return result.map((id) => (typeof id === 'bigint' ? id : BigInt(String(id))));
-    } catch {
-      return [];
-    }
+    const result = await this.read('get_escrows_by_depositor', [addressToScVal(address)]);
+    if (!Array.isArray(result)) return [];
+    return result.map((id) => (typeof id === 'bigint' ? id : BigInt(String(id))));
+  }
+
+  /** @deprecated Use {@link getEscrowsByDepositor}; alias kept for (#840). */
+  getDepositorEscrows(address: string): Promise<bigint[]> {
+    return this.getEscrowsByDepositor(address);
   }
 
   /**
    * Returns escrow IDs where the given address is the beneficiary.
    *
-   * Validates the address and returns an empty array when there are no
-   * escrows for that beneficiary.
+   * Reads `get_escrows_by_beneficiary(beneficiary) -> Vec<u32>`, the entrypoint
+   * the contract actually exposes (#841). Failures propagate rather than being
+   * swallowed as an empty list.
    *
    * @param address - Stellar address to query as beneficiary.
    * @returns Array of escrow IDs (bigint).
    */
-  async getBeneficiaryEscrows(address: string): Promise<bigint[]> {
+  async getEscrowsByBeneficiary(address: string): Promise<bigint[]> {
     assertValidAddress(address, 'beneficiary');
-    try {
-      const result = await this.read('get_beneficiary_escrows', [addressToScVal(address)]);
-      if (!Array.isArray(result)) return [];
-      return result.map((id) => (typeof id === 'bigint' ? id : BigInt(String(id))));
-    } catch {
-      return [];
-    }
+    const result = await this.read('get_escrows_by_beneficiary', [addressToScVal(address)]);
+    if (!Array.isArray(result)) return [];
+    return result.map((id) => (typeof id === 'bigint' ? id : BigInt(String(id))));
+  }
+
+  /** @deprecated Use {@link getEscrowsByBeneficiary}; alias kept for (#841). */
+  getBeneficiaryEscrows(address: string): Promise<bigint[]> {
+    return this.getEscrowsByBeneficiary(address);
   }
 
   /**
@@ -161,16 +166,20 @@ export class EscrowModule {
    * @returns EscrowStats with counts and total value.
    */
   async getEscrowStats(): Promise<EscrowStats> {
-    const result = await this.read('get_escrow_stats', []);
+    // The exposed entrypoint is `escrow_stats()` (#842); `get_escrow_stats` is
+    // only an internal contract helper and is not callable from the host.
+    const result = await this.read('escrow_stats', []);
     if (typeof result !== 'object' || result === null) {
       return { total: 0, active: 0, settled: 0, totalValue: 0n };
     }
 
     const native = result as Record<string, unknown>;
+    const released = Number(native.released ?? 0);
+    const refunded = Number(native.refunded ?? 0);
     return {
       total: Number(native.total ?? 0),
       active: Number(native.active ?? 0),
-      settled: Number(native.settled ?? 0),
+      settled: Number(native.settled ?? released + refunded),
       totalValue: typeof native.total_value === 'bigint' ? native.total_value : BigInt(String(native.total_value ?? '0')),
     };
   }
@@ -182,7 +191,7 @@ export class EscrowModule {
    * @returns EscrowRecord with full escrow details.
    */
   async getEscrow(id: bigint): Promise<EscrowRecord> {
-    const result = await this.read('get_escrow', [bigintToScVal(id, 'u64')]);
+    const result = await this.read('get_escrow', [bigintToScVal(id, 'u32')]);
     return this.toEscrowRecord(result, id);
   }
 
@@ -232,8 +241,10 @@ export class EscrowModule {
   /**
    * Transfers the beneficiary rights of an escrow to a new address.
    *
-   * Validates the new beneficiary address and surfaces a typed error when
-   * the escrow is already settled (released or refunded) or disputed.
+   * Calls the contract entrypoint
+   * `transfer_escrow_beneficiary(depositor, escrow_id: u32, new_beneficiary)`:
+   * the depositor (taken from the signer) comes first and the escrow id is
+   * encoded as `u32` (#843).
    *
    * @param id - Escrow ID to transfer.
    * @param newBeneficiary - New beneficiary Stellar address.
@@ -245,9 +256,19 @@ export class EscrowModule {
     assertValidAddress(newBeneficiary, 'newBeneficiary');
     this.assertSignerConfigured('transferBeneficiary');
 
+    if (id < 0n || id > 0xffff_ffffn) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidInput,
+        `transferBeneficiary: escrow id ${id} is out of range for u32`,
+      );
+    }
+
+    const depositor = this.keypair ? this.keypair.publicKey() : this.sourceForWrite();
+
     try {
-      return await this.writeCall('transfer_beneficiary', [
-        bigintToScVal(id, 'u64'),
+      return await this.writeCall('transfer_escrow_beneficiary', [
+        addressToScVal(depositor),
+        nativeToScVal(Number(id), { type: 'u32' }),
         addressToScVal(newBeneficiary),
       ]);
     } catch (err: unknown) {

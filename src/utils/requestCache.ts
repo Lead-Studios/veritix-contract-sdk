@@ -48,11 +48,17 @@ export class RequestCache {
    */
   set(key: string, promise: Promise<unknown>): void {
     this._store.set(key, promise);
-    // Auto-evict on settlement so subsequent calls start fresh requests.
-    promise.then(
-      () => this.delete(key),
-      () => this.delete(key),
-    );
+    // Auto-evict on settlement so subsequent calls start fresh requests —
+    // but only when `promise` is still the entry under `key`. If a newer
+    // request replaced this one via set() before it settled, its own handler
+    // owns the eviction; otherwise settling the stale promise would delete the
+    // live entry and stop concurrent callers from de-duplicating (#817).
+    const evict = (): void => {
+      if (this._store.get(key) === promise) {
+        this.delete(key);
+      }
+    };
+    promise.then(evict, evict);
   }
 
   /**
