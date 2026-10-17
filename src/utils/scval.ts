@@ -12,6 +12,14 @@
  */
 import { Address, nativeToScVal, StrKey, xdr } from '@stellar/stellar-sdk';
 
+import { VeriTixError, VeriTixErrorCode } from './errors';
+
+/** Inclusive bounds for the integer types {@link bigintToScVal} can encode. */
+const U32_MAX = 0xffff_ffffn; // 2 ** 32 - 1
+const U64_MAX = 0xffff_ffff_ffff_ffffn; // 2 ** 64 - 1
+const I128_MIN = -(2n ** 127n);
+const I128_MAX = 2n ** 127n - 1n;
+
 /**
  * Error thrown when an address passed to {@link addressToScVal} is not a
  * valid Stellar account (G…) or contract (C…) strkey.
@@ -54,12 +62,34 @@ export function addressToScVal(address: string): xdr.ScVal {
  * Converts a `bigint` to an `ScVal` of the requested numeric type.
  *
  * @param value - The integer value.
- * @param type  - `"i128"` for signed 128-bit, `"u64"` for unsigned 64-bit.
+ * @param type  - `"i128"` for signed 128-bit, `"u64"` for unsigned 64-bit,
+ *   `"u32"` for unsigned 32-bit (the type escrow/recurring/split ids use).
  * @throws {TypeError} if `value` is not a `bigint`.
+ * @throws {VeriTixError} with code `InvalidInput` when `value` is outside the
+ *   range the requested type can represent — caught locally instead of being
+ *   sent to the host, which would reject it with an opaque conversion error.
  */
-export function bigintToScVal(value: bigint, type: 'i128' | 'u64'): xdr.ScVal {
+export function bigintToScVal(value: bigint, type: 'i128' | 'u64' | 'u32'): xdr.ScVal {
   if (typeof value !== 'bigint') {
     throw new TypeError('bigintToScVal: value must be a bigint');
+  }
+  if (type === 'u32' && (value < 0n || value > U32_MAX)) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `bigintToScVal: ${value} is out of range for u32 (0 to ${U32_MAX})`,
+    );
+  }
+  if (type === 'u64' && (value < 0n || value > U64_MAX)) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `bigintToScVal: ${value} is out of range for u64 (0 to ${U64_MAX})`,
+    );
+  }
+  if (type === 'i128' && (value < I128_MIN || value > I128_MAX)) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `bigintToScVal: ${value} is out of range for i128`,
+    );
   }
   return nativeToScVal(value, { type });
 }

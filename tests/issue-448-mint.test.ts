@@ -2,7 +2,7 @@
  * @file tests/issue-448-mint.test.ts
  * Coverage for TokenModule.mint() — issue #448.
  */
-import { Keypair } from '@stellar/stellar-sdk';
+import { Keypair, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { VeriTixClient } from '../src/client';
 import { getTestnetConfig } from '../src/utils/network';
 import { VeriTixErrorCode } from '../src/utils/errors';
@@ -50,6 +50,10 @@ describe('TokenModule.mint()', () => {
     const buildMock = txUtils.buildContractCall as jest.Mock;
     expect(buildMock).toHaveBeenCalledTimes(1);
     expect(buildMock.mock.calls[0][3]).toBe('mint'); // contract method name
-    expect(buildMock.mock.calls[0][4]).toHaveLength(2); // [to, amount] ScVal args
+    const args = buildMock.mock.calls[0][4] as xdr.ScVal[];
+    expect(args).toHaveLength(3); // [admin, to, amount] ScVal args
+    expect(scValToNative(args[0])).toBe(keypair.publicKey()); // admin = signer
+    expect(scValToNative(args[1])).toBe(to);
+    expect(scValToNative(args[2])).toBe(5_000_000n);
   });
 });

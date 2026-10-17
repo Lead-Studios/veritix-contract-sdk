@@ -14,6 +14,7 @@ import {
   scValToBoolean,
   scValToNumber,
 } from "../../src/utils/scval";
+import { VeriTixError, VeriTixErrorCode } from "../../src/utils/errors";
 
 describe("addressToScVal", () => {
   
@@ -34,6 +35,21 @@ describe("bigintToScVal u64", () => {
   it("encodes 0n", () => { expect(bigintToScVal(0n, "u64").switch().name).toBe("scvU64"); });
   it("encodes positive", () => { expect(bigintToScVal(9_999_999n, "u64").switch().name).toBe("scvU64"); });
   it("encodes u64 max", () => { expect(bigintToScVal(18446744073709551615n, "u64").switch().name).toBe("scvU64"); });
+});
+
+describe("bigintToScVal u32", () => {
+  it("encodes 0n", () => { expect(bigintToScVal(0n, "u32").switch().name).toBe("scvU32"); });
+  it("encodes 2**32 - 1 (u32 max)", () => { expect(bigintToScVal(4294967295n, "u32").switch().name).toBe("scvU32"); });
+  it("round-trips 2**32 - 1", () => { expect(scValToNumber(bigintToScVal(4294967295n, "u32"))).toBe(4294967295); });
+  it("rejects 2**32 with a typed error", () => {
+    expect(() => bigintToScVal(4294967296n, "u32")).toThrow(VeriTixError);
+    try {
+      bigintToScVal(4294967296n, "u32");
+    } catch (err) {
+      expect((err as VeriTixError).code).toBe(VeriTixErrorCode.InvalidInput);
+    }
+  });
+  it("rejects negative values", () => { expect(() => bigintToScVal(-1n, "u32")).toThrow(VeriTixError); });
 });
 
 describe("stringToScVal", () => {

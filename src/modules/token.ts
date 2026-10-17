@@ -137,8 +137,15 @@ export class TokenModule {
   }
 
   /**
-   * Returns a paginated list of token holder addresses.
+   * Returns a paginated slice of token holder addresses.
    *
+   * The contract entrypoint is `get_holders() -> Vec<Address>` with no
+   * parameters (#845), so pagination is applied client-side. Note the cost:
+   * the full holder list crosses the wire on every call regardless of `limit`,
+   * so prefer {@link totalHolders} when only the count is needed.
+   *
+   * @param offset - Number of holders to skip (clamped to >= 0).
+   * @param limit  - Maximum number of holders to return.
    * @throws {VeriTixError} with code `BatchTooLarge` when limit exceeds 100.
    */
   async getHolders(offset = 0, limit = 100): Promise<string[]> {
@@ -148,12 +155,11 @@ export class TokenModule {
         `getHolders: limit must be <= 100, got ${limit}`,
       );
     }
-    const result = await this.read('get_holders', [
-      nativeToScVal(offset, { type: 'u32' }),
-      nativeToScVal(limit, { type: 'u32' }),
-    ]);
+    const result = await this.read('get_holders', []);
     if (!Array.isArray(result)) return [];
-    return result.map(String);
+    const holders = result.map(String);
+    const start = Math.max(0, offset);
+    return holders.slice(start, start + limit);
   }
 
   /**
@@ -292,7 +298,14 @@ export class TokenModule {
     }
     this.assertSignerConfigured('write operations');
 
+    // The contract entrypoint is `mint(admin, to, amount)` (#844): the caller
+    // must supply the admin address as the first argument or the host rejects
+    // the call on argument count before checking authorisation.
+    const admin = params.admin ?? this.keypair?.publicKey() ?? this.sourceForWrite();
+    assertValidAddress(admin, 'admin');
+
     return this.writeCall('mint', [
+      addressToScVal(admin),
       addressToScVal(params.to),
       bigintToScVal(params.amount, 'i128'),
     ]);

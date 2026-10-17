@@ -123,12 +123,17 @@ export interface TransactionResult {
 // Token module — params for token write operations
 // ---------------------------------------------------------------------------
 
-/** Parameters for {@code mint(to, amount)}. */
+/** Parameters for {@code mint(admin, to, amount)}. */
 export interface MintParams {
   /** Stellar account address that receives the freshly minted tokens */
   to: string;
   /** Token amount to mint (in stroops / smallest denomination) */
   amount: bigint;
+  /**
+   * Admin address passed as the first on-chain argument. Defaults to the
+   * configured signer's public key when omitted.
+   */
+  admin?: string;
 }
 
 /** Parameters for {@code transfer(from, to, amount)}. */
