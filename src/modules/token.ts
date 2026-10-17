@@ -255,6 +255,8 @@ export class TokenModule {
    * @param durationSeconds - Time from now in seconds.
    * @param currentLedger   - Optional base ledger sequence number.
    * @returns Calculated expiration ledger sequence.
+   * @throws {VeriTixError} when the latest ledger cannot be fetched, instead
+   *   of falling back to a ledger of `0` and producing a past expiration.
    */
   async expirationLedgerFromDuration(
     durationSeconds: number,
@@ -716,15 +718,23 @@ export class TokenModule {
   }
 
   private async fetchLatestLedger(): Promise<number> {
-    if (this.server && typeof this.server.getLatestLedger === 'function') {
-      try {
-        const info = await this.server.getLatestLedger();
-        return info.sequence;
-      } catch {
-        return 0;
-      }
+    if (!this.server || typeof this.server.getLatestLedger !== 'function') {
+      throw new VeriTixError(
+        VeriTixErrorCode.NotConnected,
+        'RPC server does not expose getLatestLedger(); pass currentLedger explicitly',
+      );
     }
-    return 0;
+    try {
+      const info = await this.server.getLatestLedger();
+      return info.sequence;
+    } catch (err) {
+      throw new VeriTixError(
+        VeriTixErrorCode.RpcUnreachable,
+        'Failed to fetch the latest ledger sequence',
+        (err as Error)?.message,
+        err,
+      );
+    }
   }
 
   private async cachedRead(key: string, method: string, args: xdr.ScVal[] = []): Promise<unknown> {
