@@ -12,6 +12,7 @@
  * this batch.
  */
 import type { SplitRecipient, SplitRecord } from '../types';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import * as actions from './splitter-actions';
 import type { SplitterInvoker, RevenueSharePreviewEntry } from './splitter-actions';
 
@@ -74,6 +75,13 @@ export function decodeSplitRecord(raw: unknown): SplitRecord {
   };
 }
 
+function notImplemented(method: string, entrypoint: string): VeriTixError {
+  return new VeriTixError(
+    VeriTixErrorCode.NotImplemented,
+    `${method}: the contract has no \`${entrypoint}\` entrypoint yet`,
+  );
+}
+
 export class SplitterModule {
   constructor(
     private readonly reader: SplitterReader,
@@ -111,13 +119,16 @@ export class SplitterModule {
     return actions.bulkDistribute(this.requireInvoker(), splitIds);
   }
 
-  /** Returns the split for `id`, or `null` on a contract miss. */
-  async getSplit(id: bigint): Promise<SplitRecord | null> {
-    const raw = await this.reader.simulateRead('get_split', [id]);
-    if (raw === null || raw === undefined) {
-      return null;
-    }
-    return decodeSplitRecord(raw);
+  /**
+   * Returns the split for `id`.
+   *
+   * The contract has no `get_split` entrypoint, so this throws
+   * `NotImplemented` rather than issuing a call that always fails (#854).
+   *
+   * @throws {VeriTixError} `NotImplemented` until the contract exposes `get_split`.
+   */
+  async getSplit(_id: bigint): Promise<SplitRecord | null> {
+    throw notImplemented('getSplit', 'get_split');
   }
 
   /** Every split initiated by `sender` (#668's listing reads — no stubs). */
@@ -132,27 +143,23 @@ export class SplitterModule {
     return raw.map(decodeSplitRecord);
   }
 
-  /** Every split naming `recipientAddress` as one of its recipients. */
-  async getSplitsByRecipient(recipientAddress: string): Promise<SplitRecord[]> {
-    const raw = await this.reader.simulateRead('get_splits_by_recipient', [recipientAddress]);
-    if (raw === null || raw === undefined) {
-      return [];
-    }
-    if (!Array.isArray(raw)) {
-      throw new Error('get_splits_by_recipient did not return a vector');
-    }
-    return raw.map(decodeSplitRecord);
+  /**
+   * Every split naming `recipientAddress` as one of its recipients.
+   *
+   * @throws {VeriTixError} `NotImplemented` until the contract exposes
+   *   `get_splits_by_recipient` (#854).
+   */
+  async getSplitsByRecipient(_recipientAddress: string): Promise<SplitRecord[]> {
+    throw notImplemented('getSplitsByRecipient', 'get_splits_by_recipient');
   }
 
-  /** Every split not yet fully distributed. */
+  /**
+   * Every split not yet fully distributed.
+   *
+   * @throws {VeriTixError} `NotImplemented` until the contract exposes
+   *   `get_pending_splits` (#854).
+   */
   async getPendingSplits(): Promise<SplitRecord[]> {
-    const raw = await this.reader.simulateRead('get_pending_splits', []);
-    if (raw === null || raw === undefined) {
-      return [];
-    }
-    if (!Array.isArray(raw)) {
-      throw new Error('get_pending_splits did not return a vector');
-    }
-    return raw.map(decodeSplitRecord);
+    throw notImplemented('getPendingSplits', 'get_pending_splits');
   }
 }
