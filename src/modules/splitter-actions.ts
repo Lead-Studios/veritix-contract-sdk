@@ -106,9 +106,21 @@ export function getRevenueSharePreview(
   }));
 }
 
-/** Distributes a single split's funds to its recipients per their shares. */
-export async function distribute(invoker: SplitterInvoker, splitId: bigint): Promise<void> {
-  await invoker.invoke('distribute', [splitId]);
+/**
+ * Distributes a single split's funds to its recipients per their shares.
+ *
+ * #850 — the contract entrypoint is `distribute_split(caller, split_id)`
+ * (`src/splitter.rs`), not `distribute`. It also takes the authorising
+ * `caller` as its first argument; the contract requires that address's auth
+ * and further checks it against the split's sender (or an admin), so
+ * `caller` must be the address that signs the transaction.
+ */
+export async function distribute(
+  invoker: SplitterInvoker,
+  caller: string,
+  splitId: bigint
+): Promise<void> {
+  await invoker.invoke('distribute_split', [caller, splitId]);
 }
 
 /**
@@ -119,6 +131,7 @@ export async function distribute(invoker: SplitterInvoker, splitId: bigint): Pro
  */
 export async function bulkDistribute(
   invoker: SplitterInvoker,
+  caller: string,
   splitIds: bigint[]
 ): Promise<{ distributed: bigint[]; failed: { id: bigint; error: string }[] }> {
   const distributed: bigint[] = [];
@@ -126,7 +139,7 @@ export async function bulkDistribute(
 
   for (const id of splitIds) {
     try {
-      await distribute(invoker, id);
+      await distribute(invoker, caller, id);
       distributed.push(id);
     } catch (err) {
       failed.push({ id, error: err instanceof Error ? err.message : String(err) });

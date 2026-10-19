@@ -83,12 +83,19 @@ export async function amendRecurring(
 
 /**
  * Moves a recurring schedule to a new payer wallet — e.g. when a user
- * rotates their signing key. The new payer must authorize the transfer.
+ * rotates their signing key.
+ *
+ * #849 — the contract entrypoint is `transfer_recurring_payer(caller,
+ * recurring_id, new_payer)`, so this takes the authorising `caller` as its
+ * first contract argument. There is no `transfer_payer` entrypoint, and
+ * `caller` must be the address that signs the transaction (the contract
+ * calls `caller.require_auth()`); the new payer authorises nothing itself.
  */
 export async function transferPayer(
   invoker: RecurringInvoker,
+  caller: string,
   id: bigint,
   newPayer: string
 ): Promise<void> {
-  await invoker.invoke('transfer_payer', [id, newPayer]);
+  await invoker.invoke('transfer_recurring_payer', [caller, id, newPayer]);
 }

@@ -14,7 +14,6 @@ import type { DisputeRecord } from '../types';
 import * as actions from './dispute-actions';
 import * as lifecycle from './dispute-lifecycle-actions';
 import type { DisputeInvoker } from './dispute-actions';
-import type { DisputeAppeal } from './dispute-lifecycle-actions';
 
 /** Minimal read capability a `DisputeModule` needs — satisfied by `VeriTixClient`. */
 export interface DisputeReader {
@@ -68,20 +67,51 @@ export class DisputeModule {
     return this.invoker;
   }
 
-  openDispute(escrowId: bigint, claimant: string, resolver: string): Promise<bigint> {
-    return actions.openDispute(this.requireInvoker(), escrowId, claimant, resolver);
+  /**
+   * Raises a dispute against `escrowId` on behalf of `caller`.
+   *
+   * #852 — the contract entrypoint is `raise_dispute(caller, escrow_id)`, not
+   * `open_dispute(escrowId, claimant, resolver)`. Disputes are keyed by the
+   * escrow they are attached to and the claimant is the authorising caller, so
+   * there is no resolver to nominate here and no dispute id is returned. See
+   * `raiseDispute` in `./dispute-actions`.
+   */
+  raiseDispute(caller: string, escrowId: bigint): Promise<void> {
+    return actions.raiseDispute(this.requireInvoker(), caller, escrowId);
   }
 
-  resolveDispute(disputeId: bigint, favorClaimant: boolean, note?: string): Promise<void> {
-    return actions.resolveDispute(this.requireInvoker(), disputeId, favorClaimant, note);
+  /**
+   * Resolves the dispute on `escrowId` in favour of `winner`.
+   *
+   * #852 — the contract entrypoint is `resolve_dispute(resolver, escrow_id,
+   * winner)`: keyed by escrow, taking an `Address` winner rather than a
+   * `favorClaimant` boolean, and resolving to nothing. There is no free-form
+   * `note` parameter on the contract.
+   */
+  resolveDispute(resolver: string, escrowId: bigint, winner: string): Promise<void> {
+    return actions.resolveDispute(this.requireInvoker(), resolver, escrowId, winner);
   }
 
-  expireDispute(disputeId: bigint): Promise<DisputeRecord> {
-    return lifecycle.expireDispute(this.requireInvoker(), disputeId);
+  /**
+   * Sweeps the dispute on `escrowId` past its resolution deadline.
+   *
+   * #852 — the contract entrypoint is `expire_dispute(caller, escrow_id)` and
+   * returns nothing, so this no longer resolves to an updated
+   * {@link DisputeRecord}.
+   */
+  expireDispute(caller: string, escrowId: bigint): Promise<void> {
+    return lifecycle.expireDispute(this.requireInvoker(), caller, escrowId);
   }
 
-  appealDispute(disputeId: bigint, appeal: DisputeAppeal): Promise<DisputeRecord> {
-    return lifecycle.appealDispute(this.requireInvoker(), disputeId, appeal);
+  /**
+   * Appeals the open dispute on `escrowId`.
+   *
+   * #852 — the contract entrypoint is `appeal_dispute(caller, escrow_id)`. It
+   * takes no evidence argument and returns nothing, so the previous
+   * `DisputeAppeal` parameter is gone.
+   */
+  appealDispute(caller: string, escrowId: bigint): Promise<void> {
+    return lifecycle.appealDispute(this.requireInvoker(), caller, escrowId);
   }
 
   getOpenDisputes(): Promise<DisputeRecord[]> {
