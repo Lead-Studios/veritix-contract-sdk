@@ -67,6 +67,9 @@ export function xlmToStroops(xlm: string | number): bigint {
   }
 
   const [wholePart, fracPart = ''] = str.split('.');
+  if (wholePart === undefined) {
+    throw new TypeError(`xlmToStroops: invalid XLM value — expected a non-negative decimal, got "${str}"`);
+  }
   const frac = fracPart.slice(0, 7).padEnd(7, '0');
   return BigInt(wholePart) * STROOPS_PER_XLM + BigInt(frac);
 }
