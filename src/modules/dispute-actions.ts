@@ -20,36 +20,46 @@ export interface DisputeInvoker {
 }
 
 /**
- * Opens a dispute against `escrowId` on behalf of `claimant`, designating
- * `resolver` as the arbitrator. Returns the new dispute's id.
+ * Raises a dispute against `escrowId` on behalf of `caller`.
  *
- * @throws {Error} if the contract call fails or returns a non-bigint id.
+ * #852 — the contract entrypoint is `raise_dispute(caller, escrow_id)`. There
+ * is no `open_dispute` entrypoint, and the contract keys a dispute by the
+ * escrow it is attached to, not by a dispute id: it derives the claimant from
+ * `caller` (which must be the escrow's depositor or beneficiary) and rejects
+ * an escrow that is already settled. `caller` must be the address that signs
+ * the transaction, since the contract calls `caller.require_auth()`.
+ *
+ * The contract function returns nothing, so this resolves to `void` — the new
+ * dispute has no separately-assigned id to hand back; it is identified by its
+ * `escrowId`.
  */
-export async function openDispute(
+export async function raiseDispute(
   invoker: DisputeInvoker,
-  escrowId: bigint,
-  claimant: string,
-  resolver: string
-): Promise<bigint> {
-  const result = await invoker.invoke('open_dispute', [escrowId, claimant, resolver]);
-  if (typeof result !== 'bigint') {
-    throw new Error('open_dispute did not return a dispute id');
-  }
-  return result;
+  caller: string,
+  escrowId: bigint
+): Promise<void> {
+  await invoker.invoke('raise_dispute', [caller, escrowId]);
 }
 
 /**
- * Resolves an open dispute as the designated arbiter. `favorClaimant`
- * decides which party the funds/decision favors; `note` is an optional
- * free-form resolution rationale recorded on-chain.
+ * Resolves the dispute on `escrowId` in favour of `winner`.
+ *
+ * #852 — the contract entrypoint is `resolve_dispute(resolver, escrow_id,
+ * winner)`. It is keyed by escrow rather than by a dispute id, and it takes
+ * the winning party as an `Address` rather than a `favorClaimant` boolean, so
+ * "who won" is an arbitrary account and not just the claimant or the
+ * beneficiary. The contract also enforces that `resolver` is the configured
+ * arbiter; there is no per-dispute resolver to nominate at raise time.
+ *
+ * `resolver` must be the address that signs the transaction.
  */
 export async function resolveDispute(
   invoker: DisputeInvoker,
-  disputeId: bigint,
-  favorClaimant: boolean,
-  note?: string
+  resolver: string,
+  escrowId: bigint,
+  winner: string
 ): Promise<void> {
-  await invoker.invoke('resolve_dispute', [disputeId, favorClaimant, note ?? '']);
+  await invoker.invoke('resolve_dispute', [resolver, escrowId, winner]);
 }
 
 /**

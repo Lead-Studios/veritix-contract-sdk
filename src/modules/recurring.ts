@@ -100,8 +100,8 @@ export class RecurringModule {
     return actions.amendRecurring(this.requireInvoker(), id, amendment);
   }
 
-  transferPayer(id: bigint, newPayer: string): Promise<void> {
-    return actions.transferPayer(this.requireInvoker(), id, newPayer);
+  transferPayer(caller: string, id: bigint, newPayer: string): Promise<void> {
+    return actions.transferPayer(this.requireInvoker(), caller, id, newPayer);
   }
 
   /** Returns the recurring schedule for `id`, or `null` on a contract miss. */
@@ -113,28 +113,53 @@ export class RecurringModule {
     return decodeRecurringRecord(raw);
   }
 
-  /** Every recurring schedule where `payer` is the paying party. */
-  async getRecurringByPayer(payer: string): Promise<RecurringRecord[]> {
-    const raw = await this.reader.simulateRead('get_recurring_by_payer', [payer]);
-    if (raw === null || raw === undefined) {
-      return [];
-    }
-    if (!Array.isArray(raw)) {
-      throw new Error('get_recurring_by_payer did not return a vector');
-    }
-    return raw.map(decodeRecurringRecord);
+  /**
+   * The ids of every recurring schedule where `payer` is the paying party.
+   *
+   * #851 — the contract's `get_recurring_by_payer` returns `Vec<u32>`, i.e.
+   * ids, not records. Decoding each element as a record always threw. Callers
+   * that want full records must resolve each id themselves; there is no
+   * contract read that returns them in bulk.
+   */
+  async getRecurringByPayer(payer: string): Promise<bigint[]> {
+    return this.recurringIdsFor('get_recurring_by_payer', payer);
   }
 
-  /** Every recurring schedule where `payee` is the receiving party. */
-  async getRecurringByPayee(payee: string): Promise<RecurringRecord[]> {
-    const raw = await this.reader.simulateRead('get_recurring_by_payee', [payee]);
+  /**
+   * The ids of every recurring schedule where `payee` is the receiving party.
+   *
+   * #851 — the contract's payee listing is `recurring_ids_for_payee`, not
+   * `get_recurring_by_payee` (which does not exist on the contract, in either
+   * signature). It returns `Vec<u32>` — ids, not records — so this matches
+   * `getRecurringByPayer`'s return type rather than running every element
+   * through `decodeRecurringRecord`, which could only ever throw.
+   */
+  async getRecurringByPayee(payee: string): Promise<bigint[]> {
+    return this.recurringIdsFor('recurring_ids_for_payee', payee);
+  }
+
+  /**
+   * Shared `Vec<u32>` handling for the two party-indexed listings above: both
+   * return ids, so both validate the vector shape and the element type once,
+   * here, rather than duplicating the checks per method.
+   */
+  private async recurringIdsFor(
+    method: 'get_recurring_by_payer' | 'recurring_ids_for_payee',
+    party: string
+  ): Promise<bigint[]> {
+    const raw = await this.reader.simulateRead(method, [party]);
     if (raw === null || raw === undefined) {
       return [];
     }
     if (!Array.isArray(raw)) {
-      throw new Error('get_recurring_by_payee did not return a vector');
+      throw new Error(`${method} did not return a vector`);
     }
-    return raw.map(decodeRecurringRecord);
+    return raw.map((entry) => {
+      if (typeof entry !== 'bigint') {
+        throw new Error(`${method} returned a non-bigint recurring id`);
+      }
+      return entry;
+    });
   }
 
   /**

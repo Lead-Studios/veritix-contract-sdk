@@ -103,12 +103,12 @@ export class SplitterModule {
     return actions.getRevenueSharePreview(recipients, totalAmount);
   }
 
-  distribute(splitId: bigint): Promise<void> {
-    return actions.distribute(this.requireInvoker(), splitId);
+  distribute(caller: string, splitId: bigint): Promise<void> {
+    return actions.distribute(this.requireInvoker(), caller, splitId);
   }
 
-  bulkDistribute(splitIds: bigint[]) {
-    return actions.bulkDistribute(this.requireInvoker(), splitIds);
+  bulkDistribute(caller: string, splitIds: bigint[]) {
+    return actions.bulkDistribute(this.requireInvoker(), caller, splitIds);
   }
 
   /** Returns the split for `id`, or `null` on a contract miss. */

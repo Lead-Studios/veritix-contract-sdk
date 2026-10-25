@@ -9,7 +9,6 @@
  * (TypeScript interfaces are duck-typed, so no runtime import is needed)
  * to stay consistent without creating a file dependency.
  */
-import type { DisputeRecord } from '../types';
 
 /** Minimal capability these actions need — satisfied by `VeriTixClient`. */
 export interface DisputeLifecycleInvoker {
@@ -19,59 +18,46 @@ export interface DisputeLifecycleInvoker {
   invoke(method: string, args: unknown[]): Promise<unknown>;
 }
 
-function toDisputeRecord(raw: unknown): DisputeRecord {
-  const r = raw as Record<string, unknown>;
-  return {
-    id: r.id as bigint,
-    escrowId: (r.escrow_id ?? r.escrowId) as bigint,
-    claimant: r.claimant as string,
-    resolver: r.resolver as string,
-    status: r.status as string,
-    openedAt: (r.opened_at ?? r.openedAt) as number,
-  };
-}
-
 /**
  * Sweeps an abandoned dispute — one that's been open past its resolution
  * deadline with no arbiter action — transitioning it to `"expired"` so the
  * underlying escrow can be unblocked (#654).
  *
- * @throws {Error} for a negative dispute id, since ids are non-negative
+ * #852 — the contract entrypoint is `expire_dispute(caller, escrow_id)`: it is
+ * keyed by the escrow the dispute is attached to, not by a dispute id, and
+ * `caller` must be the address that signs the transaction (the contract calls
+ * `caller.require_auth()`). The contract function returns nothing, so there is
+ * no updated record to hand back — re-read the dispute if you need one.
+ *
+ * @throws {Error} for a negative escrow id, since ids are non-negative
  *   on-chain identifiers and a negative value can only be a caller bug.
  */
 export async function expireDispute(
   invoker: DisputeLifecycleInvoker,
-  disputeId: bigint
-): Promise<DisputeRecord> {
-  if (disputeId < 0n) {
-    throw new Error(`invalid dispute id: ${disputeId}`);
+  caller: string,
+  escrowId: bigint
+): Promise<void> {
+  if (escrowId < 0n) {
+    throw new Error(`invalid escrow id: ${escrowId}`);
   }
-  const raw = await invoker.invoke('expire_dispute', [disputeId]);
-  return toDisputeRecord(raw);
-}
-
-/** Evidence payload accepted by {@link appealDispute}. */
-export interface DisputeAppeal {
-  /** New evidence justifying reopening a resolved/expired dispute. Required, non-empty. */
-  newEvidence: string;
+  await invoker.invoke('expire_dispute', [caller, escrowId]);
 }
 
 /**
- * Reopens a resolved (or expired) dispute given new evidence, transitioning
- * it to `"reopened"` so the original resolver — or a fresh arbitration
- * round — can reconsider it (#655).
+ * Appeals (escalates) the open dispute on `escrowId`, marking it pending so it
+ * is handled through the appeal path rather than a normal resolution (#655).
  *
- * @throws {Error} if `appeal.newEvidence` is empty, since an appeal with no
- *   stated reason is indistinguishable from spam re-litigation.
+ * #852 — the contract entrypoint is `appeal_dispute(caller, escrow_id)`. The
+ * previous `DisputeAppeal` evidence payload is gone: the contract takes no
+ * evidence argument, keys the dispute by escrow id, and takes only the
+ * authorising caller. `caller` must be the escrow's depositor or beneficiary
+ * and the address that signs the transaction. The contract function returns
+ * nothing, so this resolves to `void`.
  */
 export async function appealDispute(
   invoker: DisputeLifecycleInvoker,
-  disputeId: bigint,
-  appeal: DisputeAppeal
-): Promise<DisputeRecord> {
-  if (appeal.newEvidence.trim().length === 0) {
-    throw new Error('Evidence required');
-  }
-  const raw = await invoker.invoke('appeal_dispute', [disputeId, appeal.newEvidence]);
-  return toDisputeRecord(raw);
+  caller: string,
+  escrowId: bigint
+): Promise<void> {
+  await invoker.invoke('appeal_dispute', [caller, escrowId]);
 }
