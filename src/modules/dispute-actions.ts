@@ -4,12 +4,10 @@
  *
  * Companion to `./dispute.ts`'s read-only `DisputeModule` — kept in a
  * separate file since `dispute.ts` has an in-flight contribution from
- * another contributor on this batch. Imports `decodeDisputeRecord` from it
- * (a read-only import, not an edit) so both files decode dispute structs
- * identically rather than drifting into two parallel implementations.
+ * another contributor on this batch.
  */
 import type { DisputeRecord } from '../types';
-import { decodeDisputeRecord } from './dispute';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /** Minimal capability `DisputeActions` needs — satisfied by `VeriTixClient`. */
 export interface DisputeInvoker {
@@ -63,51 +61,74 @@ export async function resolveDispute(
 }
 
 /**
- * Returns every dispute id ever opened against `escrowId`, in the order
- * the contract stored them (#651).
+ * Returns every dispute id ever raised against `escrowId`, in the order the
+ * contract stored them (#651).
+ *
+ * #853 — the contract entrypoint is `get_dispute_history_for_escrow(escrow_id)`,
+ * not `get_dispute_history`. The previous call did not exist, so every read
+ * failed. The return type is unchanged: the contract returns `Vec<u32>`, which
+ * is already what this method hands back.
  */
 export async function getDisputeHistory(
   invoker: DisputeInvoker,
   escrowId: bigint
 ): Promise<bigint[]> {
-  const raw = await invoker.simulateRead('get_dispute_history', [escrowId]);
+  const raw = await invoker.simulateRead('get_dispute_history_for_escrow', [escrowId]);
   if (raw === null || raw === undefined) {
     return [];
   }
   if (!Array.isArray(raw)) {
-    throw new Error('get_dispute_history did not return a vector');
+    throw new Error('get_dispute_history_for_escrow did not return a vector');
   }
   return raw.map((entry) => {
     if (typeof entry !== 'bigint') {
-      throw new Error('get_dispute_history returned a non-bigint dispute id');
+      throw new Error('get_dispute_history_for_escrow returned a non-bigint dispute id');
     }
     return entry;
   });
 }
 
-/** Every dispute currently in `"open"` status, contract-wide (#650). */
-export async function getOpenDisputes(invoker: DisputeInvoker): Promise<DisputeRecord[]> {
-  const raw = await invoker.simulateRead('get_open_disputes', []);
-  if (raw === null || raw === undefined) {
-    return [];
-  }
-  if (!Array.isArray(raw)) {
-    throw new Error('get_open_disputes did not return a vector');
-  }
-  return raw.map(decodeDisputeRecord);
+/**
+ * Every dispute currently in `"open"` status, contract-wide (#650).
+ *
+ * #853 — the contract has no contract-wide listing of open disputes.
+ * `get_dispute_stats()` exists but returns only aggregate counters (`open`,
+ * `resolved_for_beneficiary`, `resolved_for_depositor`, `expired`), and
+ * `is_dispute_open(escrow_id)` is a per-escrow boolean that needs an id to
+ * start from. There is no way to enumerate open disputes, so rather than call
+ * a function that does not exist and fail with an opaque RPC error, this
+ * throws `NotImplemented` naming the entrypoint the contract would need.
+ */
+export function getOpenDisputes(_invoker: DisputeInvoker): Promise<DisputeRecord[]> {
+  return Promise.reject(
+    new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'getOpenDisputes: the contract exposes no contract-wide open-dispute listing — ' +
+        'get_dispute_stats() returns only counters. Missing contract function: ' +
+        'get_open_disputes() -> Vec<DisputeRecord>',
+    ),
+  );
 }
 
-/** Every dispute assigned to `resolver`, regardless of status (#650). */
-export async function getDisputesByResolver(
-  invoker: DisputeInvoker,
+/**
+ * Every dispute assigned to `resolver`, regardless of status (#650).
+ *
+ * #853 — the contract keeps no resolver-keyed dispute index. `get_disputes_by_resolver`
+ * does not exist, and the closest real entrypoint, `get_resolver_stats(resolver)`,
+ * returns counters (`resolver`, `total_resolved`, `for_beneficiary`,
+ * `for_depositor`) rather than the disputes themselves. Throws `NotImplemented`
+ * naming the entrypoint the contract would need.
+ */
+export function getDisputesByResolver(
+  _invoker: DisputeInvoker,
   resolver: string
 ): Promise<DisputeRecord[]> {
-  const raw = await invoker.simulateRead('get_disputes_by_resolver', [resolver]);
-  if (raw === null || raw === undefined) {
-    return [];
-  }
-  if (!Array.isArray(raw)) {
-    throw new Error('get_disputes_by_resolver did not return a vector');
-  }
-  return raw.map(decodeDisputeRecord);
+  return Promise.reject(
+    new VeriTixError(
+      VeriTixErrorCode.NotImplemented,
+      'getDisputesByResolver: the contract keeps no resolver-keyed dispute index — ' +
+        'get_resolver_stats() returns only counters. Missing contract function: ' +
+        `get_disputes_by_resolver(${resolver}) -> Vec<DisputeRecord>`,
+    ),
+  );
 }
