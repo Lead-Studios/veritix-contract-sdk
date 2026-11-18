@@ -9,6 +9,7 @@
  * (TypeScript interfaces are duck-typed, so no runtime import is needed)
  * to stay consistent without creating a file dependency.
  */
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /** Minimal capability these actions need — satisfied by `VeriTixClient`. */
 export interface DisputeLifecycleInvoker {
@@ -29,8 +30,9 @@ export interface DisputeLifecycleInvoker {
  * `caller.require_auth()`). The contract function returns nothing, so there is
  * no updated record to hand back — re-read the dispute if you need one.
  *
- * @throws {Error} for a negative escrow id, since ids are non-negative
- *   on-chain identifiers and a negative value can only be a caller bug.
+ * @throws {VeriTixError} with code `InvalidInput` for a negative escrow id,
+ *   since ids are non-negative on-chain identifiers and a negative value can
+ *   only be a caller bug.
  */
 export async function expireDispute(
   invoker: DisputeLifecycleInvoker,
@@ -38,7 +40,10 @@ export async function expireDispute(
   escrowId: bigint
 ): Promise<void> {
   if (escrowId < 0n) {
-    throw new Error(`invalid escrow id: ${escrowId}`);
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `invalid escrow id: ${escrowId}`,
+    );
   }
   await invoker.invoke('expire_dispute', [caller, escrowId]);
 }
