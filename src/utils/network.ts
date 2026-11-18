@@ -33,6 +33,12 @@ export const DUMMY_PUBLIC_KEY = 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2I
 /** Stellar ledger close time in seconds. */
 export const LEDGER_CLOSE_SECONDS = 5;
 
+/** Network passphrase of the Stellar test network. */
+export const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
+
+/** Network passphrase of the Stellar public network. */
+export const MAINNET_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
+
 /**
  * Returns whether `address` is a valid Stellar account (G…) strkey.
  * Contract IDs (C…) intentionally return `false`.
@@ -83,7 +89,7 @@ export function getTestnetConfig(contractId: string): NetworkConfig {
     contractId: contractId.trim(),
     network: 'testnet',
     rpcUrl: 'https://soroban-testnet.stellar.org',
-    networkPassphrase: 'Test SDF Network ; September 2015',
+    networkPassphrase: TESTNET_PASSPHRASE,
     horizonUrl: getHorizonUrl('testnet'),
     retries: 3,
     retryDelayMs: 1000,
@@ -103,7 +109,7 @@ export function getMainnetConfig(contractId: string): NetworkConfig {
     contractId: contractId.trim(),
     network: 'mainnet',
     rpcUrl: 'https://mainnet.stellar.validationcloud.io/v1/soroban/rpc',
-    networkPassphrase: 'Public Global Stellar Network ; September 2015',
+    networkPassphrase: MAINNET_PASSPHRASE,
     horizonUrl: getHorizonUrl('mainnet'),
     retries: 3,
     retryDelayMs: 1000,
@@ -115,13 +121,22 @@ export function ledgersFromNow(seconds: number, currentLedger: number): number {
   return currentLedger + Math.ceil(seconds / LEDGER_CLOSE_SECONDS);
 }
 
-/** Converts a wall-clock date into a ledger sequence number. */
-export function ledgersFromDate(date: Date, currentLedger = 0, now = new Date()): number {
+/**
+ * Converts a wall-clock date into a ledger sequence number.
+ *
+ * `currentLedger` is required: defaulting it to `0` silently produced a
+ * deadline relative to ledger 0 instead of failing.
+ */
+export function ledgersFromDate(date: Date, currentLedger: number, now = new Date()): number {
   const seconds = Math.max(0, (date.getTime() - now.getTime()) / 1000);
   return currentLedger + Math.ceil(seconds / LEDGER_CLOSE_SECONDS);
 }
 
-/** Approximate wall-clock time at which `ledger` was/is reached. */
-export function ledgerToApproxDate(ledger: number, currentLedger = 0, now = new Date()): Date {
+/**
+ * Approximate wall-clock time at which `ledger` was/is reached.
+ *
+ * `currentLedger` is required for the same reason as in {@link ledgersFromDate}.
+ */
+export function ledgerToApproxDate(ledger: number, currentLedger: number, now = new Date()): Date {
   return new Date(now.getTime() + (ledger - currentLedger) * LEDGER_CLOSE_SECONDS * 1000);
 }
