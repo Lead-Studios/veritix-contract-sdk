@@ -143,11 +143,26 @@ export class TokenModule {
    * the full holder list crosses the wire on every call regardless of `limit`,
    * so prefer {@link totalHolders} when only the count is needed.
    *
-   * @param offset - Number of holders to skip (clamped to >= 0).
-   * @param limit  - Maximum number of holders to return.
+   * @param offset - Number of holders to skip; a non-negative integer.
+   * @param limit  - Maximum number of holders to return; a positive integer
+   *   no greater than 100.
+   * @throws {VeriTixError} with code `InvalidInput` when `offset` is not a
+   *   non-negative integer or `limit` is not a positive integer.
    * @throws {VeriTixError} with code `BatchTooLarge` when limit exceeds 100.
    */
   async getHolders(offset = 0, limit = 100): Promise<string[]> {
+    if (!Number.isInteger(offset) || offset < 0) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidInput,
+        `getHolders: offset must be a non-negative integer, got ${offset}`,
+      );
+    }
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidInput,
+        `getHolders: limit must be a positive integer, got ${limit}`,
+      );
+    }
     if (limit > 100) {
       throw new VeriTixError(
         VeriTixErrorCode.BatchTooLarge,
@@ -157,18 +172,26 @@ export class TokenModule {
     const result = await this.read('get_holders', []);
     if (!Array.isArray(result)) return [];
     const holders = result.map(String);
-    const start = Math.max(0, offset);
-    return holders.slice(start, start + limit);
+    return holders.slice(offset, offset + limit);
   }
 
   /**
    * Returns the balance of a single token holder.
    *
    * @returns `0n` when the holder has no balance entry rather than throwing.
+   * @throws {VeriTixError} with code `SimulationFailed` when the contract
+   *   returns something other than a `bigint`.
    */
   async balance(address: string): Promise<bigint> {
     assertValidAddress(address, 'owner');
-    return (await this.read('balance', [addressToScVal(address)])) as bigint;
+    const result = await this.read('balance', [addressToScVal(address)]);
+    if (typeof result !== 'bigint') {
+      throw new VeriTixError(
+        VeriTixErrorCode.SimulationFailed,
+        `balance: expected a bigint from the contract, got ${typeof result}`,
+      );
+    }
+    return result;
   }
 
     /**
