@@ -269,6 +269,10 @@ export class TokenModule {
   /**
    * Synchronous helper that converts a duration in seconds and a known ledger
    * to an expiration ledger sequence number via {@link ledgersFromNow}.
+   *
+   * @deprecated Identical to {@link ledgersFromNow}; call that for the pure
+   *   form, or {@link TokenModule.expirationLedgerFromDuration} to have the
+   *   current ledger fetched for you.
    */
   ledgersFromDuration(durationSeconds: number, currentLedger: number): number {
     return ledgersFromNow(durationSeconds, currentLedger);

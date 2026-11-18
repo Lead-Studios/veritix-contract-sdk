@@ -28,7 +28,6 @@ import type { EscrowRecord, TransactionResult } from './types';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
 import { DUMMY_PUBLIC_KEY, assertValidAddress } from './utils/network';
 import type { NetworkConfig } from './utils/network';
-import { bigintToScVal } from './utils/scval';
 import {
   buildContractCall as buildTransaction,
   simulateTransaction as prepareTransaction,
@@ -455,12 +454,6 @@ export class VeriTixClient {
       .setTimeout(30)
       .build() as Transaction;
   }
-}
-
-function toScVal(value: unknown): xdr.ScVal {
-  if (value instanceof xdr.ScVal) return value;
-  if (typeof value === 'string' && /^[GC][A-Z2-7]{55}$/.test(value)) return addressToScVal(value);
-  return nativeToScVal(value);
 }
 
 function escrowChanged(a: EscrowRecord, b: EscrowRecord): boolean {
