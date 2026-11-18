@@ -1,4 +1,6 @@
-export const MAX_BATCH_SIZE = 100;
+import { MAX_BATCH_SIZE } from '../utils/constants';
+
+export { MAX_BATCH_SIZE };
 
 /** Minimal capability `BatchModule` needs — satisfied by `VeriTixClient`. */
 export interface BatchClient {

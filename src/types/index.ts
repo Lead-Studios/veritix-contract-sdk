@@ -7,10 +7,16 @@
  * amounts and ids are `bigint` — never `number` — to preserve 128-bit
  * precision end-to-end.
  *
- * Enums (`EscrowStatus`, `DisputeStatus`) and `NetworkConfig` are landed in
- * separate rebuild issues (#584, #583); status fields below are therefore
- * typed as plain strings until those land.
+ * Enums (`EscrowStatus`, `DisputeStatus`) are landed in a separate rebuild
+ * issue (#584); status fields below are therefore typed as plain strings until
+ * that lands. `NetworkConfig` is defined in `utils/network` (#583) and
+ * re-exported from here together with {@link StellarNetwork}.
  */
+export type { NetworkConfig } from '../utils/network';
+
+/** The Stellar networks the SDK can target. */
+export type StellarNetwork = 'testnet' | 'mainnet';
+
 export interface EscrowRecord {
   /** Unique numeric identifier for the escrow */
   id: bigint;
