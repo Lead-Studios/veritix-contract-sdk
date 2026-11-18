@@ -198,14 +198,20 @@ export class VeriTixClient {
   /**
    * Reads the token name, symbol, decimals, and (when exposed) contract
    * version in a single metadata call.
+   *
+   * @throws {VeriTixError} with code `SimulationFailed` when `name` or
+   *   `symbol` is not a string, or `decimals` is not a non-negative safe integer.
    */
   async getContractMetadata(): Promise<ContractMetadata> {
     this.requireConnected();
-    const [name, symbol, decimals] = await Promise.all([
-      this.simulateRead('name') as Promise<string>,
-      this.simulateRead('symbol') as Promise<string>,
-      this.simulateRead('decimals') as Promise<number>,
+    const [rawName, rawSymbol, rawDecimals] = await Promise.all([
+      this.simulateRead('name'),
+      this.simulateRead('symbol'),
+      this.simulateRead('decimals'),
     ]);
+    const name = expectString(rawName, 'name');
+    const symbol = expectString(rawSymbol, 'symbol');
+    const decimals = expectDecimals(rawDecimals);
 
     let version: string | undefined;
     try {
@@ -291,6 +297,10 @@ export class VeriTixClient {
    * Async-iterates over escrow state, yielding only on an actual state change
    * and completing once the escrow is settled (released or refunded).
    *
+   * The first observation is only the baseline for change detection and is
+   * **not** yielded, unless the escrow is already settled. Read the current
+   * state with `client.escrow.getEscrow(id)` before iterating if you need it.
+   *
    * Throws `WatchTimeout` when the deadline elapses without a settlement.
    */
   async *watchEscrow(id: bigint, options: WatchOptions = {}): AsyncIterableIterator<EscrowRecord> {
@@ -312,12 +322,10 @@ export class VeriTixClient {
         yield record;
         return;
       }
-      if (record && last && escrowChanged(record, last)) {
+      if (last && escrowChanged(record, last)) {
         yield record;
       }
-      if (record) {
-        last = record;
-      }
+      last = record;
       if (Date.now() >= deadline) {
         throw new VeriTixError(VeriTixErrorCode.WatchTimeout, `Timed out watching escrow ${id}`);
       }
@@ -461,6 +469,30 @@ function toScVal(value: unknown): xdr.ScVal {
   if (value instanceof xdr.ScVal) return value;
   if (typeof value === 'string' && /^[GC][A-Z2-7]{55}$/.test(value)) return addressToScVal(value);
   return nativeToScVal(value);
+}
+
+function expectString(value: unknown, field: string): string {
+  if (typeof value !== 'string') {
+    throw new VeriTixError(
+      VeriTixErrorCode.SimulationFailed,
+      `getContractMetadata: expected \`${field}\` to be a string, got ${typeof value}`,
+    );
+  }
+  return value;
+}
+
+/** Accepts a non-negative safe integer given as a `number` or `bigint`. */
+function expectDecimals(value: unknown): number {
+  if (typeof value === 'bigint' && value >= 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+    return Number(value);
+  }
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    return value;
+  }
+  throw new VeriTixError(
+    VeriTixErrorCode.SimulationFailed,
+    `getContractMetadata: expected \`decimals\` to be a non-negative integer, got ${typeof value}`,
+  );
 }
 
 function escrowChanged(a: EscrowRecord, b: EscrowRecord): boolean {
