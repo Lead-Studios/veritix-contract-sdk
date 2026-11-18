@@ -147,6 +147,7 @@ export async function estimateFee(
   const feeXLM = `${whole}.${remainder.toString().padStart(7, '0')}`;
 
   return {
+    feeStroops: simulatedFee,
     feeLumens: simulatedFee,
     feeXLM,
     estimatedLedger: latestLedger.sequence,
