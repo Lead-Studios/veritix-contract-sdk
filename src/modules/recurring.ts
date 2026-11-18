@@ -11,6 +11,7 @@
  * contributions on this batch.
  */
 import type { RecurringRecord } from '../types';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import * as actions from './recurring-actions';
 import type { RecurringAmendment, RecurringInvoker } from './recurring-actions';
 
@@ -18,6 +19,8 @@ import type { RecurringAmendment, RecurringInvoker } from './recurring-actions';
 export interface RecurringReader {
   /** Simulates a read-only contract call and returns its decoded native value. */
   simulateRead(method: string, args: unknown[]): Promise<unknown>;
+  /** Current ledger sequence; `VeriTixClient` provides this capability. */
+  getCurrentLedger?(): Promise<number>;
 }
 
 /**
@@ -165,13 +168,27 @@ export class RecurringModule {
   /**
    * True when `id`'s schedule is active, not paused, and its next charge
    * is due at or before `nowLedger` (#659).
+   *
+   * When `nowLedger` is omitted it is read from the reader's
+   * `getCurrentLedger()` capability, mirroring `EscrowModule.isExpired`.
    */
-  async isExecutable(id: bigint, nowLedger: number): Promise<boolean> {
+  async isExecutable(id: bigint, nowLedger?: number): Promise<boolean> {
     const record = await this.getRecurring(id);
     if (record === null || !record.active || record.paused) {
       return false;
     }
-    return nowLedger >= record.lastChargedLedger + record.interval;
+    const ledger = nowLedger ?? (await this.readCurrentLedger());
+    return ledger >= record.lastChargedLedger + record.interval;
+  }
+
+  private async readCurrentLedger(): Promise<number> {
+    if (!this.reader.getCurrentLedger) {
+      throw new VeriTixError(
+        VeriTixErrorCode.NotImplemented,
+        'isExecutable: reader has no getCurrentLedger() capability; pass nowLedger explicitly',
+      );
+    }
+    return this.reader.getCurrentLedger();
   }
 
   /** The next-due ledger and interval for `id`'s schedule, or `null` on a miss. */

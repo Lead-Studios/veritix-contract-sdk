@@ -7,6 +7,8 @@
  * contributor on this batch.
  */
 import type { SplitRecipient } from '../types';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { isValidStellarAddress } from '../utils/network';
 
 /** Minimal capability these actions need — satisfied by `VeriTixClient`. */
 export interface SplitterInvoker {
@@ -17,27 +19,65 @@ export interface SplitterInvoker {
 const TOTAL_BPS = 10_000;
 
 /**
- * Local pre-flight check that `recipients`' shares sum to exactly
- * {@link TOTAL_BPS} (100%) and every share is positive, so a caller finds
+ * Local pre-flight check for `recipients`: every address must be a valid
+ * Stellar account, addresses must be unique, and shares must be positive
+ * integers summing to exactly {@link TOTAL_BPS} (100%) — so a caller finds
  * out about a malformed split before spending a transaction on it (#669's
  * sibling validation, reused here as the guard `createSplit` runs first).
  *
- * @throws {Error} if `recipients` is empty, any share is not a positive
- *   integer, or the shares don't sum to exactly 10 000 bps.
+ * Every problem is collected and reported together in one {@link VeriTixError};
+ * the code reflects the first problem category found (invalid address,
+ * duplicate address, empty/invalid input, or invalid shares).
  */
 export function validateRecipients(recipients: SplitRecipient[]): void {
-  if (recipients.length === 0) {
-    throw new Error('a split requires at least one recipient');
-  }
+  const problems: { code: VeriTixErrorCode; message: string }[] = [];
+  const seen = new Set<string>();
   let total = 0;
-  for (const { shareBps } of recipients) {
-    if (!Number.isInteger(shareBps) || shareBps <= 0) {
-      throw new Error(`recipient share must be a positive integer bps value, got ${shareBps}`);
-    }
-    total += shareBps;
+
+  if (recipients.length === 0) {
+    problems.push({
+      code: VeriTixErrorCode.InvalidInput,
+      message: 'a split requires at least one recipient',
+    });
   }
-  if (total !== TOTAL_BPS) {
-    throw new Error(`recipient shares must sum to ${TOTAL_BPS} bps, got ${total}`);
+
+  recipients.forEach(({ address, shareBps }, index) => {
+    if (seen.has(address)) {
+      problems.push({
+        code: VeriTixErrorCode.InvalidInput,
+        message: `duplicate recipient address: ${address}`,
+      });
+    } else {
+      seen.add(address);
+    }
+    if (!isValidStellarAddress(address)) {
+      problems.push({
+        code: VeriTixErrorCode.InvalidAddress,
+        message: `recipient ${index} has an invalid address: ${String(address)}`,
+      });
+    }
+    if (!Number.isInteger(shareBps) || shareBps <= 0) {
+      problems.push({
+        code: VeriTixErrorCode.SplitInvalidShares,
+        message: `recipient ${index} share must be a positive integer bps value, got ${shareBps}`,
+      });
+    } else {
+      total += shareBps;
+    }
+  });
+
+  if (recipients.length > 0 && total !== TOTAL_BPS) {
+    problems.push({
+      code: VeriTixErrorCode.SplitInvalidShares,
+      message: `recipient shares must sum to ${TOTAL_BPS} bps, got ${total}`,
+    });
+  }
+
+  if (problems.length > 0) {
+    throw new VeriTixError(
+      problems[0].code,
+      `invalid split recipients: ${problems.map(({ message }) => message).join('; ')}`,
+    );
   }
 }
 
@@ -90,19 +130,28 @@ export interface RevenueSharePreviewEntry {
  * `recipients`' bps shares, without submitting anything — so a UI can show
  * exact amounts before the user commits (#672).
  *
- * Uses `floor` division (matching typical on-chain integer arithmetic), so
- * the sum of previewed amounts can be up to `recipients.length - 1` stroops
- * less than `totalAmount` due to rounding; that remainder's on-chain
- * handling is `distribute`'s concern, not this preview's.
+ * Remainder rule: each recipient is first assigned `floor(totalAmount *
+ * shareBps / 10_000)` using integer division. The leftover stroops are then
+ * assigned in full to the first recipient in `recipients`, so the previewed
+ * amounts always sum to exactly `totalAmount` and the allocation is
+ * deterministic for a given input order.
  */
 export function getRevenueSharePreview(
   recipients: SplitRecipient[],
   totalAmount: bigint
 ): RevenueSharePreviewEntry[] {
-  return recipients.map(({ address, shareBps }) => ({
+  const amounts = recipients.map(
+    ({ shareBps }) => (totalAmount * BigInt(shareBps)) / BigInt(TOTAL_BPS)
+  );
+  if (amounts.length === 0) {
+    return [];
+  }
+  const remainder = totalAmount - amounts.reduce((sum, amount) => sum + amount, 0n);
+  amounts[0] += remainder;
+  return recipients.map(({ address, shareBps }, index) => ({
     address,
     shareBps,
-    amount: (totalAmount * BigInt(shareBps)) / BigInt(TOTAL_BPS),
+    amount: amounts[index],
   }));
 }
 
