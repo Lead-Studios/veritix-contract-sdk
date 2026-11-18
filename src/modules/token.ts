@@ -14,9 +14,7 @@
  */
 import {
   Account as StellarAccount,
-  Contract,
   Keypair,
-  TransactionBuilder,
   nativeToScVal,
   scValToNative,
   xdr,
@@ -30,6 +28,7 @@ import type {
   TransactionResult,
   TransferParams,
 } from '../types';
+import { toHex, utf8ToBytes } from '../utils/bytes';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import {
   DUMMY_PUBLIC_KEY,
@@ -292,6 +291,10 @@ export class TokenModule {
   /**
    * Synchronous helper that converts a duration in seconds and a known ledger
    * to an expiration ledger sequence number via {@link ledgersFromNow}.
+   *
+   * @deprecated Identical to {@link ledgersFromNow}; call that for the pure
+   *   form, or {@link TokenModule.expirationLedgerFromDuration} to have the
+   *   current ledger fetched for you.
    */
   ledgersFromDuration(durationSeconds: number, currentLedger: number): number {
     return ledgersFromNow(durationSeconds, currentLedger);
@@ -584,7 +587,7 @@ export class TokenModule {
    */
   async transferWithMemo(to: string, amount: bigint, memo: string): Promise<TransactionResult> {
     assertValidAddress(to, 'to');
-    const memoBytes = Buffer.from(memo, 'utf8');
+    const memoBytes = utf8ToBytes(memo);
     if (memoBytes.length > 64) {
       throw new VeriTixError(
         VeriTixErrorCode.InvalidAmount,
@@ -636,7 +639,6 @@ export class TokenModule {
 
     try {
       const tx = await buildContractCall(
-        this.server,
         sourceAccount,
         this.config.contractId,
         method,
@@ -722,7 +724,7 @@ export class TokenModule {
         'Transaction submission rejected by the network.',
       );
     }
-    const hash = sendResponse.hash ?? Buffer.from(signed.hash()).toString('hex');
+    const hash = sendResponse.hash ?? toHex(signed.hash());
     const result = await this.server.getTransaction(hash);
     if (result.status === 'SUCCESS') {
       return {
@@ -775,7 +777,7 @@ export class TokenModule {
         'call connect() before reading from the contract',
       );
     }
-    const tx = this.buildContractCall(method, args);
+    const tx = await this.buildReadCall(method, args);
     const result = (await this.server.simulateTransaction(tx)) as
       | { result?: { retval?: xdr.ScVal } }
       | undefined;
@@ -789,14 +791,15 @@ export class TokenModule {
     return scValToNative(retval);
   }
 
-  private buildContractCall(method: string, args: xdr.ScVal[]): Transaction {
-    const source = new StellarAccount(DUMMY_PUBLIC_KEY, '0');
-    return new TransactionBuilder(source, {
-      fee: '100',
-      networkPassphrase: this.config.networkPassphrase,
-    })
-      .addOperation(new Contract(this.config.contractId).call(method, ...args))
-      .setTimeout(30)
-      .build() as Transaction;
+  /** Builds an unsigned read-only call through the shared transaction helper. */
+  private buildReadCall(method: string, args: xdr.ScVal[]): Promise<Transaction> {
+    return buildContractCall(
+      this.server,
+      new StellarAccount(DUMMY_PUBLIC_KEY, '0'),
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
   }
 }
