@@ -17,6 +17,20 @@ export type { NetworkConfig } from '../utils/network';
 /** The Stellar networks the SDK can target. */
 export type StellarNetwork = 'testnet' | 'mainnet';
 
+/** Read-only contract capability shared by the SDK's action modules. */
+export interface ContractReader {
+  /** Simulates a read-only contract call and returns its decoded native value. */
+  simulateRead(method: string, args: unknown[]): Promise<unknown>;
+  /** Returns the latest ledger sequence known to the client, when available. */
+  getCurrentLedger?(): Promise<number>;
+}
+
+/** Read/write contract capability shared by the SDK's action modules. */
+export interface ContractInvoker extends ContractReader {
+  /** Simulates, signs, and submits a state-changing contract call. */
+  invoke(method: string, args: unknown[]): Promise<unknown>;
+}
+
 export interface EscrowRecord {
   /** Unique numeric identifier for the escrow */
   id: bigint;

@@ -6,13 +6,10 @@
  * separate since that file has an in-flight contribution from another
  * contributor on this batch.
  */
-import type { SplitRecipient } from '../types';
+import type { ContractInvoker, SplitRecipient } from '../types';
 
-/** Minimal capability these actions need — satisfied by `VeriTixClient`. */
-export interface SplitterInvoker {
-  /** Simulates, signs, and submits a state-changing contract call. */
-  invoke(method: string, args: unknown[]): Promise<unknown>;
-}
+/** @deprecated Use {@link ContractInvoker} from the shared types module. */
+export type SplitterInvoker = ContractInvoker;
 
 const TOTAL_BPS = 10_000;
 
@@ -48,7 +45,7 @@ export function validateRecipients(recipients: SplitRecipient[]): void {
  * @returns the new split's id.
  */
 export async function createSplit(
-  invoker: SplitterInvoker,
+  invoker: ContractInvoker,
   sender: string,
   recipients: SplitRecipient[],
   totalAmount: bigint
@@ -68,7 +65,7 @@ export async function createSplit(
  * `validateRecipients` check `createSplit` runs.
  */
 export async function createRevenueSplit(
-  invoker: SplitterInvoker,
+  invoker: ContractInvoker,
   sender: string,
   totalAmount: bigint,
   shares: { organizer: { address: string; shareBps: number }; artist: { address: string; shareBps: number }; venue: { address: string; shareBps: number } }
@@ -116,7 +113,7 @@ export function getRevenueSharePreview(
  * `caller` must be the address that signs the transaction.
  */
 export async function distribute(
-  invoker: SplitterInvoker,
+  invoker: ContractInvoker,
   caller: string,
   splitId: bigint
 ): Promise<void> {
@@ -130,7 +127,7 @@ export async function distribute(
  * `recurring-actions.ts`).
  */
 export async function bulkDistribute(
-  invoker: SplitterInvoker,
+  invoker: ContractInvoker,
   caller: string,
   splitIds: bigint[]
 ): Promise<{ distributed: bigint[]; failed: { id: bigint; error: string }[] }> {
