@@ -28,6 +28,7 @@ import type {
   TransactionResult,
   TransferParams,
 } from '../types';
+import { toHex, utf8ToBytes } from '../utils/bytes';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import {
   DUMMY_PUBLIC_KEY,
@@ -267,6 +268,10 @@ export class TokenModule {
   /**
    * Synchronous helper that converts a duration in seconds and a known ledger
    * to an expiration ledger sequence number via {@link ledgersFromNow}.
+   *
+   * @deprecated Identical to {@link ledgersFromNow}; call that for the pure
+   *   form, or {@link TokenModule.expirationLedgerFromDuration} to have the
+   *   current ledger fetched for you.
    */
   ledgersFromDuration(durationSeconds: number, currentLedger: number): number {
     return ledgersFromNow(durationSeconds, currentLedger);
@@ -559,7 +564,7 @@ export class TokenModule {
    */
   async transferWithMemo(to: string, amount: bigint, memo: string): Promise<TransactionResult> {
     assertValidAddress(to, 'to');
-    const memoBytes = Buffer.from(memo, 'utf8');
+    const memoBytes = utf8ToBytes(memo);
     if (memoBytes.length > 64) {
       throw new VeriTixError(
         VeriTixErrorCode.InvalidAmount,
@@ -611,7 +616,6 @@ export class TokenModule {
 
     try {
       const tx = await buildContractCall(
-        this.server,
         sourceAccount,
         this.config.contractId,
         method,
@@ -697,7 +701,7 @@ export class TokenModule {
         'Transaction submission rejected by the network.',
       );
     }
-    const hash = sendResponse.hash ?? Buffer.from(signed.hash()).toString('hex');
+    const hash = sendResponse.hash ?? toHex(signed.hash());
     const result = await this.server.getTransaction(hash);
     if (result.status === 'SUCCESS') {
       return {

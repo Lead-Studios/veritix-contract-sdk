@@ -26,7 +26,6 @@ import type { EscrowRecord, TransactionResult } from './types';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
 import { DUMMY_PUBLIC_KEY, assertValidAddress } from './utils/network';
 import type { NetworkConfig } from './utils/network';
-import { bigintToScVal } from './utils/scval';
 import {
   buildContractCall as buildTransaction,
   simulateTransaction as prepareTransaction,
@@ -69,7 +68,7 @@ export interface WatchOptions {
   timeoutMs?: number;
 }
 
-interface WatchServer {
+export interface WatchServer {
   getLatestLedger(): Promise<{ sequence: number }>;
   getTransaction?(hash: string): Promise<{
     status: string;
@@ -77,6 +76,14 @@ interface WatchServer {
     returnValue?: unknown;
   }>;
   simulateTransaction?(tx: unknown): Promise<unknown>;
+}
+
+/** Listener signatures for each event emitted by {@link VeriTixClient}. */
+export interface ClientEvents {
+  connected: (data: { ledger: number }) => void;
+  disconnected: () => void;
+  retry: (data: { attempt: number; delayMs: number }) => void;
+  error: (err: VeriTixError) => void;
 }
 
 type ClientListener = (...args: unknown[]) => void;
@@ -87,10 +94,12 @@ function sleep(ms: number): Promise<void> {
 
 export class VeriTixClient {
   readonly config: NetworkConfig;
-  connected = false;
-  /** Soroban RPC server, created lazily on connect(); tests inject a mock. */
-  server: WatchServer | null = null;
-  ledgerCache: { sequence: number; fetchedAt: number } | null = null;
+  private connected = false;
+  /** Soroban RPC server, created on connect(); see {@link useServerForTesting}. */
+  private server: WatchServer | null = null;
+  private ledgerCache: { sequence: number; fetchedAt: number } | null = null;
+  /** Horizon client, created lazily on first use and reused afterwards. */
+  private horizon: Horizon.Server | null = null;
 
   readonly token: TokenModule;
   readonly escrow: EscrowModule;
@@ -120,6 +129,17 @@ export class VeriTixClient {
   /** Whether {@link connect} has succeeded and not been disconnected yet. */
   isConnected(): boolean {
     return this.connected;
+  }
+
+  /**
+   * Test hook: injects a mock RPC server and marks the client connected,
+   * without opening a network connection.
+   *
+   * @internal
+   */
+  useServerForTesting(server: WatchServer): void {
+    this.server = server;
+    this.connected = true;
   }
 
   /** Whether the client lacks a signer (no keypair configured). */
@@ -220,13 +240,14 @@ export class VeriTixClient {
    * Fetches an account's native balance and sequence from Horizon.
    *
    * @throws {VeriTixError} with code `AccountNotFound` when the account does
-   *   not exist on the configured network — never a zeroed object.
+   *   not exist on the configured network — never a zeroed object — or
+   *   `ConnectionFailed` (carrying the original error as `cause`) for any other
+   *   Horizon failure.
    */
   async getAccountInfo(address: string): Promise<AccountInfo> {
     assertValidAddress(address, 'account');
-    const horizon = new Horizon.Server(this.config.horizonUrl);
     try {
-      const account = await horizon.loadAccount(address);
+      const account = await this.getHorizon().loadAccount(address);
       const native = account.balances.find((entry) => entry.asset_type === 'native');
       const balance =
         native && 'balance' in native && typeof native.balance === 'string'
@@ -241,8 +262,22 @@ export class VeriTixClient {
           `Account ${address} does not exist on ${this.config.network}`,
         );
       }
-      throw err;
+      if (err instanceof VeriTixError) throw err;
+      throw new VeriTixError(
+        VeriTixErrorCode.ConnectionFailed,
+        `Failed to load account ${address} from ${this.config.horizonUrl}`,
+        err instanceof Error ? err.message : String(err),
+        err,
+      );
     }
+  }
+
+  /** Returns the shared Horizon client, creating it on first use. */
+  private getHorizon(): Horizon.Server {
+    if (!this.horizon) {
+      this.horizon = new Horizon.Server(this.config.horizonUrl);
+    }
+    return this.horizon;
   }
 
   /**
@@ -347,7 +382,6 @@ export class VeriTixClient {
     this.requireConnected();
     const source = new StellarAccount(this.keypair.publicKey(), '0');
     const tx = await buildTransaction(
-      this.server,
       source,
       this.config.contractId,
       method,
@@ -385,16 +419,39 @@ export class VeriTixClient {
     }
   }
 
-  on(event: 'connected', listener: (data: { ledger: number }) => void): this;
-  on(event: 'disconnected', listener: () => void): this;
-  on(event: 'retry', listener: (data: { attempt: number; delayMs: number }) => void): this;
-  on(event: 'error', listener: (err: VeriTixError) => void): this;
-  on(event: string, listener: (...args: any[]) => void): this {
+  /**
+   * Subscribes `listener` to `event`.
+   *
+   * @returns A function that removes the subscription again, so a component can
+   *   unsubscribe on unmount.
+   */
+  on<E extends keyof ClientEvents>(event: E, listener: ClientEvents[E]): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
-    this.listeners.get(event)!.add(listener);
-    return this;
+    this.listeners.get(event)!.add(listener as unknown as ClientListener);
+    return () => this.off(event, listener);
+  }
+
+  /** Removes a listener previously added with {@link on}. A no-op if absent. */
+  off<E extends keyof ClientEvents>(event: E, listener: ClientEvents[E]): void {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    set.delete(listener as unknown as ClientListener);
+    if (set.size === 0) this.listeners.delete(event);
+  }
+
+  /**
+   * Like {@link on}, but the listener is removed after its first call.
+   *
+   * @returns A function that cancels the subscription before it fires.
+   */
+  once<E extends keyof ClientEvents>(event: E, listener: ClientEvents[E]): () => void {
+    const wrapper: ClientListener = (...args) => {
+      this.off(event, wrapper as unknown as ClientEvents[E]);
+      (listener as unknown as ClientListener)(...args);
+    };
+    return this.on(event, wrapper as unknown as ClientEvents[E]);
   }
 
   private emit(event: string, ...args: unknown[]): void {
@@ -454,12 +511,6 @@ export class VeriTixClient {
       this.config.networkPassphrase,
     );
   }
-}
-
-function toScVal(value: unknown): xdr.ScVal {
-  if (value instanceof xdr.ScVal) return value;
-  if (typeof value === 'string' && /^[GC][A-Z2-7]{55}$/.test(value)) return addressToScVal(value);
-  return nativeToScVal(value);
 }
 
 function escrowChanged(a: EscrowRecord, b: EscrowRecord): boolean {

@@ -20,7 +20,9 @@ import {
 
 import type { FeeEstimate, TransactionResult } from '../types/index';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from './errors';
+import { toHex } from './bytes';
 import { DUMMY_PUBLIC_KEY } from './network';
+import { sleep } from './sleep';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,15 +53,12 @@ const POLL_INTERVAL_MS = 2_000;
  * single contract method.
  */
 export async function buildContractCall(
-  server: rpc.Server | unknown,
   sourceAccount: Account,
   contractId: string,
   method: string,
   args: xdr.ScVal[],
   networkPassphrase: string,
 ): Promise<Transaction> {
-  void server;
-
   const operation = new Contract(contractId).call(method, ...args);
 
   const tx = new TransactionBuilder(sourceAccount, {
@@ -133,7 +132,6 @@ export async function estimateFee(
   const sourceAccount = new Account(DUMMY_PUBLIC_KEY, '0');
 
   const tx = await buildContractCall(
-    server,
     sourceAccount,
     contractId,
     method,
@@ -150,6 +148,7 @@ export async function estimateFee(
   const feeXLM = `${whole}.${remainder.toString().padStart(7, '0')}`;
 
   return {
+    feeStroops: simulatedFee,
     feeLumens: simulatedFee,
     feeXLM,
     estimatedLedger: latestLedger.sequence,
@@ -183,7 +182,7 @@ export async function submitTransaction(
   },
   tx: Transaction,
   keypair: Keypair | undefined,
-  options: SubmitTransactionOptions | number = {},
+  options: SubmitTransactionOptions = {},
 ): Promise<TransactionResult> {
   if (!keypair) {
     throw new VeriTixError(
@@ -192,12 +191,9 @@ export async function submitTransaction(
     );
   }
 
-  const opts: SubmitTransactionOptions =
-    typeof options === 'number' ? { maxPollAttempts: options } : options;
-
-  const maxRetries = opts.maxRetries ?? 3;
-  const retryDelayMs = opts.retryDelayMs ?? 1_000;
-  const maxPollAttempts = opts.maxPollAttempts ?? MAX_POLL_ATTEMPTS;
+  const maxRetries = options.maxRetries ?? 3;
+  const retryDelayMs = options.retryDelayMs ?? 1_000;
+  const maxPollAttempts = options.maxPollAttempts ?? MAX_POLL_ATTEMPTS;
 
   // 1. Sign a copy, so the caller's transaction is never mutated and a retry
   //    with the same object does not accumulate a second signature.
@@ -243,6 +239,7 @@ export async function submitTransaction(
 
   const hash = sendResponse.hash;
   const expectedHash = Buffer.from(signedTx.hash()).toString('hex');
+  const expectedHash = toHex(tx.hash());
   if (!hash || hash !== expectedHash) {
     throw new VeriTixError(
       VeriTixErrorCode.UnexpectedTransactionHash,
@@ -287,6 +284,3 @@ export async function submitTransaction(
   );
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
