@@ -199,8 +199,10 @@ export async function submitTransaction(
   const retryDelayMs = opts.retryDelayMs ?? 1_000;
   const maxPollAttempts = opts.maxPollAttempts ?? MAX_POLL_ATTEMPTS;
 
-  // 1. Sign
-  tx.sign(keypair);
+  // 1. Sign a copy, so the caller's transaction is never mutated and a retry
+  //    with the same object does not accumulate a second signature.
+  const signedTx = TransactionBuilder.fromXDR(tx.toXDR(), tx.networkPassphrase) as Transaction;
+  signedTx.sign(keypair);
 
   // 2. Submit with retry
   type SendResponse = { status: string; hash?: string; errorResult?: { toXDR(encoding?: string): string } };
@@ -209,7 +211,7 @@ export async function submitTransaction(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response: SendResponse = await server.sendTransaction(tx);
+      const response: SendResponse = await server.sendTransaction(signedTx);
       sendResponse = response;
 
       if (response.status !== 'ERROR') {
@@ -240,7 +242,7 @@ export async function submitTransaction(
   }
 
   const hash = sendResponse.hash;
-  const expectedHash = Buffer.from(tx.hash()).toString('hex');
+  const expectedHash = Buffer.from(signedTx.hash()).toString('hex');
   if (!hash || hash !== expectedHash) {
     throw new VeriTixError(
       VeriTixErrorCode.UnexpectedTransactionHash,

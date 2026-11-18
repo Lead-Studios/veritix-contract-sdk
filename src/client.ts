@@ -10,10 +10,8 @@
  */
 import {
   Account as StellarAccount,
-  Contract,
   Horizon,
   Keypair,
-  TransactionBuilder,
   nativeToScVal,
   scValToNative,
   xdr,
@@ -168,7 +166,7 @@ export class VeriTixClient {
     let contractFound = false;
     if (rpcReachable && this.server?.simulateTransaction) {
       try {
-        const probe = await this.server.simulateTransaction(this.buildContractCall('name'));
+        const probe = await this.server.simulateTransaction(await this.buildReadCall('name'));
         contractFound = Boolean((probe as { result?: unknown } | undefined)?.result);
       } catch {
         contractFound = false;
@@ -437,7 +435,7 @@ export class VeriTixClient {
         `Simulation of ${method} is unavailable without an RPC server`,
       );
     }
-    const result = await server.simulateTransaction(this.buildContractCall(method, args));
+    const result = await server.simulateTransaction(await this.buildReadCall(method, args));
     const retval = (result as { result?: { retval?: xdr.ScVal } } | undefined)?.result?.retval;
     if (retval === undefined) {
       throw new VeriTixError(VeriTixErrorCode.SimulationFailed, `Simulation of ${method} returned no value`);
@@ -445,15 +443,16 @@ export class VeriTixClient {
     return scValToNative(retval);
   }
 
-  private buildContractCall(method: string, args: xdr.ScVal[] = []): Transaction {
-    const source = new StellarAccount(DUMMY_PUBLIC_KEY, '0');
-    return new TransactionBuilder(source, {
-      fee: '100',
-      networkPassphrase: this.config.networkPassphrase,
-    })
-      .addOperation(new Contract(this.config.contractId).call(method, ...args))
-      .setTimeout(30)
-      .build() as Transaction;
+  /** Builds an unsigned read-only call through the shared transaction helper. */
+  private buildReadCall(method: string, args: xdr.ScVal[] = []): Promise<Transaction> {
+    return buildTransaction(
+      this.server,
+      new StellarAccount(DUMMY_PUBLIC_KEY, '0'),
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
   }
 }
 

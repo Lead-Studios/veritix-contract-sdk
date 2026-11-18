@@ -9,9 +9,7 @@
  */
 import {
   Account as StellarAccount,
-  Contract,
   Keypair,
-  TransactionBuilder,
   nativeToScVal,
   scValToNative,
   xdr,
@@ -685,7 +683,7 @@ export class EscrowModule {
         'call connect() before reading from the contract',
       );
     }
-    const tx = this.buildContractCall(method, args);
+    const tx = await this.buildReadCall(method, args);
     const result = (await this.server.simulateTransaction(tx)) as
       | { result?: { retval?: xdr.ScVal } }
       | undefined;
@@ -699,15 +697,16 @@ export class EscrowModule {
     return scValToNative(retval);
   }
 
-  private buildContractCall(method: string, args: xdr.ScVal[]): Transaction {
-    const source = new StellarAccount(DUMMY_PUBLIC_KEY, '0');
-    return new TransactionBuilder(source, {
-      fee: '100',
-      networkPassphrase: this.config.networkPassphrase,
-    })
-      .addOperation(new Contract(this.config.contractId).call(method, ...args))
-      .setTimeout(30)
-      .build() as Transaction;
+  /** Builds an unsigned read-only call through the shared transaction helper. */
+  private buildReadCall(method: string, args: xdr.ScVal[]): Promise<Transaction> {
+    return buildContractCall(
+      this.server,
+      new StellarAccount(DUMMY_PUBLIC_KEY, '0'),
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
   }
 
   private extractErrorString(err: unknown): string {
