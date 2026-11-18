@@ -171,8 +171,8 @@ describe('SplitterModule.createRevenueSplit', () => {
     });
 
     const call = buildCall.mock.calls[0];
-    expect(call[3]).toBe('create_split');
-    const recipientsScVal = call[4][0];
+    expect(call[2]).toBe('create_split');
+    const recipientsScVal = call[3][0];
     expect(recipientsScVal.switch()).toBe(xdr.ScValType.scvVec());
     expect(recipientsScVal.vec()).toHaveLength(3);
   });

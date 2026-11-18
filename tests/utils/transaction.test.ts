@@ -27,7 +27,6 @@ function makeMockServer(overrides: Partial<SorobanRpc.Server> = {}): SorobanRpc.
 
 async function buildTx(method: string) {
   return buildContractCall(
-    makeMockServer(),
     sourceAccount,
     FAKE_CONTRACT_ID,
     method,
