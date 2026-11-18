@@ -30,6 +30,7 @@ import type {
   TransactionResult,
   TransferParams,
 } from '../types';
+import { MAX_BATCH_SIZE } from '../utils/constants';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import {
   DUMMY_PUBLIC_KEY,
@@ -46,7 +47,7 @@ import {
 } from '../utils/transaction';
 
 /** Maximum addresses accepted by {@link TokenModule.balanceOfBatch}. */
-export const MAX_BATCH_SIZE = 100;
+export { MAX_BATCH_SIZE };
 
 export type { MintParams, TransferParams, ApproveParams, BurnParams };
 export { ledgersFromNow };
