@@ -71,6 +71,20 @@ export function assertValidAddress(
   }
 }
 
+/**
+ * Asserts that `id` is a valid Soroban contract ID (a `C…` strkey), throwing a
+ * typed {@link VeriTixError} (code {@link VeriTixErrorCode.InvalidAddress})
+ * otherwise. Account (`G…`) addresses are rejected.
+ */
+export function assertContractId(id: string): void {
+  if (typeof id !== 'string' || !StrKey.isValidContract(id)) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidAddress,
+      `Invalid contract id — expected a valid Stellar contract (C…) address, got "${String(id)}"`,
+    );
+  }
+}
+
 /** Returns the Horizon URL for the given network. */
 export function getHorizonUrl(network: 'testnet' | 'mainnet'): string {
   return network === 'testnet' ? 'https://horizon-testnet.stellar.org' : 'https://horizon.stellar.org';
@@ -80,11 +94,13 @@ export function getHorizonUrl(network: 'testnet' | 'mainnet'): string {
  * Builds a testnet {@link NetworkConfig}.
  *
  * @throws {TypeError} when `contractId` is empty or blank.
+ * @throws {VeriTixError} with code `InvalidAddress` when it is not a valid `C…` contract ID.
  */
 export function getTestnetConfig(contractId: string): NetworkConfig {
   if (typeof contractId !== 'string' || contractId.trim().length === 0) {
     throw new TypeError('getTestnetConfig: contractId is required');
   }
+  assertContractId(contractId.trim());
   return {
     contractId: contractId.trim(),
     network: 'testnet',
@@ -100,11 +116,13 @@ export function getTestnetConfig(contractId: string): NetworkConfig {
  * Builds a mainnet {@link NetworkConfig}.
  *
  * @throws {TypeError} when `contractId` is empty or blank.
+ * @throws {VeriTixError} with code `InvalidAddress` when it is not a valid `C…` contract ID.
  */
 export function getMainnetConfig(contractId: string): NetworkConfig {
   if (typeof contractId !== 'string' || contractId.trim().length === 0) {
     throw new TypeError('getMainnetConfig: contractId is required');
   }
+  assertContractId(contractId.trim());
   return {
     contractId: contractId.trim(),
     network: 'mainnet',

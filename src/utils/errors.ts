@@ -28,6 +28,8 @@ export enum VeriTixErrorCode {
   TransactionFailed = 'TRANSACTION_FAILED',
   /** A watch/poll operation timed out before reaching its terminal state. */
   WatchTimeout = 'WATCH_TIMEOUT',
+  /** A watch/poll operation was cancelled through its abort signal. */
+  WatchAborted = 'WATCH_ABORTED',
   /** A batched read exceeded the documented batch-size limit. */
   BatchTooLarge = 'BATCH_TOO_LARGE',
   /** A transferFrom spent more than the current allowance. */
