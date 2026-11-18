@@ -21,6 +21,7 @@ import {
 import type { FeeEstimate, TransactionResult } from '../types/index';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from './errors';
 import { DUMMY_PUBLIC_KEY } from './network';
+import { sleep } from './sleep';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -285,6 +286,3 @@ export async function submitTransaction(
   );
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

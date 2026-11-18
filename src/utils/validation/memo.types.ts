@@ -31,19 +31,3 @@ export interface MemoValidationResult {
   /** Human-readable reason when `isValid` is `false`; `undefined` otherwise. */
   error?: string;
 }
-
-/**
- * Thrown when a memo exceeds {@link MEMO_MAX_BYTES}. Carries the byte length
- * so callers can render an accurate message.
- */
-export class MemoTooLongError extends Error {
-  /** Number of UTF-8 bytes in the offending memo. */
-  public readonly byteLength: number;
-
-  constructor(byteLength: number, maxBytes = MEMO_MAX_BYTES) {
-    super(`Memo exceeds max length of ${maxBytes} bytes (got ${byteLength})`);
-    this.name = 'MemoTooLongError';
-    this.byteLength = byteLength;
-    Object.setPrototypeOf(this, MemoTooLongError.prototype);
-  }
-}
