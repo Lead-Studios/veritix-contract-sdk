@@ -9,9 +9,7 @@
  */
 import {
   Account as StellarAccount,
-  Contract,
   Keypair,
-  TransactionBuilder,
   nativeToScVal,
   scValToNative,
   xdr,
@@ -19,6 +17,7 @@ import {
 import type { Transaction } from '@stellar/stellar-sdk';
 
 import type { EscrowRecord, TicketEscrowParams, TransactionResult } from '../types';
+import { toHex, utf8ToBytes } from '../utils/bytes';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import {
   DUMMY_PUBLIC_KEY,
@@ -370,9 +369,7 @@ export class EscrowModule {
     }
 
     const ticketRefBytes =
-      typeof params.ticketRef === 'string'
-        ? Buffer.from(params.ticketRef, 'utf8')
-        : Buffer.from(params.ticketRef);
+      typeof params.ticketRef === 'string' ? utf8ToBytes(params.ticketRef) : params.ticketRef;
 
     const result = await this.writeCall('ticket_escrow', [
       addressToScVal(buyer),
@@ -380,7 +377,7 @@ export class EscrowModule {
       addressToScVal(params.token),
       bigintToScVal(params.ticketPrice, 'i128'),
       nativeToScVal(eventLedger, { type: 'u32' }),
-      xdr.ScVal.scvBytes(ticketRefBytes),
+      xdr.ScVal.scvBytes(ticketRefBytes as Buffer),
     ]);
 
     if (result.returnValue !== undefined && result.returnValue !== null) {
@@ -605,7 +602,6 @@ export class EscrowModule {
     }
 
     const tx = await buildContractCall(
-      this.server,
       sourceAccount,
       this.config.contractId,
       method,
@@ -640,7 +636,7 @@ export class EscrowModule {
         'Transaction submission rejected by the network.',
       );
     }
-    const hash = sendResponse.hash ?? Buffer.from(signed.hash()).toString('hex');
+    const hash = sendResponse.hash ?? toHex(signed.hash());
     const result = await this.server.getTransaction(hash);
     if (result.status === 'SUCCESS') {
       return {
@@ -685,7 +681,7 @@ export class EscrowModule {
         'call connect() before reading from the contract',
       );
     }
-    const tx = this.buildContractCall(method, args);
+    const tx = await this.buildReadCall(method, args);
     const result = (await this.server.simulateTransaction(tx)) as
       | { result?: { retval?: xdr.ScVal } }
       | undefined;
@@ -699,15 +695,16 @@ export class EscrowModule {
     return scValToNative(retval);
   }
 
-  private buildContractCall(method: string, args: xdr.ScVal[]): Transaction {
-    const source = new StellarAccount(DUMMY_PUBLIC_KEY, '0');
-    return new TransactionBuilder(source, {
-      fee: '100',
-      networkPassphrase: this.config.networkPassphrase,
-    })
-      .addOperation(new Contract(this.config.contractId).call(method, ...args))
-      .setTimeout(30)
-      .build() as Transaction;
+  /** Builds an unsigned read-only call through the shared transaction helper. */
+  private buildReadCall(method: string, args: xdr.ScVal[]): Promise<Transaction> {
+    return buildContractCall(
+      this.server,
+      new StellarAccount(DUMMY_PUBLIC_KEY, '0'),
+      this.config.contractId,
+      method,
+      args,
+      this.config.networkPassphrase,
+    );
   }
 
   private extractErrorString(err: unknown): string {

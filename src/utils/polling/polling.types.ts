@@ -6,6 +6,7 @@
  * {@link PollingService} rather than owning its own `setTimeout` loop, so
  * interval, timeout, and cancellation semantics live in one place.
  */
+import { VeriTixError, VeriTixErrorCode } from '../errors';
 
 /** Terminal or transient status of a polled hash. */
 export enum PollStatus {
@@ -55,11 +56,11 @@ export interface AbortSignalLike {
 }
 
 /** Error thrown when {@link PollingService} exceeds its configured timeout. */
-export class PollingTimeoutError extends Error {
+export class PollingTimeoutError extends VeriTixError {
   public readonly hash: string;
 
   constructor(hash: string, timeoutMs: number) {
-    super(`Polling of ${hash} timed out after ${timeoutMs}ms`);
+    super(VeriTixErrorCode.WatchTimeout, `Polling of ${hash} timed out after ${timeoutMs}ms`);
     this.name = 'PollingTimeoutError';
     this.hash = hash;
     Object.setPrototypeOf(this, PollingTimeoutError.prototype);
@@ -67,11 +68,11 @@ export class PollingTimeoutError extends Error {
 }
 
 /** Error thrown when polling is cancelled via its abort signal. */
-export class PollingAbortedError extends Error {
+export class PollingAbortedError extends VeriTixError {
   public readonly hash: string;
 
   constructor(hash: string) {
-    super(`Polling of ${hash} was aborted`);
+    super(VeriTixErrorCode.WatchAborted, `Polling of ${hash} was aborted`);
     this.name = 'PollingAbortedError';
     this.hash = hash;
     Object.setPrototypeOf(this, PollingAbortedError.prototype);

@@ -225,7 +225,8 @@ Returned by `estimateFee()`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `feeLumens` | `string` | Raw fee in stroops |
+| `feeStroops` | `string` | Raw fee in stroops |
+| `feeLumens` | `string` | Deprecated alias of `feeStroops` (it holds stroops, not lumens) |
 | `feeXLM` | `string` | Fee converted to XLM (7 decimal places) |
 | `estimatedLedger` | `number` | Latest ledger sequence at the time of estimation |
 

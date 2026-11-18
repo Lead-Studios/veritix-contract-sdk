@@ -58,8 +58,8 @@ describe("AdminModule.proposeAdmin()", () => {
     await client.admin.proposeAdmin(newAdmin);
     const buildMock = txUtils.buildContractCall as jest.Mock;
     expect(buildMock).toHaveBeenCalled();
-    expect(buildMock.mock.calls[0][3]).toBe("propose_admin");
-    const args = buildMock.mock.calls[0][4] as xdr.ScVal[];
+    expect(buildMock.mock.calls[0][2]).toBe("propose_admin");
+    const args = buildMock.mock.calls[0][3] as xdr.ScVal[];
     expect(args).toHaveLength(1);
     expect(scValToString(args[0])).toBe(newAdmin);
   });
@@ -83,8 +83,8 @@ describe("AdminModule.acceptAdmin()", () => {
     const { client } = makeAdminClient(Keypair.random());
     await client.admin.acceptAdmin();
     const buildMock = txUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe("accept_admin");
-    expect(buildMock.mock.calls[0][4]).toEqual([]);
+    expect(buildMock.mock.calls[0][2]).toBe("accept_admin");
+    expect(buildMock.mock.calls[0][3]).toEqual([]);
   });
 
   it("returns a TransactionResult on success", async () => {
@@ -137,8 +137,8 @@ describe("AdminModule.pause()", () => {
     const { client } = makeAdminClient(Keypair.random());
     await client.admin.pause();
     const buildMock = txUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe("pause");
-    expect(buildMock.mock.calls[0][4]).toEqual([]);
+    expect(buildMock.mock.calls[0][2]).toBe("pause");
+    expect(buildMock.mock.calls[0][3]).toEqual([]);
   });
 
   it("returns a TransactionResult on success", async () => {
@@ -161,8 +161,8 @@ describe("AdminModule.unpause()", () => {
     const { client } = makeAdminClient(Keypair.random());
     await client.admin.unpause();
     const buildMock = txUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe("unpause");
-    expect(buildMock.mock.calls[0][4]).toEqual([]);
+    expect(buildMock.mock.calls[0][2]).toBe("unpause");
+    expect(buildMock.mock.calls[0][3]).toEqual([]);
   });
 });
 
@@ -171,8 +171,8 @@ describe("AdminModule.setProtocolFee()", () => {
     const { client } = makeAdminClient(Keypair.random());
     await client.admin.setProtocolFee(250);
     const buildMock = txUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe("set_protocol_fee");
-    const args = buildMock.mock.calls[0][4] as xdr.ScVal[];
+    expect(buildMock.mock.calls[0][2]).toBe("set_protocol_fee");
+    const args = buildMock.mock.calls[0][3] as xdr.ScVal[];
     expect(args).toHaveLength(1);
     expect(scValToNumber(args[0])).toBe(250);
   });
@@ -202,8 +202,8 @@ describe("AdminModule.dividendDistribute()", () => {
     const { client } = makeAdminClient(Keypair.random());
     await client.admin.dividendDistribute([FAKE_RECIPIENT], 10_000_000n);
     const buildMock = txUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe("dividend_distribute");
-    const args = buildMock.mock.calls[0][4] as xdr.ScVal[];
+    expect(buildMock.mock.calls[0][2]).toBe("dividend_distribute");
+    const args = buildMock.mock.calls[0][3] as xdr.ScVal[];
     expect(args).toHaveLength(2);
     expect(scValToBigint(args[1])).toBe(10_000_000n);
   });
@@ -245,8 +245,8 @@ describe("AdminModule.manualRefund()", () => {
     const { client } = makeAdminClient(Keypair.random());
     await client.admin.manualRefund(99n, "refund reason");
     const buildMock = txUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe("force_refund_escrow");
-    const args = buildMock.mock.calls[0][4] as xdr.ScVal[];
+    expect(buildMock.mock.calls[0][2]).toBe("force_refund_escrow");
+    const args = buildMock.mock.calls[0][3] as xdr.ScVal[];
     expect(args).toHaveLength(2);
   });
 });
@@ -262,6 +262,6 @@ describe("AdminModule.forceRefundEscrow()", () => {
     const { client } = makeAdminClient(Keypair.random());
     await client.admin.forceRefundEscrow(42n);
     const buildMock = txUtils.buildContractCall as jest.Mock;
-    expect(buildMock.mock.calls[0][3]).toBe("force_refund_escrow");
+    expect(buildMock.mock.calls[0][2]).toBe("force_refund_escrow");
   });
 });

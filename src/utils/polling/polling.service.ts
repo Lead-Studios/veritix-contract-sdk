@@ -8,6 +8,7 @@
  * re-implement timer logic.
  */
 import { VeriTixError, VeriTixErrorCode } from '../errors';
+import { sleep } from '../sleep';
 import {
   PollingAbortedError,
   PollingTimeoutError,
@@ -112,8 +113,4 @@ export class PollingService {
       detach();
     }
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
