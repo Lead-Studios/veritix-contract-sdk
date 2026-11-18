@@ -348,7 +348,6 @@ export class VeriTixClient {
     this.requireConnected();
     const source = new StellarAccount(this.keypair.publicKey(), '0');
     const tx = await buildTransaction(
-      this.server,
       source,
       this.config.contractId,
       method,

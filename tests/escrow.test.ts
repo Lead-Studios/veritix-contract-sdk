@@ -276,7 +276,6 @@ describe('EscrowModule (stubs)', () => {
     });
 
     expect(transactionUtils.buildContractCall).toHaveBeenCalledWith(
-      mockServer,
       expect.anything(),
       FAKE_CONTRACT,
       'create_escrow',
@@ -452,7 +451,7 @@ describe('EscrowModule.transferBeneficiary', () => {
 
     expect(result).toMatchObject({ hash: 'transfer-hash', ledger: 200, successful: true });
     expect(transactionUtils.buildContractCall).toHaveBeenCalledWith(
-      mockServer, expect.anything(), FAKE_CONTRACT, 'transfer_escrow_beneficiary',
+      expect.anything(), FAKE_CONTRACT, 'transfer_escrow_beneficiary',
       expect.any(Array), getTestnetConfig(FAKE_CONTRACT).networkPassphrase,
     );
   });
@@ -1139,7 +1138,6 @@ describe('EscrowModule.settleEvent', () => {
     const result = await client.escrow.releaseEscrow(FAKE_ESCROW_ID);
 
     expect(transactionUtils.buildContractCall).toHaveBeenCalledWith(
-      mockServer,
       expect.anything(),
       FAKE_CONTRACT,
       'release_escrow',
@@ -1194,7 +1192,6 @@ describe('EscrowModule.settleEvent', () => {
     const result = await client.escrow.refundEscrow(FAKE_ESCROW_ID);
 
     expect(transactionUtils.buildContractCall).toHaveBeenCalledWith(
-      mockServer,
       expect.anything(),
       FAKE_CONTRACT,
       'refund_escrow',

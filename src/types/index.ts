@@ -166,7 +166,14 @@ export interface BurnParams {
 
 /** Estimated fee details returned by simulation helpers. */
 export interface FeeEstimate {
-  /** Estimated fee in stroops */
+  /** Estimated fee in stroops (1 XLM = 10 000 000 stroops) */
+  feeStroops: string;
+  /**
+   * Estimated fee in stroops.
+   *
+   * @deprecated Misnamed: this holds stroops, not lumens. Use {@link feeStroops}
+   *   for the stroop amount or {@link feeXLM} for the lumen amount.
+   */
   feeLumens: string;
   /** Formatted XLM fee string */
   feeXLM: string;
