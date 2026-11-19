@@ -92,7 +92,7 @@ Modules were instantiated separately and passed a server or connection object:
 import { EscrowModule } from '@veritix/contract-sdk/modules/escrow';
 
 const escrow = new EscrowModule(server, contractId, keypair);
-await escrow.createEscrow({ … });
+await escrow.createTicketEscrow({ … });
 ```
 
 **After (0.1.0)**
@@ -116,14 +116,15 @@ client.batch      // batch token operations
 Example:
 
 ```ts
-// Create an escrow
-const result = await client.escrow.createEscrow({
-  beneficiary: 'GABC…',
-  amount: 10_000_000n,  // 1 XLM in stroops
-  expiryLedger: 1_500_000,
-  memos: ['Ticket #42'],
+// Create a ticket escrow
+const escrowId = await client.escrow.createTicketEscrow({
+  organizer: 'GABC…',
+  token: 'CTOKEN…',      // payment token contract address
+  ticketPrice: 10_000_000n,  // 1 XLM in stroops
+  eventLedger: 1_500_000,
+  ticketRef: 'Ticket #42',
 });
-console.log('tx hash:', result.hash);
+console.log('escrow id:', escrowId);
 ```
 
 ---
@@ -138,7 +139,7 @@ code property:
 ```ts
 // Old
 try {
-  await escrow.release(id);
+  await escrow.releaseEscrow(id);
 } catch (err) {
   console.error(err.message); // unstructured string
 }
