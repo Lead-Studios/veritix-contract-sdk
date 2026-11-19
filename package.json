@@ -63,9 +63,6 @@
   "peerDependencies": {
     "@stellar/stellar-sdk": ">=12.3.0"
   },
-  "dependencies": {
-    "@stellar/freighter-api": "^6.0.1"
-  },
   "devDependencies": {
     "@types/jest": "^29.5.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
