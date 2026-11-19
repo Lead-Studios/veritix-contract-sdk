@@ -8,6 +8,7 @@
  */
 import type { DisputeRecord } from '../types';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { assertValidAddress } from '../utils/network';
 
 /** Minimal capability `DisputeActions` needs — satisfied by `VeriTixClient`. */
 export interface DisputeInvoker {
@@ -15,6 +16,16 @@ export interface DisputeInvoker {
   simulateRead(method: string, args: unknown[]): Promise<unknown>;
   /** Simulates, signs, and submits a state-changing contract call. */
   invoke(method: string, args: unknown[]): Promise<unknown>;
+}
+
+function assertNonNegativeId(id: bigint | number, field: string): void {
+  const valid = typeof id === 'bigint' ? id >= 0n : Number.isInteger(id) && id >= 0;
+  if (!valid) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `${field} must be a non-negative integer, got ${String(id)}`,
+    );
+  }
 }
 
 /**
@@ -36,7 +47,28 @@ export async function raiseDispute(
   caller: string,
   escrowId: bigint
 ): Promise<void> {
+  assertValidAddress(caller, 'claimant');
+  assertNonNegativeId(escrowId, 'escrowId');
   await invoker.invoke('raise_dispute', [caller, escrowId]);
+}
+
+/**
+ * Legacy `openDispute` name for {@link raiseDispute}: the claimant is the
+ * authorising caller. Any supplied `resolver` is validated but is not passed
+ * to the contract, which configures the arbiter on the escrow instead.
+ */
+export function openDispute(
+  invoker: DisputeInvoker,
+  claimant: string,
+  escrowId: bigint,
+  resolver?: string
+): Promise<void> {
+  assertValidAddress(claimant, 'claimant');
+  if (resolver !== undefined) {
+    assertValidAddress(resolver, 'resolver');
+  }
+  assertNonNegativeId(escrowId, 'escrowId');
+  return raiseDispute(invoker, claimant, escrowId);
 }
 
 /**
@@ -57,6 +89,9 @@ export async function resolveDispute(
   escrowId: bigint,
   winner: string
 ): Promise<void> {
+  assertValidAddress(resolver, 'resolver');
+  assertValidAddress(winner, 'winner');
+  assertNonNegativeId(escrowId, 'escrowId');
   await invoker.invoke('resolve_dispute', [resolver, escrowId, winner]);
 }
 
