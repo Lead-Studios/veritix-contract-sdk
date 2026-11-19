@@ -9,6 +9,8 @@
 import type { SplitRecipient } from '../types';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { isValidStellarAddress } from '../utils/network';
+import { MAX_BATCH_SIZE } from '../utils/constants';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /** Minimal capability these actions need — satisfied by `VeriTixClient`. */
 export interface SplitterInvoker {
@@ -28,6 +30,9 @@ const TOTAL_BPS = 10_000;
  * Every problem is collected and reported together in one {@link VeriTixError};
  * the code reflects the first problem category found (invalid address,
  * duplicate address, empty/invalid input, or invalid shares).
+ * @throws {VeriTixError} with code `InvalidInput` if `recipients` is empty,
+ *   or `SplitInvalidShares` if any share is not a positive integer or the
+ *   shares don't sum to exactly 10 000 bps.
  */
 export function validateRecipients(recipients: SplitRecipient[]): void {
   const problems: { code: VeriTixErrorCode; message: string }[] = [];
@@ -39,6 +44,10 @@ export function validateRecipients(recipients: SplitRecipient[]): void {
       code: VeriTixErrorCode.InvalidInput,
       message: 'a split requires at least one recipient',
     });
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'a split requires at least one recipient',
+    );
   }
 
   recipients.forEach(({ address, shareBps }, index) => {
@@ -63,6 +72,10 @@ export function validateRecipients(recipients: SplitRecipient[]): void {
       });
     } else {
       total += shareBps;
+      throw new VeriTixError(
+        VeriTixErrorCode.SplitInvalidShares,
+        `recipient share must be a positive integer bps value, got ${shareBps}`,
+      );
     }
   });
 
@@ -77,6 +90,10 @@ export function validateRecipients(recipients: SplitRecipient[]): void {
     throw new VeriTixError(
       problems[0].code,
       `invalid split recipients: ${problems.map(({ message }) => message).join('; ')}`,
+  if (total !== TOTAL_BPS) {
+    throw new VeriTixError(
+      VeriTixErrorCode.SplitInvalidShares,
+      `recipient shares must sum to ${TOTAL_BPS} bps, got ${total}`,
     );
   }
 }
@@ -96,7 +113,10 @@ export async function createSplit(
   validateRecipients(recipients);
   const result = await invoker.invoke('create_split', [sender, recipients, totalAmount]);
   if (typeof result !== 'bigint') {
-    throw new Error('create_split did not return a split id');
+    throw new VeriTixError(
+      VeriTixErrorCode.SplitNotFound,
+      'create_split did not return a split id',
+    );
   }
   return result;
 }
@@ -183,6 +203,13 @@ export async function bulkDistribute(
   caller: string,
   splitIds: bigint[]
 ): Promise<{ distributed: bigint[]; failed: { id: bigint; error: string }[] }> {
+  if (splitIds.length > MAX_BATCH_SIZE) {
+    throw new VeriTixError(
+      VeriTixErrorCode.BatchTooLarge,
+      `bulkDistribute supports at most ${MAX_BATCH_SIZE} split ids (got ${splitIds.length})`,
+    );
+  }
+
   const distributed: bigint[] = [];
   const failed: { id: bigint; error: string }[] = [];
 

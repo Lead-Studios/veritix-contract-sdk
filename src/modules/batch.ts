@@ -1,4 +1,5 @@
 import { MAX_BATCH_SIZE } from '../utils/constants';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 export { MAX_BATCH_SIZE };
 
@@ -24,7 +25,10 @@ export class BatchModule {
 
   public validateBatchSize(itemsCount: number): boolean {
     if (itemsCount <= 0 || itemsCount > MAX_BATCH_SIZE) {
-      throw new Error(`Batch size must be between 1 and ${MAX_BATCH_SIZE}`);
+      throw new VeriTixError(
+        VeriTixErrorCode.BatchTooLarge,
+        `Batch size must be between 1 and ${MAX_BATCH_SIZE}`,
+      );
     }
     return true;
   }
@@ -32,7 +36,10 @@ export class BatchModule {
   private call(method: string, items: unknown[]): Promise<unknown> {
     this.validateBatchSize(items.length);
     if (!this.client) {
-      throw new Error('BatchModule was constructed without a client');
+      throw new VeriTixError(
+        VeriTixErrorCode.NotConnected,
+        'BatchModule was constructed without a client',
+      );
     }
     return this.client.invoke(method, [items]);
   }

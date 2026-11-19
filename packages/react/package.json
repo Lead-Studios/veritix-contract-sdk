@@ -18,12 +18,7 @@
   },
   "peerDependencies": {
     "react": ">=18",
-    "@veritix/contract-sdk": "*"
-  },
-  "peerDependenciesMeta": {
-    "@veritix/contract-sdk": {
-      "optional": true
-    }
+    "@veritix/contract-sdk": "^0.1.0"
   },
   "devDependencies": {
     "react": "^18.3.1",
@@ -31,5 +26,5 @@
     "tsup": "^8.1.0",
     "typescript": "^5.4.5"
   },
-  "license": "MIT"
+  "license": "Apache-2.0"
 }
