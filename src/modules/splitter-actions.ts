@@ -7,6 +7,7 @@
  * contributor on this batch.
  */
 import type { SplitRecipient } from '../types';
+import { MAX_BATCH_SIZE } from '../utils/constants';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /** Minimal capability these actions need — satisfied by `VeriTixClient`. */
@@ -148,6 +149,13 @@ export async function bulkDistribute(
   caller: string,
   splitIds: bigint[]
 ): Promise<{ distributed: bigint[]; failed: { id: bigint; error: string }[] }> {
+  if (splitIds.length > MAX_BATCH_SIZE) {
+    throw new VeriTixError(
+      VeriTixErrorCode.BatchTooLarge,
+      `bulkDistribute supports at most ${MAX_BATCH_SIZE} split ids (got ${splitIds.length})`,
+    );
+  }
+
   const distributed: bigint[] = [];
   const failed: { id: bigint; error: string }[] = [];
 

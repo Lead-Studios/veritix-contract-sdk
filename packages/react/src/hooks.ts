@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { useVeriTix } from './context';
+
 export interface ReadHookResult<T> {
   data: T | null;
   loading: boolean;
@@ -70,12 +72,14 @@ export function useAccountInfo(
   accountAddress?: string,
   client?: AccountInfoClient | null,
 ): ReadHookResult<AccountInfo> {
-  const enabled = Boolean(accountAddress && client);
+  const contextClient = useVeriTix();
+  const resolvedClient = client === undefined ? contextClient : client;
+  const enabled = Boolean(accountAddress && resolvedClient);
 
   const readFn = useCallback(async (): Promise<AccountInfo | null> => {
-    if (!accountAddress || !client) return null;
-    return client.getAccountInfo(accountAddress);
-  }, [accountAddress, client]);
+    if (!accountAddress || !resolvedClient) return null;
+    return resolvedClient.getAccountInfo(accountAddress);
+  }, [accountAddress, resolvedClient]);
 
   const { data, loading, error } = useVeritixRead<AccountInfo | null>(readFn);
 
