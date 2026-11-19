@@ -3,6 +3,7 @@
  * Public entry point: the client, modules, shared types, errors and helpers.
  */
 export { VeriTixClient } from './client';
+export { VeriTixClientExtended } from './client-extended';
 export { TokenModule } from './modules/token';
 export { EscrowModule } from './modules/escrow';
 export { DisputeModule } from './modules/dispute';

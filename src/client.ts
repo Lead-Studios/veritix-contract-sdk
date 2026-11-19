@@ -570,12 +570,6 @@ export class VeriTixClient implements ContractInvoker {
   }
 }
 
-function toScVal(value: unknown): xdr.ScVal {
-  if (value instanceof xdr.ScVal) return value;
-  if (typeof value === 'string' && /^[GC][A-Z2-7]{55}$/.test(value)) return addressToScVal(value);
-  return nativeToScVal(value);
-}
-
 function expectString(value: unknown, field: string): string {
   if (typeof value !== 'string') {
     throw new VeriTixError(
