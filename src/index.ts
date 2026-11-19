@@ -5,6 +5,7 @@
 export { VeriTixClient } from './client';
 export { TokenModule } from './modules/token';
 export { EscrowModule } from './modules/escrow';
+export { DisputeModule } from './modules/dispute';
 export * from './types';
 export { VeriTixError, VeriTixErrorCode } from './utils/errors';
 export {
