@@ -20,7 +20,6 @@ import {
 
 import type { FeeEstimate, TransactionResult } from '../types/index';
 import { parseSorobanError, VeriTixError, VeriTixErrorCode } from './errors';
-import { toHex } from './bytes';
 import { DUMMY_PUBLIC_KEY } from './network';
 import { sleep } from './sleep';
 
@@ -239,7 +238,6 @@ export async function submitTransaction(
 
   const hash = sendResponse.hash;
   const expectedHash = Buffer.from(signedTx.hash()).toString('hex');
-  const expectedHash = toHex(tx.hash());
   if (!hash || hash !== expectedHash) {
     throw new VeriTixError(
       VeriTixErrorCode.UnexpectedTransactionHash,

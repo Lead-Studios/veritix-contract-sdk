@@ -11,19 +11,12 @@
  * contributions on this batch.
  */
 import type { ContractReader, RecurringRecord } from '../types';
-import type { RecurringRecord } from '../types';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import * as actions from './recurring-actions';
 import type { RecurringAmendment, RecurringInvoker } from './recurring-actions';
 
 /** Minimal read capability a `RecurringModule` needs — satisfied by `VeriTixClient`. */
 export type RecurringReader = ContractReader;
-export interface RecurringReader {
-  /** Simulates a read-only contract call and returns its decoded native value. */
-  simulateRead(method: string, args: unknown[]): Promise<unknown>;
-  /** Current ledger sequence; `VeriTixClient` provides this capability. */
-  getCurrentLedger?(): Promise<number>;
-}
 
 /**
  * Decodes a raw `scValToNative`-decoded recurring-schedule struct into a
@@ -99,7 +92,9 @@ export class RecurringModule {
     return actions.cancel(this.requireInvoker(), id);
   }
 
-  cancelBatch(ids: bigint[]) {
+  cancelBatch(
+    ids: bigint[],
+  ): Promise<{ cancelled: bigint[]; failed: { id: bigint; error: string }[] }> {
     return actions.cancelBatch(this.requireInvoker(), ids);
   }
 
