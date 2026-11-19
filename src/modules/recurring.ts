@@ -11,22 +11,34 @@
  * contributions on this batch.
  */
 import type { ContractReader, RecurringRecord } from '../types';
+import type { RecurringRecord } from '../types';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import * as actions from './recurring-actions';
 import type { RecurringAmendment, RecurringInvoker } from './recurring-actions';
 
 /** Minimal read capability a `RecurringModule` needs — satisfied by `VeriTixClient`. */
 export type RecurringReader = ContractReader;
+export interface RecurringReader {
+  /** Simulates a read-only contract call and returns its decoded native value. */
+  simulateRead(method: string, args: unknown[]): Promise<unknown>;
+  /** Current ledger sequence; `VeriTixClient` provides this capability. */
+  getCurrentLedger?(): Promise<number>;
+}
 
 /**
  * Decodes a raw `scValToNative`-decoded recurring-schedule struct into a
  * typed {@link RecurringRecord}, normalizing the contract's snake_case
  * fields to the SDK's camelCase surface.
  *
- * @throws {Error} if `raw` is not an object or is missing a required field.
+ * @throws {VeriTixError} with code `InvalidInput` if `raw` is not an object or
+ *   is missing a required field.
  */
 export function decodeRecurringRecord(raw: unknown): RecurringRecord {
   if (typeof raw !== 'object' || raw === null) {
-    throw new Error('recurring record is not an object');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'recurring record is not an object',
+    );
   }
   const r = raw as Record<string, unknown>;
   const id = r.id;
@@ -48,7 +60,10 @@ export function decodeRecurringRecord(raw: unknown): RecurringRecord {
     typeof paused !== 'boolean' ||
     typeof lastChargedLedger !== 'number'
   ) {
-    throw new Error('recurring record is missing one or more required fields');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'recurring record is missing one or more required fields',
+    );
   }
 
   return { id, payer, payee, amount, interval, active, paused, lastChargedLedger };
@@ -72,7 +87,10 @@ export class RecurringModule {
 
   private requireInvoker(): RecurringInvoker {
     if (!this.invoker) {
-      throw new Error('RecurringModule was constructed without a write capability');
+      throw new VeriTixError(
+        VeriTixErrorCode.NotImplemented,
+        'RecurringModule was constructed without a write capability',
+      );
     }
     return this.invoker;
   }
@@ -149,11 +167,17 @@ export class RecurringModule {
       return [];
     }
     if (!Array.isArray(raw)) {
-      throw new Error(`${method} did not return a vector`);
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidInput,
+        `${method} did not return a vector`,
+      );
     }
     return raw.map((entry) => {
       if (typeof entry !== 'bigint') {
-        throw new Error(`${method} returned a non-bigint recurring id`);
+        throw new VeriTixError(
+          VeriTixErrorCode.InvalidInput,
+          `${method} returned a non-bigint recurring id`,
+        );
       }
       return entry;
     });
@@ -162,13 +186,27 @@ export class RecurringModule {
   /**
    * True when `id`'s schedule is active, not paused, and its next charge
    * is due at or before `nowLedger` (#659).
+   *
+   * When `nowLedger` is omitted it is read from the reader's
+   * `getCurrentLedger()` capability, mirroring `EscrowModule.isExpired`.
    */
-  async isExecutable(id: bigint, nowLedger: number): Promise<boolean> {
+  async isExecutable(id: bigint, nowLedger?: number): Promise<boolean> {
     const record = await this.getRecurring(id);
     if (record === null || !record.active || record.paused) {
       return false;
     }
-    return nowLedger >= record.lastChargedLedger + record.interval;
+    const ledger = nowLedger ?? (await this.readCurrentLedger());
+    return ledger >= record.lastChargedLedger + record.interval;
+  }
+
+  private async readCurrentLedger(): Promise<number> {
+    if (!this.reader.getCurrentLedger) {
+      throw new VeriTixError(
+        VeriTixErrorCode.NotImplemented,
+        'isExecutable: reader has no getCurrentLedger() capability; pass nowLedger explicitly',
+      );
+    }
+    return this.reader.getCurrentLedger();
   }
 
   /** The next-due ledger and interval for `id`'s schedule, or `null` on a miss. */

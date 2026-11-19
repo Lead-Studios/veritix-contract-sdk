@@ -9,6 +9,7 @@
 import type { ContractInvoker, DisputeRecord } from '../types';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { decodeDisputeRecord } from './dispute';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /**
  * SDK-local pre-flight rule: a dispute may be expired once this many ledgers
@@ -155,6 +156,15 @@ function readAppealRecord(raw: Record<string, unknown>, method: string): Appeala
  *
  * The contract entrypoint remains `expire_dispute(caller, escrow_id)` and
  * returns nothing.
+ * #852 — the contract entrypoint is `expire_dispute(caller, escrow_id)`: it is
+ * keyed by the escrow the dispute is attached to, not by a dispute id, and
+ * `caller` must be the address that signs the transaction (the contract calls
+ * `caller.require_auth()`). The contract function returns nothing, so there is
+ * no updated record to hand back — re-read the dispute if you need one.
+ *
+ * @throws {VeriTixError} with code `InvalidInput` for a negative escrow id,
+ *   since ids are non-negative on-chain identifiers and a negative value can
+ *   only be a caller bug.
  */
 export async function expireDispute(
   invoker: ContractInvoker,
@@ -191,6 +201,9 @@ export async function expireDispute(
       VeriTixErrorCode.InvalidExpiryLedger,
       `expireDispute: resolution window has not passed: ${ledgersRemaining} ledger(s) remain`,
       String(ledgersRemaining),
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `invalid escrow id: ${escrowId}`,
     );
   }
 

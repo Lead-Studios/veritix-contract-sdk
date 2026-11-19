@@ -27,7 +27,10 @@ function decodeSplitRecipient(raw: unknown): SplitRecipient {
   const address = r.address;
   const shareBps = r.share_bps ?? r.shareBps;
   if (typeof address !== 'string' || typeof shareBps !== 'number') {
-    throw new Error('split recipient is missing address or shareBps');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'split recipient is missing address or shareBps',
+    );
   }
   return { address, shareBps };
 }
@@ -37,12 +40,15 @@ function decodeSplitRecipient(raw: unknown): SplitRecipient {
  * {@link SplitRecord}, normalizing the contract's snake_case fields to the
  * SDK's camelCase surface — no stubs, all fields fully decoded (#668).
  *
- * @throws {Error} if `raw` is not an object, is missing a required field,
- *   or `recipients` isn't a vector.
+ * @throws {VeriTixError} with code `InvalidInput` if `raw` is not an object,
+ *   is missing a required field, or `recipients` isn't a vector.
  */
 export function decodeSplitRecord(raw: unknown): SplitRecord {
   if (typeof raw !== 'object' || raw === null) {
-    throw new Error('split record is not an object');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'split record is not an object',
+    );
   }
   const r = raw as Record<string, unknown>;
   const id = r.id;
@@ -59,10 +65,16 @@ export function decodeSplitRecord(raw: unknown): SplitRecord {
     typeof distributed !== 'boolean' ||
     typeof cancelled !== 'boolean'
   ) {
-    throw new Error('split record is missing one or more required fields');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'split record is missing one or more required fields',
+    );
   }
   if (!Array.isArray(recipientsRaw)) {
-    throw new Error('split record recipients is not a vector');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'split record recipients is not a vector',
+    );
   }
 
   return {
@@ -90,7 +102,10 @@ export class SplitterModule {
 
   private requireInvoker(): SplitterInvoker {
     if (!this.invoker) {
-      throw new Error('SplitterModule was constructed without a write capability');
+      throw new VeriTixError(
+        VeriTixErrorCode.NotImplemented,
+        'SplitterModule was constructed without a write capability',
+      );
     }
     return this.invoker;
   }
@@ -138,7 +153,10 @@ export class SplitterModule {
       return [];
     }
     if (!Array.isArray(raw)) {
-      throw new Error('get_splits_by_sender did not return a vector');
+      throw new VeriTixError(
+        VeriTixErrorCode.InvalidInput,
+        'get_splits_by_sender did not return a vector',
+      );
     }
     return raw.map(decodeSplitRecord);
   }

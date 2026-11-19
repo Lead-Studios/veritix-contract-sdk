@@ -20,9 +20,17 @@ import {
 import type { Transaction } from '@stellar/stellar-sdk';
 
 import { DisputeModule } from './modules/dispute';
+import { SplitterModule } from './modules/splitter';
+import { RecurringModule } from './modules/recurring';
+import { AdminModule } from './modules/admin';
 import { TokenModule } from './modules/token';
 import { EscrowModule } from './modules/escrow';
 import type { ContractInvoker, EscrowRecord, TransactionResult } from './types';
+import { BatchModule } from './modules/batch';
+import { PauseControlModule } from './modules/pause-control';
+import { EscrowRefundModule } from './modules/escrow-refund';
+import { AdminRotationModule } from './modules/admin-rotation';
+import type { EscrowRecord, TransactionResult } from './types';
 import { VeriTixError, VeriTixErrorCode } from './utils/errors';
 import { DUMMY_PUBLIC_KEY, assertValidAddress } from './utils/network';
 import type { NetworkConfig } from './utils/network';
@@ -101,15 +109,34 @@ export class VeriTixClient implements ContractInvoker {
   /** Horizon client, created lazily on first use and reused afterwards. */
   private horizon: Horizon.Server | null = null;
 
+  readonly batch: BatchModule;
+  readonly pauseControl: PauseControlModule;
+  readonly escrowRefund: EscrowRefundModule;
+  readonly adminRotation: AdminRotationModule;
   readonly token: TokenModule;
   readonly escrow: EscrowModule;
   readonly dispute: DisputeModule;
+  readonly splitter: SplitterModule;
+  readonly recurring: RecurringModule;
+  readonly admin: AdminModule;
   private readonly keypair?: Keypair;
   private readonly listeners = new Map<string, Set<ClientListener>>();
 
   constructor(config: NetworkConfig, keypair?: Keypair) {
     this.config = config;
     this.keypair = keypair;
+    const invokeTx = (m: string, a: unknown[]) => this.invoke(m, a) as Promise<TransactionResult>;
+    this.batch = new BatchModule({ invoke: (m, a) => this.invoke(m, a) });
+    this.pauseControl = new PauseControlModule({
+      invoke: invokeTx,
+      simulate: (m, a) => this.simulate(m, a),
+      getPublicKey: () => this.getPublicKey(),
+    });
+    this.escrowRefund = new EscrowRefundModule({ invoke: invokeTx });
+    this.adminRotation = new AdminRotationModule({
+      invoke: invokeTx,
+      simulate: (m, a) => this.simulate(m, a),
+    });
     this.token = new TokenModule(config, keypair);
     this.escrow = new EscrowModule(config, keypair);
     this.dispute = new DisputeModule(
@@ -120,6 +147,19 @@ export class VeriTixClient implements ContractInvoker {
         invoke: (m, a) => this.invoke(m, a),
       },
     );
+    this.splitter = new SplitterModule(
+      { simulateRead: (m, a) => this.simulate(m, a) },
+      { invoke: (m, a) => this.invoke(m, a) },
+    );
+    this.recurring = new RecurringModule(
+      { simulateRead: (m, a) => this.simulate(m, a) },
+      { invoke: (m, a) => this.invoke(m, a) },
+    );
+    this.admin = new AdminModule({
+      simulate: (m, a) => this.simulate(m, a),
+      invoke: (m, a) => this.invoke(m, a),
+      getPublicKey: () => this.getPublicKey(),
+    });
   }
 
   /** Simulates a read-only contract call and returns its decoded value. */

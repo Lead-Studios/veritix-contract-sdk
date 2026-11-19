@@ -1,14 +1,18 @@
 # Escrow Batch Status Guide
 
-This document describes the `batchGetEscrowStatus()` RPC method provided by the SDK to optimize UI rendering of multiple escrows.
+> **Status:** the SDK does **not** provide a `batchGetEscrowStatus()` method. Earlier versions of
+> this page described one; it was never implemented.
 
-## Architecture
+To read several escrows in one call use `getEscrowsBatch()`. It returns one entry per id, or
+`null` for an id that does not exist:
 
-1. **Escrow Module**:
-   - `src/modules/escrow/escrow.service.ts`: Implements the batch lookup logic returning partial escrow state (only `status` fields) instead of full serialization.
+```ts
+const records = await client.escrow.getEscrowsBatch([1n, 2n, 3n]);
 
-2. **Validation Schemas & Interfaces**:
-   - `batchEscrowStatusResultSchema` and `BatchEscrowStatusResult` defined in `src/modules/escrow/escrow.schemas.ts`.
+records.forEach((record, i) => {
+  if (!record) return console.warn(`escrow ${i + 1} not found`);
+  console.log(record.released ? 'released' : record.refunded ? 'refunded' : 'open');
+});
+```
 
-3. **Testing**:
-   - `tests/modules/escrow/escrow.service.spec.ts`: Validates that valid IDs return statuses and invalid IDs map to `failedIds`.
+For a single escrow, `client.escrow.isSettled(id)` returns whether it is released or refunded.

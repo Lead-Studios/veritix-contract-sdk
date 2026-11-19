@@ -11,6 +11,8 @@
  * since `client.ts` is shared across several in-flight contributions).
  */
 import type { ContractReader, DisputeRecord } from '../types';
+import type { DisputeRecord } from '../types';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import * as actions from './dispute-actions';
 import * as lifecycle from './dispute-lifecycle-actions';
 import type { DisputeInvoker } from './dispute-actions';
@@ -23,11 +25,15 @@ export type DisputeReader = ContractReader;
  * {@link DisputeRecord}. Soroban structs decode to snake_case keys, so this
  * is the single place that normalizes them to the SDK's camelCase surface.
  *
- * @throws {Error} if `raw` is not an object or is missing a required field.
+ * @throws {VeriTixError} with code `InvalidInput` if `raw` is not an object or
+ *   is missing a required field.
  */
 export function decodeDisputeRecord(raw: unknown): DisputeRecord {
   if (typeof raw !== 'object' || raw === null) {
-    throw new Error('dispute record is not an object');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'dispute record is not an object',
+    );
   }
   const r = raw as Record<string, unknown>;
   const id = r.id;
@@ -45,7 +51,10 @@ export function decodeDisputeRecord(raw: unknown): DisputeRecord {
     typeof status !== 'string' ||
     typeof openedAt !== 'number'
   ) {
-    throw new Error('dispute record is missing one or more required fields');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'dispute record is missing one or more required fields',
+    );
   }
 
   return { id, escrowId, claimant, resolver, status, openedAt };
@@ -59,7 +68,10 @@ export class DisputeModule {
 
   private requireInvoker(): DisputeInvoker {
     if (!this.invoker) {
-      throw new Error('DisputeModule was constructed without a write capability');
+      throw new VeriTixError(
+        VeriTixErrorCode.NotConnected,
+        'DisputeModule was constructed without a write capability',
+      );
     }
     return this.invoker;
   }

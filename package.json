@@ -54,19 +54,20 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/veritix/contract-sdk.git"
+    "url": "https://github.com/Lead-Studios/veritix-contract-sdk.git"
   },
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=20.0.0",
     "npm": ">=9.0.0"
   },
   "peerDependencies": {
     "@stellar/stellar-sdk": ">=12.3.0"
   },
-  "dependencies": {
-    "@stellar/freighter-api": "^6.0.1"
-  },
   "devDependencies": {
+    "@changesets/cli": "^2.27.0",
+    "@stryker-mutator/core": "^8.2.0",
+    "tsup": "^8.1.0",
+    "typescript": "^5.4.5",
     "@types/jest": "^29.5.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",

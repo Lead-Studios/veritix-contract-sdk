@@ -8,9 +8,20 @@
  */
 import type { ContractInvoker, DisputeRecord } from '../types';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { assertValidAddress } from '../utils/network';
 
 /** @deprecated Use {@link ContractInvoker} from the shared types module. */
 export type DisputeInvoker = ContractInvoker;
+
+function assertNonNegativeId(id: bigint | number, field: string): void {
+  const valid = typeof id === 'bigint' ? id >= 0n : Number.isInteger(id) && id >= 0;
+  if (!valid) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `${field} must be a non-negative integer, got ${String(id)}`,
+    );
+  }
+}
 
 /**
  * Raises a dispute against `escrowId` on behalf of `caller`.
@@ -31,7 +42,28 @@ export async function raiseDispute(
   caller: string,
   escrowId: bigint
 ): Promise<void> {
+  assertValidAddress(caller, 'claimant');
+  assertNonNegativeId(escrowId, 'escrowId');
   await invoker.invoke('raise_dispute', [caller, escrowId]);
+}
+
+/**
+ * Legacy `openDispute` name for {@link raiseDispute}: the claimant is the
+ * authorising caller. Any supplied `resolver` is validated but is not passed
+ * to the contract, which configures the arbiter on the escrow instead.
+ */
+export function openDispute(
+  invoker: DisputeInvoker,
+  claimant: string,
+  escrowId: bigint,
+  resolver?: string
+): Promise<void> {
+  assertValidAddress(claimant, 'claimant');
+  if (resolver !== undefined) {
+    assertValidAddress(resolver, 'resolver');
+  }
+  assertNonNegativeId(escrowId, 'escrowId');
+  return raiseDispute(invoker, claimant, escrowId);
 }
 
 /**
@@ -52,6 +84,9 @@ export async function resolveDispute(
   escrowId: bigint,
   winner: string
 ): Promise<void> {
+  assertValidAddress(resolver, 'resolver');
+  assertValidAddress(winner, 'winner');
+  assertNonNegativeId(escrowId, 'escrowId');
   await invoker.invoke('resolve_dispute', [resolver, escrowId, winner]);
 }
 
@@ -63,6 +98,9 @@ export async function resolveDispute(
  * not `get_dispute_history`. The previous call did not exist, so every read
  * failed. The return type is unchanged: the contract returns `Vec<u32>`, which
  * is already what this method hands back.
+ *
+ * @throws {VeriTixError} with code `DisputeInvalidState` if the contract
+ *   returns a malformed dispute history.
  */
 export async function getDisputeHistory(
   invoker: ContractInvoker,
@@ -73,11 +111,17 @@ export async function getDisputeHistory(
     return [];
   }
   if (!Array.isArray(raw)) {
-    throw new Error('get_dispute_history_for_escrow did not return a vector');
+    throw new VeriTixError(
+      VeriTixErrorCode.DisputeInvalidState,
+      'get_dispute_history_for_escrow did not return a vector',
+    );
   }
   return raw.map((entry) => {
     if (typeof entry !== 'bigint') {
-      throw new Error('get_dispute_history_for_escrow returned a non-bigint dispute id');
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeInvalidState,
+        'get_dispute_history_for_escrow returned a non-bigint dispute id',
+      );
     }
     return entry;
   });

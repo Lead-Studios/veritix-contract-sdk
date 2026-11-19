@@ -13,6 +13,10 @@
  * against the current `RecurringRecord` type to avoid repeating that.
  */
 import type { ContractInvoker } from '../types';
+import { MAX_BATCH_SIZE } from '../utils/constants';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { assertValidAddress } from '../utils/network';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /** @deprecated Use {@link ContractInvoker} from the shared types module. */
 export type RecurringInvoker = ContractInvoker;
@@ -31,6 +35,13 @@ export async function cancelBatch(
   invoker: ContractInvoker,
   ids: bigint[]
 ): Promise<{ cancelled: bigint[]; failed: { id: bigint; error: string }[] }> {
+  if (ids.length > MAX_BATCH_SIZE) {
+    throw new VeriTixError(
+      VeriTixErrorCode.BatchTooLarge,
+      `cancelBatch supports at most ${MAX_BATCH_SIZE} ids (got ${ids.length})`,
+    );
+  }
+
   const cancelled: bigint[] = [];
   const failed: { id: bigint; error: string }[] = [];
 
@@ -65,8 +76,9 @@ export interface RecurringAmendment {
 /**
  * Changes a recurring schedule's amount and/or charge interval.
  *
- * @throws {Error} if neither `amount` nor `interval` is provided, since an
- *   empty amendment is a caller bug rather than a valid no-op request.
+ * @throws {VeriTixError} with code `InvalidInput` if neither `amount` nor
+ *   `interval` is provided, since an empty amendment is a caller bug rather
+ *   than a valid no-op request.
  */
 export async function amendRecurring(
   invoker: ContractInvoker,
@@ -74,7 +86,30 @@ export async function amendRecurring(
   amendment: RecurringAmendment
 ): Promise<void> {
   if (amendment.amount === undefined && amendment.interval === undefined) {
-    throw new Error('amendRecurring requires at least one of amount or interval');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'amendRecurring requires at least one of amount or interval',
+    );
+  }
+  if (
+    amendment.amount !== undefined &&
+    (typeof amendment.amount !== 'bigint' || amendment.amount <= 0n)
+  ) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidAmount,
+      `amendRecurring: amount must be greater than zero, got ${String(amendment.amount)}`,
+    );
+  }
+  if (
+    amendment.interval !== undefined &&
+    (typeof amendment.interval !== 'number' ||
+      !Number.isInteger(amendment.interval) ||
+      amendment.interval <= 0)
+  ) {
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      `amendRecurring: interval must be a positive integer, got ${String(amendment.interval)}`,
+    );
   }
   await invoker.invoke('amend_recurring', [id, amendment.amount ?? null, amendment.interval ?? null]);
 }
@@ -95,5 +130,6 @@ export async function transferPayer(
   id: bigint,
   newPayer: string
 ): Promise<void> {
+  assertValidAddress(newPayer, 'newPayer');
   await invoker.invoke('transfer_recurring_payer', [caller, id, newPayer]);
 }
