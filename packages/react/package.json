@@ -18,12 +18,7 @@
   },
   "peerDependencies": {
     "react": ">=18",
-    "@veritix/contract-sdk": "*"
-  },
-  "peerDependenciesMeta": {
-    "@veritix/contract-sdk": {
-      "optional": true
-    }
+    "@veritix/contract-sdk": "^0.1.0"
   },
   "devDependencies": {
     "react": "^18.3.1",
