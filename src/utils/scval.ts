@@ -118,7 +118,7 @@ export function boolToScVal(value: boolean): xdr.ScVal {
  *   converting would silently lose precision).
  */
 export function scValToNumber(val: xdr.ScVal): number {
-  const native = scValToNative(val);
+  const native: unknown = scValToNative(val);
   if (typeof native === 'number') return native;
   if (typeof native === 'bigint') {
     if (native > BigInt(Number.MAX_SAFE_INTEGER) || native < BigInt(Number.MIN_SAFE_INTEGER)) {
