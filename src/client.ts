@@ -20,6 +20,9 @@ import {
 import type { Transaction } from '@stellar/stellar-sdk';
 
 import { DisputeModule } from './modules/dispute';
+import { SplitterModule } from './modules/splitter';
+import { RecurringModule } from './modules/recurring';
+import { AdminModule } from './modules/admin';
 import { TokenModule } from './modules/token';
 import { EscrowModule } from './modules/escrow';
 import type { EscrowRecord, TransactionResult } from './types';
@@ -104,6 +107,9 @@ export class VeriTixClient {
   readonly token: TokenModule;
   readonly escrow: EscrowModule;
   readonly dispute: DisputeModule;
+  readonly splitter: SplitterModule;
+  readonly recurring: RecurringModule;
+  readonly admin: AdminModule;
   private readonly keypair?: Keypair;
   private readonly listeners = new Map<string, Set<ClientListener>>();
 
@@ -116,6 +122,19 @@ export class VeriTixClient {
       { simulateRead: (m, a) => this.simulate(m, a) },
       { simulateRead: (m, a) => this.simulate(m, a), invoke: (m, a) => this.invoke(m, a) },
     );
+    this.splitter = new SplitterModule(
+      { simulateRead: (m, a) => this.simulate(m, a) },
+      { invoke: (m, a) => this.invoke(m, a) },
+    );
+    this.recurring = new RecurringModule(
+      { simulateRead: (m, a) => this.simulate(m, a) },
+      { invoke: (m, a) => this.invoke(m, a) },
+    );
+    this.admin = new AdminModule({
+      simulate: (m, a) => this.simulate(m, a),
+      invoke: (m, a) => this.invoke(m, a),
+      getPublicKey: () => this.getPublicKey(),
+    });
   }
 
   /**
