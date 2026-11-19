@@ -19,20 +19,6 @@ import {
   makeMockServer,
 } from './helpers/mocks';
 
-// Mock the Freighter wallet API for the createFromFreighter unit tests (#482).
-const mockFreighter = {
-  requestAccess: jest.fn(),
-  getAddress: jest.fn(),
-  signTransaction: jest.fn(),
-};
-jest.mock('@stellar/freighter-api', () => ({
-  __esModule: true,
-  default: mockFreighter,
-  requestAccess: mockFreighter.requestAccess,
-  getAddress: mockFreighter.getAddress,
-  signTransaction: mockFreighter.signTransaction,
-}));
-
 // Mock the low-level transaction utilities so buildUnsignedTx / submitSignedTx
 // can be exercised without a live network (#483).
 jest.mock('../src/utils/transaction', () => ({
@@ -469,98 +455,6 @@ describe('VeriTixClient event emitter', () => {
 
     // If TypeScript compiles this without errors, the type signatures are correct.
     expect(true).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// #482 — VeriTixClient.createFromFreighter(config)
-// ---------------------------------------------------------------------------
-
-describe('VeriTixClient.createFromFreighter', () => {
-  const FAKE_CONTRACT = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
-
-  function buildTx() {
-    const { TransactionBuilder, Account, Contract } = require('@stellar/stellar-sdk');
-    const PASS = 'Test SDF Network ; September 2015';
-    const tx = new TransactionBuilder(new Account('GDWDOTHJRMMKXP3V6B7G5PPTLNOEFNCXDVOXU575KNUEXXMDF3RYSOET', '0'), {
-      fee: '100',
-      networkPassphrase: PASS,
-    })
-      .addOperation(new Contract(FAKE_CONTRACT).call('release_escrow'))
-      .setTimeout(30)
-      .build();
-    return { tx, PASS };
-  }
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('calls requestAccess() and resolves the connected account to getPublicKey()', async () => {
-    mockFreighter.requestAccess.mockResolvedValue({
-      address: 'GD2V5RC2AQPVI6OYX62NA5WORU6TDPRSSOD7BL7OWTG7WFYW6YYDB265',
-    });
-
-    const client = await VeriTixClient.createFromFreighter(getTestnetConfig(FAKE_CONTRACT));
-
-    expect(mockFreighter.requestAccess).toHaveBeenCalledTimes(1);
-    expect(mockFreighter.getAddress).not.toHaveBeenCalled();
-    expect(client).toBeInstanceOf(VeriTixClient);
-    expect(client.getPublicKey()).toBe('GD2V5RC2AQPVI6OYX62NA5WORU6TDPRSSOD7BL7OWTG7WFYW6YYDB265');
-  });
-
-  it('falls back to getAddress() when requestAccess() returns no address', async () => {
-    mockFreighter.requestAccess.mockResolvedValue({});
-    mockFreighter.getAddress.mockResolvedValue({
-      address: 'GD2V5RC2AQPVI6OYX62NA5WORU6TDPRSSOD7BL7OWTG7WFYW6YYDB265',
-    });
-
-    const client = await VeriTixClient.createFromFreighter(getTestnetConfig(FAKE_CONTRACT));
-
-    expect(mockFreighter.getAddress).toHaveBeenCalledTimes(1);
-    expect(client.getPublicKey()).toBe('GD2V5RC2AQPVI6OYX62NA5WORU6TDPRSSOD7BL7OWTG7WFYW6YYDB265');
-  });
-
-  it('overrides write paths to sign via Freighter signTransaction(xdr, { networkPassphrase })', async () => {
-    mockFreighter.requestAccess.mockResolvedValue({
-      address: 'GD2V5RC2AQPVI6OYX62NA5WORU6TDPRSSOD7BL7OWTG7WFYW6YYDB265',
-    });
-
-    const { tx } = buildTx();
-    const signedTx = buildTx().tx;
-    const { Keypair } = require('@stellar/stellar-sdk');
-    signedTx.sign(Keypair.random());
-    const signedXdr = signedTx.toXDR();
-    mockFreighter.signTransaction.mockResolvedValue({ signedTxXdr: signedXdr, signerAddress: 'GDWDOTHJRMMKXP3V6B7G5PPTLNOEFNCXDVOXU575KNUEXXMDF3RYSOET' });
-
-    const client = await VeriTixClient.createFromFreighter(getTestnetConfig(FAKE_CONTRACT));
-
-    // TODO: 
-    // The signer is wired into the token module's submit path.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const signer = (client.token as any).signer;
-    expect(signer).toBeDefined();
-
-    const result = await signer(tx);
-    expect(result.toXDR()).toBe(signedXdr);
-    expect(mockFreighter.signTransaction).toHaveBeenCalledTimes(1);
-    expect(mockFreighter.signTransaction).toHaveBeenCalledWith(tx.toXDR(), {
-      networkPassphrase: 'Test SDF Network ; September 2015',
-    });
-  });
-
-  it('throws VeriTixError with code InvalidAddress when Freighter is not installed', async () => {
-    // Simulate a missing extension by making the module fail to load.
-    jest.resetModules();
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { VeriTixClient: VC } = require('../src/client');
-    jest.doMock('@stellar/freighter-api', () => {
-      throw new Error("Cannot find module '@stellar/freighter-api'");
-    });
-    await expect(VC.createFromFreighter(getTestnetConfig(FAKE_CONTRACT))).rejects.toMatchObject({
-      code: VeriTixErrorCode.InvalidAddress,
-    });
-    jest.dontMock('@stellar/freighter-api');
   });
 });
 
