@@ -7,6 +7,7 @@
  * contributor on this batch.
  */
 import type { SplitRecipient } from '../types';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /** Minimal capability these actions need — satisfied by `VeriTixClient`. */
 export interface SplitterInvoker {
@@ -22,22 +23,32 @@ const TOTAL_BPS = 10_000;
  * out about a malformed split before spending a transaction on it (#669's
  * sibling validation, reused here as the guard `createSplit` runs first).
  *
- * @throws {Error} if `recipients` is empty, any share is not a positive
- *   integer, or the shares don't sum to exactly 10 000 bps.
+ * @throws {VeriTixError} with code `InvalidInput` if `recipients` is empty,
+ *   or `SplitInvalidShares` if any share is not a positive integer or the
+ *   shares don't sum to exactly 10 000 bps.
  */
 export function validateRecipients(recipients: SplitRecipient[]): void {
   if (recipients.length === 0) {
-    throw new Error('a split requires at least one recipient');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'a split requires at least one recipient',
+    );
   }
   let total = 0;
   for (const { shareBps } of recipients) {
     if (!Number.isInteger(shareBps) || shareBps <= 0) {
-      throw new Error(`recipient share must be a positive integer bps value, got ${shareBps}`);
+      throw new VeriTixError(
+        VeriTixErrorCode.SplitInvalidShares,
+        `recipient share must be a positive integer bps value, got ${shareBps}`,
+      );
     }
     total += shareBps;
   }
   if (total !== TOTAL_BPS) {
-    throw new Error(`recipient shares must sum to ${TOTAL_BPS} bps, got ${total}`);
+    throw new VeriTixError(
+      VeriTixErrorCode.SplitInvalidShares,
+      `recipient shares must sum to ${TOTAL_BPS} bps, got ${total}`,
+    );
   }
 }
 
@@ -56,7 +67,10 @@ export async function createSplit(
   validateRecipients(recipients);
   const result = await invoker.invoke('create_split', [sender, recipients, totalAmount]);
   if (typeof result !== 'bigint') {
-    throw new Error('create_split did not return a split id');
+    throw new VeriTixError(
+      VeriTixErrorCode.SplitNotFound,
+      'create_split did not return a split id',
+    );
   }
   return result;
 }
