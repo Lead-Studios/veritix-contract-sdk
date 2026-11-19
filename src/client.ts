@@ -25,6 +25,7 @@ import { RecurringModule } from './modules/recurring';
 import { AdminModule } from './modules/admin';
 import { TokenModule } from './modules/token';
 import { EscrowModule } from './modules/escrow';
+import type { ContractInvoker, EscrowRecord, TransactionResult } from './types';
 import { BatchModule } from './modules/batch';
 import { PauseControlModule } from './modules/pause-control';
 import { EscrowRefundModule } from './modules/escrow-refund';
@@ -99,7 +100,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-export class VeriTixClient {
+export class VeriTixClient implements ContractInvoker {
   readonly config: NetworkConfig;
   private connected = false;
   /** Soroban RPC server, created on connect(); see {@link useServerForTesting}. */
@@ -140,7 +141,11 @@ export class VeriTixClient {
     this.escrow = new EscrowModule(config, keypair);
     this.dispute = new DisputeModule(
       { simulateRead: (m, a) => this.simulate(m, a) },
-      { simulateRead: (m, a) => this.simulate(m, a), invoke: (m, a) => this.invoke(m, a) },
+      {
+        simulateRead: (m, a) => this.simulate(m, a),
+        getCurrentLedger: () => this.getCurrentLedger(),
+        invoke: (m, a) => this.invoke(m, a),
+      },
     );
     this.splitter = new SplitterModule(
       { simulateRead: (m, a) => this.simulate(m, a) },
@@ -155,6 +160,11 @@ export class VeriTixClient {
       invoke: (m, a) => this.invoke(m, a),
       getPublicKey: () => this.getPublicKey(),
     });
+  }
+
+  /** Simulates a read-only contract call and returns its decoded value. */
+  async simulateRead(method: string, args: unknown[] = []): Promise<unknown> {
+    return this.simulate(method, args);
   }
 
   /**
@@ -262,9 +272,9 @@ export class VeriTixClient {
   async getContractMetadata(): Promise<ContractMetadata> {
     this.requireConnected();
     const [rawName, rawSymbol, rawDecimals] = await Promise.all([
-      this.simulateRead('name'),
-      this.simulateRead('symbol'),
-      this.simulateRead('decimals'),
+      this.simulateContractRead('name'),
+      this.simulateContractRead('symbol'),
+      this.simulateContractRead('decimals'),
     ]);
     const name = expectString(rawName, 'name');
     const symbol = expectString(rawSymbol, 'symbol');
@@ -272,7 +282,7 @@ export class VeriTixClient {
 
     let version: string | undefined;
     try {
-      const versionValue = await this.simulateRead('version');
+      const versionValue = await this.simulateContractRead('version');
       version = typeof versionValue === 'string' ? versionValue : String(versionValue);
     } catch {
       version = undefined;
@@ -410,7 +420,7 @@ export class VeriTixClient {
    */
   async simulate(method: string, args: unknown[] = []): Promise<unknown> {
     this.requireConnected();
-    return this.simulateRead(method, args.map((a) => nativeToScVal(a)));
+    return this.simulateContractRead(method, args.map((a) => nativeToScVal(a)));
   }
 
   /**
@@ -531,7 +541,7 @@ export class VeriTixClient {
     }
   }
 
-  private async simulateRead(method: string, args: xdr.ScVal[] = []): Promise<unknown> {
+  private async simulateContractRead(method: string, args: xdr.ScVal[] = []): Promise<unknown> {
     const server = this.server;
     if (!server?.simulateTransaction) {
       throw new VeriTixError(

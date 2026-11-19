@@ -10,12 +10,14 @@
  * for a maintainer, since `client.ts` is shared across several in-flight
  * contributions on this batch.
  */
+import type { ContractReader, RecurringRecord } from '../types';
 import type { RecurringRecord } from '../types';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import * as actions from './recurring-actions';
 import type { RecurringAmendment, RecurringInvoker } from './recurring-actions';
 
 /** Minimal read capability a `RecurringModule` needs — satisfied by `VeriTixClient`. */
+export type RecurringReader = ContractReader;
 export interface RecurringReader {
   /** Simulates a read-only contract call and returns its decoded native value. */
   simulateRead(method: string, args: unknown[]): Promise<unknown>;

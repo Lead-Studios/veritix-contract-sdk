@@ -6,17 +6,12 @@
  * separate file since `dispute.ts` has an in-flight contribution from
  * another contributor on this batch.
  */
-import type { DisputeRecord } from '../types';
+import type { ContractInvoker, DisputeRecord } from '../types';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { assertValidAddress } from '../utils/network';
 
-/** Minimal capability `DisputeActions` needs — satisfied by `VeriTixClient`. */
-export interface DisputeInvoker {
-  /** Simulates a read-only contract call and returns its decoded native value. */
-  simulateRead(method: string, args: unknown[]): Promise<unknown>;
-  /** Simulates, signs, and submits a state-changing contract call. */
-  invoke(method: string, args: unknown[]): Promise<unknown>;
-}
+/** @deprecated Use {@link ContractInvoker} from the shared types module. */
+export type DisputeInvoker = ContractInvoker;
 
 function assertNonNegativeId(id: bigint | number, field: string): void {
   const valid = typeof id === 'bigint' ? id >= 0n : Number.isInteger(id) && id >= 0;
@@ -43,7 +38,7 @@ function assertNonNegativeId(id: bigint | number, field: string): void {
  * `escrowId`.
  */
 export async function raiseDispute(
-  invoker: DisputeInvoker,
+  invoker: ContractInvoker,
   caller: string,
   escrowId: bigint
 ): Promise<void> {
@@ -84,7 +79,7 @@ export function openDispute(
  * `resolver` must be the address that signs the transaction.
  */
 export async function resolveDispute(
-  invoker: DisputeInvoker,
+  invoker: ContractInvoker,
   resolver: string,
   escrowId: bigint,
   winner: string
@@ -108,7 +103,7 @@ export async function resolveDispute(
  *   returns a malformed dispute history.
  */
 export async function getDisputeHistory(
-  invoker: DisputeInvoker,
+  invoker: ContractInvoker,
   escrowId: bigint
 ): Promise<bigint[]> {
   const raw = await invoker.simulateRead('get_dispute_history_for_escrow', [escrowId]);
@@ -143,7 +138,7 @@ export async function getDisputeHistory(
  * a function that does not exist and fail with an opaque RPC error, this
  * throws `NotImplemented` naming the entrypoint the contract would need.
  */
-export function getOpenDisputes(_invoker: DisputeInvoker): Promise<DisputeRecord[]> {
+export function getOpenDisputes(_invoker: ContractInvoker): Promise<DisputeRecord[]> {
   return Promise.reject(
     new VeriTixError(
       VeriTixErrorCode.NotImplemented,
@@ -164,7 +159,7 @@ export function getOpenDisputes(_invoker: DisputeInvoker): Promise<DisputeRecord
  * naming the entrypoint the contract would need.
  */
 export function getDisputesByResolver(
-  _invoker: DisputeInvoker,
+  _invoker: ContractInvoker,
   resolver: string
 ): Promise<DisputeRecord[]> {
   return Promise.reject(

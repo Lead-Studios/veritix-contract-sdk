@@ -12,19 +12,17 @@
  * across parallel scaffolds; this module is written from a clean slate
  * against the current `RecurringRecord` type to avoid repeating that.
  */
+import type { ContractInvoker } from '../types';
 import { MAX_BATCH_SIZE } from '../utils/constants';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { assertValidAddress } from '../utils/network';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
-/** Minimal capability these actions need — satisfied by `VeriTixClient`. */
-export interface RecurringInvoker {
-  /** Simulates, signs, and submits a state-changing contract call. */
-  invoke(method: string, args: unknown[]): Promise<unknown>;
-}
+/** @deprecated Use {@link ContractInvoker} from the shared types module. */
+export type RecurringInvoker = ContractInvoker;
 
 /** Cancels a single recurring schedule. No further charges will execute. */
-export async function cancel(invoker: RecurringInvoker, id: bigint): Promise<void> {
+export async function cancel(invoker: ContractInvoker, id: bigint): Promise<void> {
   await invoker.invoke('cancel_recurring', [id]);
 }
 
@@ -34,7 +32,7 @@ export async function cancel(invoker: RecurringInvoker, id: bigint): Promise<voi
  * caller can retry only the ones that actually failed.
  */
 export async function cancelBatch(
-  invoker: RecurringInvoker,
+  invoker: ContractInvoker,
   ids: bigint[]
 ): Promise<{ cancelled: bigint[]; failed: { id: bigint; error: string }[] }> {
   if (ids.length > MAX_BATCH_SIZE) {
@@ -60,12 +58,12 @@ export async function cancelBatch(
 }
 
 /** Pauses a recurring schedule — charges stop executing until resumed. */
-export async function pauseRecurring(invoker: RecurringInvoker, id: bigint): Promise<void> {
+export async function pauseRecurring(invoker: ContractInvoker, id: bigint): Promise<void> {
   await invoker.invoke('pause_recurring', [id]);
 }
 
 /** Resumes a previously paused recurring schedule. */
-export async function resumeRecurring(invoker: RecurringInvoker, id: bigint): Promise<void> {
+export async function resumeRecurring(invoker: ContractInvoker, id: bigint): Promise<void> {
   await invoker.invoke('resume_recurring', [id]);
 }
 
@@ -83,7 +81,7 @@ export interface RecurringAmendment {
  *   than a valid no-op request.
  */
 export async function amendRecurring(
-  invoker: RecurringInvoker,
+  invoker: ContractInvoker,
   id: bigint,
   amendment: RecurringAmendment
 ): Promise<void> {
@@ -127,7 +125,7 @@ export async function amendRecurring(
  * calls `caller.require_auth()`); the new payer authorises nothing itself.
  */
 export async function transferPayer(
-  invoker: RecurringInvoker,
+  invoker: ContractInvoker,
   caller: string,
   id: bigint,
   newPayer: string

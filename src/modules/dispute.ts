@@ -10,6 +10,7 @@
  * addition — left as a follow-up, out of scope for this single-file change,
  * since `client.ts` is shared across several in-flight contributions).
  */
+import type { ContractReader, DisputeRecord } from '../types';
 import type { DisputeRecord } from '../types';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import * as actions from './dispute-actions';
@@ -17,10 +18,7 @@ import * as lifecycle from './dispute-lifecycle-actions';
 import type { DisputeInvoker } from './dispute-actions';
 
 /** Minimal read capability a `DisputeModule` needs — satisfied by `VeriTixClient`. */
-export interface DisputeReader {
-  /** Simulates a read-only contract call and returns its decoded native value. */
-  simulateRead(method: string, args: unknown[]): Promise<unknown>;
-}
+export type DisputeReader = ContractReader;
 
 /**
  * Decodes a raw `scValToNative`-decoded dispute struct into a typed
