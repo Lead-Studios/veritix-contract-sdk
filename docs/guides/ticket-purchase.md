@@ -69,26 +69,26 @@ export class VeriTixService {
     orderId: string,
     buyerAddress: string,
     organizerAddress: string,
-    priceXLM: number,
+    tokenAddress: string,
+    priceStroops: bigint,
     eventLedger: number,
   ) {
     assertValidAddress(buyerAddress, 'buyerAddress');
     assertValidAddress(organizerAddress, 'organizerAddress');
+    assertValidAddress(tokenAddress, 'tokenAddress');
 
     try {
-      const result = await this.client.escrow.createEscrow({
-        beneficiary: organizerAddress,
-        amount: BigInt(Math.round(priceXLM * 10_000_000)), // XLM → stroops
-        expiryLedger: eventLedger + 17_280,               // ~1 day buffer
-        memos: [`order:${orderId}`],
+      // createTicketEscrow() submits the transaction and resolves with the new escrow id.
+      const escrowId = await this.client.escrow.createTicketEscrow({
+        buyer: buyerAddress,
+        organizer: organizerAddress,
+        token: tokenAddress,
+        ticketPrice: priceStroops, // stroops
+        eventLedger,
+        ticketRef: `order:${orderId}`,
       });
 
-      const confirmed = await this.client.watchTransaction(result.hash, {
-        intervalMs: 2_000,
-        timeoutMs: 30_000,
-      });
-
-      return { escrowId: result.returnValue, txHash: confirmed.hash };
+      return { escrowId };
     } catch (err) {
       this.handleError(err);
     }
@@ -181,7 +181,8 @@ export class TicketsController {
       orderId: string;
       buyerAddress: string;
       organizerAddress: string;
-      priceXLM: number;
+      tokenAddress: string;
+      priceStroops: string;
       eventLedger: number;
     },
   ) {
@@ -189,7 +190,8 @@ export class TicketsController {
       body.orderId,
       body.buyerAddress,
       body.organizerAddress,
-      body.priceXLM,
+      body.tokenAddress,
+      BigInt(body.priceStroops),
       body.eventLedger,
     );
   }
