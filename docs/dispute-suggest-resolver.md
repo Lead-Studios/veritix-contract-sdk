@@ -1,14 +1,19 @@
-# Dispute Suggest Resolver Guide
+# Dispute Resolver Lookup Guide
 
-This document covers the implementation of the `suggestResolver` functionality within the Veritix SDK.
+> **Status:** the SDK does **not** provide a `suggestResolver()` method. Earlier versions of this
+> page described one; it was never implemented.
 
-## Architecture
+Use the existing `DisputeModule` reads instead (available as `client.dispute`):
 
-1. **Dispute Module**:
-   - `src/modules/dispute/dispute.service.ts`: Exposes `suggestResolver(category)` to fetch scored resolvers from the off-chain Veritix registry.
+```ts
+// All disputes currently open
+const open = await client.dispute.getOpenDisputes();
 
-2. **Validation Schemas**:
-   - `suggestResolverResultSchema` ensures the data returned from the registry conforms to the SDK's internal `DisputeResolver` typing.
+// Disputes assigned to a given resolver
+const mine = await client.dispute.getDisputesByResolver(resolverAddress);
 
-3. **Testing**:
-   - Covered in `tests/modules/dispute/dispute.service.spec.ts`.
+// State of one escrow's dispute
+const dispute = await client.dispute.getDispute(escrowId);
+```
+
+Choosing a resolver (scoring, category matching) is left to your application.

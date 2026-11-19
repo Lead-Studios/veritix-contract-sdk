@@ -15,6 +15,7 @@
 import { MAX_BATCH_SIZE } from '../utils/constants';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { assertValidAddress } from '../utils/network';
+import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /** Minimal capability these actions need — satisfied by `VeriTixClient`. */
 export interface RecurringInvoker {
@@ -77,8 +78,9 @@ export interface RecurringAmendment {
 /**
  * Changes a recurring schedule's amount and/or charge interval.
  *
- * @throws {Error} if neither `amount` nor `interval` is provided, since an
- *   empty amendment is a caller bug rather than a valid no-op request.
+ * @throws {VeriTixError} with code `InvalidInput` if neither `amount` nor
+ *   `interval` is provided, since an empty amendment is a caller bug rather
+ *   than a valid no-op request.
  */
 export async function amendRecurring(
   invoker: RecurringInvoker,
@@ -86,7 +88,10 @@ export async function amendRecurring(
   amendment: RecurringAmendment
 ): Promise<void> {
   if (amendment.amount === undefined && amendment.interval === undefined) {
-    throw new Error('amendRecurring requires at least one of amount or interval');
+    throw new VeriTixError(
+      VeriTixErrorCode.InvalidInput,
+      'amendRecurring requires at least one of amount or interval',
+    );
   }
   if (
     amendment.amount !== undefined &&

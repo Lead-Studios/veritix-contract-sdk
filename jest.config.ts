@@ -3,11 +3,6 @@ import type { Config } from 'jest';
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.test.json',
-    },
-  },
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.{test,spec}.ts'],
   // uint8array-extras (pulled in by @stellar/stellar-sdk) is ESM-only; transpile it to CJS.
