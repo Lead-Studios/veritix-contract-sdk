@@ -68,6 +68,9 @@ export async function resolveDispute(
  * not `get_dispute_history`. The previous call did not exist, so every read
  * failed. The return type is unchanged: the contract returns `Vec<u32>`, which
  * is already what this method hands back.
+ *
+ * @throws {VeriTixError} with code `DisputeInvalidState` if the contract
+ *   returns a malformed dispute history.
  */
 export async function getDisputeHistory(
   invoker: DisputeInvoker,
@@ -78,11 +81,17 @@ export async function getDisputeHistory(
     return [];
   }
   if (!Array.isArray(raw)) {
-    throw new Error('get_dispute_history_for_escrow did not return a vector');
+    throw new VeriTixError(
+      VeriTixErrorCode.DisputeInvalidState,
+      'get_dispute_history_for_escrow did not return a vector',
+    );
   }
   return raw.map((entry) => {
     if (typeof entry !== 'bigint') {
-      throw new Error('get_dispute_history_for_escrow returned a non-bigint dispute id');
+      throw new VeriTixError(
+        VeriTixErrorCode.DisputeInvalidState,
+        'get_dispute_history_for_escrow returned a non-bigint dispute id',
+      );
     }
     return entry;
   });
