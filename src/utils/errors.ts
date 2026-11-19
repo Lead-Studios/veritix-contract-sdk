@@ -112,10 +112,10 @@ export enum VeriTixErrorCode {
   UnexpectedTransactionHash = 'UNEXPECTED_TRANSACTION_HASH',
   /** Feature or method is not yet implemented. */
   NotImplemented = 'NOT_IMPLEMENTED',
-  /** Deprecated alias of UnknownContractError. */
+  /** Legacy catch-all code, retained for older callers. */
   Unknown = 'UNKNOWN',
   /** Raw panic string could not be mapped to a known code. */
-  UnknownContractError = 'UNKNOWN',
+  UnknownContractError = 'UNKNOWN_CONTRACT_ERROR',
 }
 
 /**

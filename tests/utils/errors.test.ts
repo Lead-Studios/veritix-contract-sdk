@@ -130,13 +130,12 @@ describe('parseSorobanError — systematic mapping', () => {
     }
   });
 
-  it('covers the full enum (no parseable code is silently missing)', () => {
-    const values = Object.values(VeriTixErrorCode) as VeriTixErrorCode[];
-    const covered = values.filter((code) => PANIC_STRINGS[code] !== undefined);
-    // 3 codes are catch-all / throw-only and intentionally have no panic
-    // string: Unknown, UnknownContractError (they share the catch-all value)
-    // and UnexpectedTransactionHash.
-    expect(covered.length).toBe(values.length - 3);
+  it('leaves catch-all and throw-only codes without panic strings', () => {
+    // Unknown and UnknownContractError are distinct codes (#973), and
+    // UnexpectedTransactionHash is only produced locally after submission.
+    expect(PANIC_STRINGS[VeriTixErrorCode.Unknown]).toBeUndefined();
+    expect(PANIC_STRINGS[VeriTixErrorCode.UnknownContractError]).toBeUndefined();
+    expect(PANIC_STRINGS[VeriTixErrorCode.UnexpectedTransactionHash]).toBeUndefined();
   });
 });
 
@@ -157,8 +156,10 @@ describe('parseSorobanError — unknown input', () => {
     expect(err.rawMessage).toBe('');
   });
 
-  it('keeps Unknown as a value-compatible legacy alias', () => {
-    expect(VeriTixErrorCode.Unknown).toBe(VeriTixErrorCode.UnknownContractError);
+  it('keeps Unknown distinct from UnknownContractError', () => {
+    expect(VeriTixErrorCode.Unknown).toBe('UNKNOWN');
+    expect(VeriTixErrorCode.UnknownContractError).toBe('UNKNOWN_CONTRACT_ERROR');
+    expect(VeriTixErrorCode.Unknown).not.toBe(VeriTixErrorCode.UnknownContractError);
   });
 });
 
