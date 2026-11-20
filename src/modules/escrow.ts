@@ -19,6 +19,7 @@ import type { Transaction } from '@stellar/stellar-sdk';
 import type { EscrowRecord, TicketEscrowParams, TransactionResult } from '../types';
 import { toHex, utf8ToBytes } from '../utils/bytes';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
+import { escrowIdToScVal } from '../utils/escrow-id';
 import {
   DUMMY_PUBLIC_KEY,
   assertValidAddress,
@@ -225,7 +226,7 @@ export class EscrowModule {
     if (ids.length === 0) return [];
 
     const result = await this.read('get_escrows_batch', [
-      xdr.ScVal.scvVec(ids.map((id) => xdr.ScVal.scvU32(Number(id)))),
+      xdr.ScVal.scvVec(ids.map((id) => escrowIdToScVal(id))),
     ]);
 
     if (!Array.isArray(result)) return ids.map(() => null);
@@ -258,19 +259,13 @@ export class EscrowModule {
     assertValidAddress(newBeneficiary, 'newBeneficiary');
     this.assertSignerConfigured('transferBeneficiary');
 
-    if (id < 0n || id > 0xffff_ffffn) {
-      throw new VeriTixError(
-        VeriTixErrorCode.InvalidInput,
-        `transferBeneficiary: escrow id ${id} is out of range for u32`,
-      );
-    }
-
+    const idScVal = escrowIdToScVal(id);
     const depositor = this.keypair ? this.keypair.publicKey() : this.sourceForWrite();
 
     try {
       return await this.writeCall('transfer_escrow_beneficiary', [
         addressToScVal(depositor),
-        nativeToScVal(Number(id), { type: 'u32' }),
+        idScVal,
         addressToScVal(newBeneficiary),
       ]);
     } catch (err: unknown) {
@@ -312,6 +307,7 @@ export class EscrowModule {
    */
   async triggerAutoRelease(id: bigint, currentLedger?: number): Promise<TransactionResult> {
     this.assertSignerConfigured('triggerAutoRelease');
+    const idScVal = escrowIdToScVal(id);
 
     const escrow = await this.getEscrow(id);
     const ledger = currentLedger ?? await this.fetchLatestLedger();
@@ -325,18 +321,9 @@ export class EscrowModule {
       );
     }
 
-    if (id < 0n || id > 0xffff_ffffn) {
-      throw new VeriTixError(
-        VeriTixErrorCode.InvalidInput,
-        `triggerAutoRelease: escrow id ${id} is out of range for u32`,
-      );
-    }
-
     // The contract entrypoint is `trigger_auto_release(escrow_id: u32)`; there
     // is no `auto_release` function, so the previous name failed on-chain (#839).
-    return await this.writeCall('trigger_auto_release', [
-      nativeToScVal(Number(id), { type: 'u32' }),
-    ]);
+    return await this.writeCall('trigger_auto_release', [idScVal]);
   }
 
   /**
@@ -412,7 +399,7 @@ export class EscrowModule {
     const depositor = this.keypair ? this.keypair.publicKey() : this.sourceForWrite();
     return await this.writeCall('topup_escrow', [
       addressToScVal(depositor),
-      nativeToScVal(Number(id), { type: 'u32' }),
+      escrowIdToScVal(id),
       bigintToScVal(amount, 'i128'),
     ]);
   }
@@ -453,7 +440,7 @@ export class EscrowModule {
     try {
       return await this.writeCall('release_escrow', [
         addressToScVal(caller),
-        nativeToScVal(Number(id), { type: 'u32' }),
+        escrowIdToScVal(id),
       ]);
     } catch (err: unknown) {
       const errStr = this.extractErrorString(err);
@@ -510,7 +497,7 @@ export class EscrowModule {
     try {
       return await this.writeCall('refund_escrow', [
         addressToScVal(caller),
-        nativeToScVal(Number(id), { type: 'u32' }),
+        escrowIdToScVal(id),
       ]);
     } catch (err: unknown) {
       const errStr = this.extractErrorString(err);
@@ -699,7 +686,6 @@ export class EscrowModule {
   /** Builds an unsigned read-only call through the shared transaction helper. */
   private buildReadCall(method: string, args: xdr.ScVal[]): Promise<Transaction> {
     return buildContractCall(
-      this.server,
       new StellarAccount(DUMMY_PUBLIC_KEY, '0'),
       this.config.contractId,
       method,

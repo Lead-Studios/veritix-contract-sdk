@@ -16,7 +16,6 @@ import type { ContractInvoker } from '../types';
 import { MAX_BATCH_SIZE } from '../utils/constants';
 import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 import { assertValidAddress } from '../utils/network';
-import { VeriTixError, VeriTixErrorCode } from '../utils/errors';
 
 /** @deprecated Use {@link ContractInvoker} from the shared types module. */
 export type RecurringInvoker = ContractInvoker;
