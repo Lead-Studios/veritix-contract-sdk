@@ -230,7 +230,7 @@ export class EscrowModule {
 
     if (!Array.isArray(result)) return ids.map(() => null);
     return ids.map((id, i) => {
-      const native = result[i];
+      const native: unknown = result[i];
       if (!native || typeof native !== 'object') return null;
       return this.toEscrowRecord(native, id);
     });
@@ -692,7 +692,8 @@ export class EscrowModule {
         `${method} simulation returned no value`,
       );
     }
-    return scValToNative(retval);
+    const native: unknown = scValToNative(retval);
+    return native;
   }
 
   /** Builds an unsigned read-only call through the shared transaction helper. */

@@ -789,7 +789,8 @@ export class TokenModule {
         `${method} simulation returned no value`,
       );
     }
-    return scValToNative(retval);
+    const native: unknown = scValToNative(retval);
+    return native;
   }
 
   /** Builds an unsigned read-only call through the shared transaction helper. */
