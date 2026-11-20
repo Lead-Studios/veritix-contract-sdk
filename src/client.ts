@@ -554,7 +554,8 @@ export class VeriTixClient implements ContractInvoker {
     if (retval === undefined) {
       throw new VeriTixError(VeriTixErrorCode.SimulationFailed, `Simulation of ${method} returned no value`);
     }
-    return scValToNative(retval);
+    const native: unknown = scValToNative(retval);
+    return native;
   }
 
   /** Builds an unsigned read-only call through the shared transaction helper. */

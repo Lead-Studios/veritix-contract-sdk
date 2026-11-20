@@ -69,7 +69,7 @@ export async function buildContractCall(
     .setTimeout(30)
     .build();
 
-  return tx as Transaction;
+  return tx;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ export async function simulateTransaction(
   const assembled = rpc.assembleTransaction(tx, result).build();
 
   return {
-    transaction: assembled as Transaction,
+    transaction: assembled,
     simulatedFee: result.minResourceFee,
   };
 }
