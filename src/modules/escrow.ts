@@ -150,7 +150,7 @@ export class EscrowModule {
    * @returns `true` when the contract reports the escrow as settled.
    */
   async isSettled(id: bigint): Promise<boolean> {
-    const result = await this.read('is_escrow_settled', [bigintToScVal(id, 'u64')]);
+    const result = await this.read('is_escrow_settled', [bigintToScVal(id, 'u32')]);
     return result === true;
   }
 
@@ -218,7 +218,7 @@ export class EscrowModule {
    * @returns Ledgers elapsed since the escrow was created.
    */
   async getEscrowAge(id: bigint): Promise<number> {
-    const result = await this.read('get_escrow_age', [bigintToScVal(id, 'u64')]);
+    const result = await this.read('get_escrow_age', [bigintToScVal(id, 'u32')]);
     return Number(result ?? 0);
   }
 
