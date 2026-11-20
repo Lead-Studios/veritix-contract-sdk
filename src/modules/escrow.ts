@@ -50,6 +50,19 @@ type Signer = (tx: Transaction) => Promise<Transaction>;
 /** Upper bound on {@link EscrowModule.getEscrowsBatch}, one `u32` per argument. */
 export const MAX_ESCROW_BATCH_SIZE = 100;
 
+type SubmitCapableServer = NonNullable<EscrowModule['server']> & {
+  sendTransaction: NonNullable<NonNullable<EscrowModule['server']>['sendTransaction']>;
+  getTransaction: NonNullable<NonNullable<EscrowModule['server']>['getTransaction']>;
+};
+
+function isSubmitCapableServer(server: EscrowModule['server']): server is SubmitCapableServer {
+  return (
+    !!server &&
+    typeof server.sendTransaction === 'function' &&
+    typeof server.getTransaction === 'function'
+  );
+}
+
 export class EscrowModule {
   /** Soroban RPC server; tests inject a mock on this field. */
   server: {
@@ -572,7 +585,8 @@ export class EscrowModule {
   private async writeCall(method: string, args: xdr.ScVal[]): Promise<TransactionResult> {
     this.assertSignerConfigured('write operations');
 
-    if (!this.server) {
+    const server = this.server;
+    if (!server) {
       throw new VeriTixError(
         VeriTixErrorCode.NotConnected,
         'call connect() before writing to the contract',
@@ -581,8 +595,8 @@ export class EscrowModule {
 
     const sourcePubKey = this.keypair ? this.keypair.publicKey() : this.sourceForWrite();
     let sourceAccount: StellarAccount;
-    if (typeof this.server.getAccount === 'function') {
-      const acct = await this.server.getAccount(sourcePubKey);
+    if (typeof server.getAccount === 'function') {
+      const acct = await server.getAccount(sourcePubKey);
       sourceAccount = acct as StellarAccount;
     } else {
       sourceAccount = new StellarAccount(sourcePubKey, '0');
@@ -596,12 +610,18 @@ export class EscrowModule {
       this.config.networkPassphrase,
     );
 
-    const { transaction } = await simulateTransaction(this.server, tx);
+    const { transaction } = await simulateTransaction(server, tx);
 
     if (this.signer) {
       return await this.submitSigned(transaction);
     }
-    return await submitTransaction(this.server, transaction, this.keypair);
+    if (!isSubmitCapableServer(server)) {
+      throw new VeriTixError(
+        VeriTixErrorCode.NotConnected,
+        'RPC server methods unavailable for transaction submission.',
+      );
+    }
+    return await submitTransaction(server, transaction, this.keypair);
   }
 
   private sourceForWrite(): string {
