@@ -130,7 +130,10 @@ export class SplitterModule {
     return actions.distribute(this.requireInvoker(), caller, splitId);
   }
 
-  bulkDistribute(caller: string, splitIds: bigint[]) {
+  bulkDistribute(
+    caller: string,
+    splitIds: bigint[]
+  ): Promise<{ distributed: bigint[]; failed: { id: bigint; error: string }[] }> {
     return actions.bulkDistribute(this.requireInvoker(), caller, splitIds);
   }
 
@@ -142,8 +145,8 @@ export class SplitterModule {
    *
    * @throws {VeriTixError} `NotImplemented` until the contract exposes `get_split`.
    */
-  async getSplit(_id: bigint): Promise<SplitRecord | null> {
-    throw notImplemented('getSplit', 'get_split');
+  getSplit(_id: bigint): Promise<SplitRecord | null> {
+    return Promise.reject(notImplemented('getSplit', 'get_split'));
   }
 
   /** Every split initiated by `sender` (#668's listing reads — no stubs). */
@@ -167,8 +170,8 @@ export class SplitterModule {
    * @throws {VeriTixError} `NotImplemented` until the contract exposes
    *   `get_splits_by_recipient` (#854).
    */
-  async getSplitsByRecipient(_recipientAddress: string): Promise<SplitRecord[]> {
-    throw notImplemented('getSplitsByRecipient', 'get_splits_by_recipient');
+  getSplitsByRecipient(_recipientAddress: string): Promise<SplitRecord[]> {
+    return Promise.reject(notImplemented('getSplitsByRecipient', 'get_splits_by_recipient'));
   }
 
   /**
@@ -177,7 +180,7 @@ export class SplitterModule {
    * @throws {VeriTixError} `NotImplemented` until the contract exposes
    *   `get_pending_splits` (#854).
    */
-  async getPendingSplits(): Promise<SplitRecord[]> {
-    throw notImplemented('getPendingSplits', 'get_pending_splits');
+  getPendingSplits(): Promise<SplitRecord[]> {
+    return Promise.reject(notImplemented('getPendingSplits', 'get_pending_splits'));
   }
 }

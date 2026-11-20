@@ -68,15 +68,15 @@ export class PollingService {
    *   a terminal failed state — callers can then stop immediately instead of
    *   polling a hash that can never succeed.
    */
-  async checkStatus(hash: string): Promise<PollStatusResult> {
+  checkStatus(hash: string): Promise<PollStatusResult> {
     const status = this.resolve(hash);
     if (status === PollStatus.FAILED) {
-      throw new VeriTixError(
+      return Promise.reject(new VeriTixError(
         VeriTixErrorCode.TransactionFailed,
         'Transaction failed immediately',
-      );
+      ));
     }
-    return { status, hash };
+    return Promise.resolve({ status, hash });
   }
 
   /**
